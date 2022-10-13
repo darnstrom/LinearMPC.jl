@@ -260,9 +260,37 @@ function mpc2mpqp(mpc::MPC)
     senses = zeros(Cint,size(A,1)); 
     if(mpc.constraints.double_sided)
         return (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
-                A=A, bu=bu, bl=bl, W=W, senses=senses, bounds_table=bounds_table) 
+                A=Matrix(A), bu=bu, bl=bl, W=W, senses=senses, bounds_table=bounds_table)
     else
         return (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
-                A=A, b=b, W=W, senses=senses, bounds_table=bounds_table) 
+                A=Matrix(A), b=b, W=W, senses=senses, bounds_table=bounds_table)
     end
 end
+
+function dualize(mpQP,n_control;normalize=true)
+    R = cholesky((mpQP.H+mpQP.H')/2)
+    M = mpQP.A/R.U
+    Vth = (R.L)\mpQP.f_theta
+    Dth = mpQP.W + M*Vth
+    du = mpQP.bu
+    dl = mpQP.bl
+
+    Dth = Dth'[:,:]# Col major...
+    if(normalize)
+        # Normalize
+        norm_factor = 0
+        for i in 1:size(M,1)
+            norm_factor = norm(M[i,:],2)
+            M[i,:]./=norm_factor
+            Dth[:,i]./=norm_factor
+            du[i]/= norm_factor
+            dl[i]/= norm_factor
+        end
+    end
+    Xth = -mpQP.H\mpQP.f_theta;
+    Xth = Xth[1:n_control,:];
+    Xth = Xth'[:,:] # col major => row major
+
+    return (M=M, Dth=Dth, du=du, dl=dl, Xth=Xth)
+end
+
