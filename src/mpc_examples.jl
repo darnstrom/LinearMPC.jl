@@ -1,4 +1,4 @@
-function mpc_examples(s, Np, Nc;nx=0)
+function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
     if(s=="inv_pend"||s=="invpend")
         # Inverted pendulum
         A = [0 1 0 0 0; 0 -10 9.81 0 0 ; 0 0 0 1 0 ; 0 -20 39.24 0 2; 0 0 0 0 0];
@@ -21,6 +21,7 @@ function mpc_examples(s, Np, Nc;nx=0)
         mpc.constraints.lb = [-2.0];
         mpc.constraints.ub = [2.0];
         mpc.constraints.Ncc = mpc.Nc;
+        mpc.constraints.double_sided = double_sided;
 
         mpQP = mpc2mpqp(mpc);
         P_theta =(A =zeros(8,0),
@@ -57,6 +58,7 @@ function mpc_examples(s, Np, Nc;nx=0)
         mpc.constraints.lby = [[-0.5]];
         mpc.constraints.uby = [[0.5]];
         mpc.constraints.Ncy = [1:3];
+        mpc.constraints.double_sided = double_sided;
 
         mpQP = mpc2mpqp(mpc);
         P_theta =(A =zeros(6,0),
@@ -94,6 +96,7 @@ function mpc_examples(s, Np, Nc;nx=0)
         mpc.constraints.lby = [[-0.5;-0.5]];
         mpc.constraints.uby = [[0.5;0.5]];
         mpc.constraints.Ncy = [1:1];
+        mpc.constraints.double_sided = double_sided;
 
         mpQP = mpc2mpqp(mpc);
         P_theta =(A =zeros(10,0),
@@ -125,6 +128,7 @@ function mpc_examples(s, Np, Nc;nx=0)
         mpc.constraints.lby = [-10.0*ones(nx)];
         mpc.constraints.uby = [10.0*ones(nx)];
         mpc.constraints.Ncy = [1:mpc.Nc]
+        mpc.constraints.double_sided = double_sided;
 
         mpQP = mpc2mpqp(mpc);
         P_theta =(A =zeros(2*nx+1,0),
@@ -168,6 +172,7 @@ function mpc_examples(s, Np, Nc;nx=0)
         mpc.constraints.lby = [-4.0*ones(nm)];
         mpc.constraints.uby = [4.0*ones(nm)];
         mpc.constraints.Ncy = [1:mpc.Nc]
+        mpc.constraints.double_sided = double_sided;
 
         mpQP = mpc2mpqp(mpc);
         # Remove references and u_{-1} since regulation problem 
@@ -187,12 +192,12 @@ function mpc_examples(s, Np, Nc;nx=0)
     return mpQP,P_theta
 end
 
-function mpc_examples(s)
+function mpc_examples(s;double_sided=false)
     if(s=="inv_pend"||s=="invpend")
-        mpc_examples(s,50,5)
+        mpc_examples(s,50,5;double_sided)
     elseif(s=="dc_motor"||s=="dcmotor")
-        mpc_examples(s,10,2)
+        mpc_examples(s,10,2;double_sided)
     elseif(s=="aircraft")
-        mpc_examples(s,10,2)
+        mpc_examples(s,10,2;double_sided)
     end
 end

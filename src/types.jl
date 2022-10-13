@@ -16,12 +16,14 @@ mutable struct MPCConstraints
     Ax::Matrix{Float64}
     bg::Vector{Float64}
     Ncg::Int64
+
+    double_sided::Bool # Termines if the mpQP has constraints bl+W <= Ax <= bu+W or Ax <=b+W
 end
 
 function MPCConstraints(nx,nu)
     return MPCConstraints(zeros(0),zeros(0),0,
                           Matrix{Float64}[],Vector{Float64}[],Vector{Float64}[],[0:0],
-                          zeros(0,nu),zeros(0,nx),zeros(0),0)
+                          zeros(0,nu),zeros(0,nx),zeros(0),0,false)
 end
 
 # Weights used to define the objective function of the OCP
