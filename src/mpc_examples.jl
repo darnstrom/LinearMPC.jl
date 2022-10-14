@@ -28,7 +28,7 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
                   b = zeros(0),
                   lb =-[20*ones(5);20*ones(2);2],
                   ub = [20*ones(5);20*ones(2);2])
-        return mpQP,P_theta
+        return mpQP,P_theta,mpc
 
     elseif(s=="dc_motor"||s=="dcmotor")
         A = [0 1.0 0 0; -51.21 -1 2.56 0; 0 0 0 1; 128 0 -6.401 -10.2];
@@ -65,7 +65,7 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
                   b = zeros(0),
                   lb =-[100*ones(4);0.79577;0.5023],
                   ub = [100*ones(4);0.79577;0.5023;])
-        return mpQP,P_theta
+        return mpQP,P_theta,mpc
     elseif(s=="aircraft")
         A = [-0.0151 -60.5651  0       -32.174 0 0;
              -0.0001   -1.3411  0.9929   0     0 0;
@@ -103,7 +103,7 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
                   b = zeros(0),
                   lb =-[20*ones(6);1;0.05;0.5;0.5],
                   ub = [20*ones(6);1;0.05;0.5;0.5])
-        return mpQP,P_theta
+        return mpQP,P_theta,mpc
     elseif(s=="chained-firstorder" || s=="chained")
         A = -Matrix(I,nx,nx)+diagm(-1=>ones(nx-1));
         B = [1;zeros(nx-1,1)];
@@ -135,7 +135,7 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
                   b = zeros(0),
                   lb =[-10*ones(2*nx);-1],
                   ub =[10*ones(2*nx);1])
-        return mpQP,P_theta
+        return mpQP,P_theta,mpc
     elseif(s=="mass-spring" || s=="mass" || s=="spring")
         κ=1; # spring
         λ=0; # damping
@@ -189,7 +189,7 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
                   lb =-4.0*ones(nx),
                   ub = 4.0*ones(nx))
     end
-    return mpQP,P_theta
+    return mpQP,P_theta,mpc
 end
 
 function mpc_examples(s;double_sided=false)
