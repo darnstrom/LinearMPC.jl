@@ -116,7 +116,7 @@ function create_constraints(lb,ub,Ncc,Cy,lby,uby,Ncy,Au,Ax,bg,Ncg,Γ,Φ,N,nx,dou
     # Control bounds
     if(!isempty(ub))
         if(double_sided)
-            A,bu,bl,W = create_controlbounds(lb,ub,N,Ncc,nx;double_sided=true)
+            ~,bu,bl,W = create_controlbounds(lb,ub,N,Ncc,nx;double_sided=true)
             issoft= falses(n);
         else
             A,b,W = create_controlbounds(lb,ub,N,Ncc,nx);
@@ -247,7 +247,7 @@ function mpc2mpqp(mpc::MPC)
         A, b, W, bounds_table, issoft = create_constraints(mpc,Φ,Γ)
     end
 
-    W = [W zeros(size(A,1),size(f_theta,2)-mpc.nx)]; # Add zeros for r and u-
+    W = [W zeros(size(W,1),size(f_theta,2)-mpc.nx)]; # Add zeros for r and u-
 
     if(any(issoft))
         A = [A zeros(size(A,1))];
@@ -257,21 +257,22 @@ function mpc2mpqp(mpc::MPC)
         f_theta =[f_theta;zeros(1,size(f_theta,2))];
     end
     f = zeros(size(H,1),1); 
-    senses = zeros(Cint,size(A,1)); 
+    senses = zeros(Cint,size(W,1)); 
     if(mpc.constraints.double_sided)
         return (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
-                A=Matrix(A), bu=bu, bl=bl, W=W, senses=senses, bounds_table=bounds_table)
+                A=Matrix{Float64}(A), bu=bu, bl=bl, W=W, senses=senses, bounds_table=bounds_table)
     else
         return (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
-                A=Matrix(A), b=b, W=W, senses=senses, bounds_table=bounds_table)
+                A=Matrix{Float64}(A), b=b, W=W, senses=senses, bounds_table=bounds_table)
     end
 end
 
 function dualize(mpQP,n_control;normalize=true)
+    n = size(mpQP.H,1)
     R = cholesky((mpQP.H+mpQP.H')/2)
     M = mpQP.A/R.U
     Vth = (R.L)\mpQP.f_theta
-    Dth = mpQP.W + M*Vth
+    Dth = mpQP.W + [Matrix{Float64}(I(n))/R.U; M]*Vth
     du = mpQP.bu
     dl = mpQP.bl
 
