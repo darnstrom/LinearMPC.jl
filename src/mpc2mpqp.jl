@@ -153,7 +153,6 @@ function create_constraints(lb,ub,Ncc,Cy,lby,uby,Ncy,Au,Ax,bg,Ncg,Γ,Φ,N,nx,dou
             Ag,bug,blg,Wg = create_generalconstraints(Au,Ax,bg,Γ,Φ,N,Ncg);
             bu = [bu;bug];
             bl = [bl;blg];
-            bl = [bl;blg];
             bounds_table = [bounds_table; m.+collect(1:mg)];
             issoft = [issoft; repeat(sum(abs.(Ax),dims=2).>0,Ncg)];
         else
