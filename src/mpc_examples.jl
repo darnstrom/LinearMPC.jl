@@ -188,6 +188,57 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
                   b = zeros(0),
                   lb =-4.0*ones(nx),
                   ub = 4.0*ones(nx))
+    elseif(s=="invpend_contact")
+        # Inverted pendulum with contact forces
+        mc=1;
+        mp =1;
+        g = 10;
+        l =1;
+        d=0.5;
+
+        A = [0 0 1 0;
+             0 0 0 1; 
+             0 (mp*g/mc) 0 0; 
+             0 (mc+mp)*g/(mc*l) 0 0];
+        B = [0 0 0;
+             0 0 0;
+             1/mc 0 0;
+             1/(mc*l) -1/(mp*l) 1/(mp*l);]
+
+        C = I(4) 
+        D = zeros(4,1);
+        Ts = 0.05;
+
+        F,G = zoh(A,B,Ts);
+
+        # State constraints 
+        uby = [d;pi/10;1;1];
+        lby = -uby
+
+        # MPC
+        mpc = MPC(F,G,C,Np);
+        mpc.Nc = Nc;
+
+        mpc.weights.Q = diagm([1.0,1,1,1]); 
+        mpc.weights.R = diagm([1.0,1.0,1.0])
+        mpc.weights.Rr = diagm([0.0,0.0,0.0])
+
+        mpc.constraints.lb = [-1.0,0,0];
+        mpc.constraints.ub = [1.0,Inf,Inf];
+        mpc.constraints.Ncc = mpc.Nc;
+        mpc.constraints.double_sided = double_sided;
+
+        mpc.constraints.Cy = [C];
+        mpc.constraints.lby = [lby];
+        mpc.constraints.uby = [uby];
+        mpc.constraints.Ncy = [1:mpc.Nc]
+
+        mpQP = mpc2mpqp(mpc,explicit_soft=false);
+        P_theta =(A =zeros(8,0),
+                  b = zeros(0),
+                  lb =-[20*ones(5);20*ones(2);2],
+                  ub = [20*ones(5);20*ones(2);2])
+        return mpQP,P_theta,mpc
     end
     return mpQP,P_theta,mpc
 end
