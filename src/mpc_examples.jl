@@ -204,6 +204,7 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
              0 0 0;
              1/mc 0 0;
              1/(mc*l) -1/(mp*l) 1/(mp*l);]
+        B = [B zeros(4,4)] # Add binary constraints...
 
         C = I(4) 
         D = zeros(4,1);
@@ -220,11 +221,11 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
         mpc.Nc = Nc;
 
         mpc.weights.Q = diagm([1.0,1,1,1]); 
-        mpc.weights.R = diagm([1.0,1.0,1.0])
-        mpc.weights.Rr = diagm([0.0,0.0,0.0])
+        mpc.weights.R = diagm([1.0;1.0;1.0; ones(4)])
+        mpc.weights.Rr = diagm(zeros(7))
 
-        mpc.constraints.lb = [-1.0,0,0];
-        mpc.constraints.ub = [1.0,Inf,Inf];
+        mpc.constraints.lb = [-1.0;0;0;zeros(4)];
+        mpc.constraints.ub = [1.0;Inf;Inf;ones(4)];
         mpc.constraints.Ncc = mpc.Nc;
         mpc.constraints.double_sided = double_sided;
 
@@ -232,6 +233,11 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
         mpc.constraints.lby = [lby];
         mpc.constraints.uby = [uby];
         mpc.constraints.Ncy = [1:mpc.Nc]
+
+        #mpc.constraints.Au = 
+        #mpc.constraints.Ax
+        #mpc.constraints.bg
+        #mpc.constraints.Ncg = mpc.Nc
 
         mpQP = mpc2mpqp(mpc,explicit_soft=false);
         P_theta =(A =zeros(8,0),
