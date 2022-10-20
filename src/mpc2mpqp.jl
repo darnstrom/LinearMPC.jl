@@ -233,7 +233,7 @@ min			0.5 U' H U+th'F_theta' U + 0.5 th' H_theta th
 subject to 	A U <= b + Wth
 ```
 """
-function mpc2mpqp(mpc::MPC)
+function mpc2mpqp(mpc::MPC;explicit_soft=true)
     mpQP = LinearMPC.MPQP();
 
     Φ,Γ=state_predictor(mpc.F,mpc.G,mpc.Np,mpc.Nc);
@@ -249,9 +249,9 @@ function mpc2mpqp(mpc::MPC)
 
     W = [W zeros(size(W,1),size(f_theta,2)-mpc.nx)]; # Add zeros for r and u-
 
-    if(any(issoft))
+    if(explicit_soft && any(issoft))
         A = [A zeros(size(A,1))];
-        A[issoft,end].=-1;
+        A[issoft[size(H,1)+1:end],end].=-1;
 
         H = cat(H,mpc.weights.rho,dims=(1,2));
         f_theta =[f_theta;zeros(1,size(f_theta,2))];
