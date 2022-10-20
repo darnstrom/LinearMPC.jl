@@ -88,7 +88,7 @@ function create_generalconstraints(Au,Ax,bg,Γ,Φ,N,Ncg;double_sided=false)
     A=Axtot*Γ+Autot;
     W = - Axtot*Φ;
     if(double_sided)
-        return A,b,repeat(-Inf,length(b)),W
+        return A,b,repeat([-Inf],length(b)),W
     else
         return A,b,W
     end
@@ -150,7 +150,7 @@ function create_constraints(lb,ub,Ncc,Cy,lby,uby,Ncy,Au,Ax,bg,Ncg,Γ,Φ,N,nx,dou
         m = size(A,1);
         mg = Ncg*length(bg);
         if(double_sided)
-            Ag,bug,blg,Wg = create_generalconstraints(Au,Ax,bg,Γ,Φ,N,Ncg);
+            Ag,bug,blg,Wg = create_generalconstraints(Au,Ax,bg,Γ,Φ,N,Ncg;double_sided=true);
             bu = [bu;bug];
             bl = [bl;blg];
             bounds_table = [bounds_table; m.+collect(1:mg)];
