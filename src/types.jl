@@ -4,24 +4,29 @@ mutable struct MPCConstraints
     lb::Vector{Float64}
     ub::Vector{Float64}
     Ncc::Int64
+    binary_controls::Vector{Int64}
+    #sense_cc::Vector{Int64}
 
     # lby <= Cy x_i <= uby for i ∈ 1,2, …, Ncy
     Cy::Vector{Matrix{Float64}}
     lby::Vector{Vector{Float64}}
     uby::Vector{Vector{Float64}}
     Ncy::Vector{AbstractVector{Int64}} # TODO change name...
+    #sense_cy::Vector{Int64}
+
 
     # Au u_i + Ax x_i <= bg for i ∈ 0,…,Ncy
     Au::Matrix{Float64}
     Ax::Matrix{Float64}
     bg::Vector{Float64}
     Ncg::Int64
+    #sense_cg::Vector{Int64}
 
     double_sided::Bool # Termines if the mpQP has constraints bl+W <= Ax <= bu+W or Ax <=b+W
 end
 
 function MPCConstraints(nx,nu)
-    return MPCConstraints(zeros(0),zeros(0),0,
+    return MPCConstraints(zeros(0),zeros(0),0,zeros(0),
                           Matrix{Float64}[],Vector{Float64}[],Vector{Float64}[],[0:0],
                           zeros(0,nu),zeros(0,nx),zeros(0),0,false)
 end

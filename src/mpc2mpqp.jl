@@ -88,7 +88,7 @@ function create_generalconstraints(Au,Ax,bg,Γ,Φ,N,Ncg;double_sided=false)
     A=Axtot*Γ+Autot;
     W = - Axtot*Φ;
     if(double_sided)
-        return A,b,repeat([-Inf],length(b)),W
+        return A,b,repeat([-1e30],length(b)),W
     else
         return A,b,W
     end
@@ -98,10 +98,17 @@ end
 # are on the form A U<=b W th
 function create_constraints(mpc,Φ,Γ;double_sided=false)
     c=mpc.constraints
-    return create_constraints(c.lb,c.ub,c.Ncc,c.Cy,c.lby,c.uby,c.Ncy,c.Au,c.Ax,c.bg,c.Ncg,Γ,Φ,mpc.Np,mpc.nx,c.double_sided)
+    return create_constraints(c.lb,c.ub,c.Ncc,c.binary_controls,
+                              c.Cy,c.lby,c.uby,c.Ncy,
+                              c.Au,c.Ax,c.bg,c.Ncg,
+                              Γ,Φ,mpc.Np,mpc.nx,c.double_sided)
 end
 
-function create_constraints(lb,ub,Ncc,Cy,lby,uby,Ncy,Au,Ax,bg,Ncg,Γ,Φ,N,nx,double_sided)
+function create_constraints(lb,ub,Ncc,binary_controls,
+        Cy,lby,uby,Ncy,
+        Au,Ax,bg,Ncg,
+        Γ,Φ,N,nx,double_sided)
+
     n = size(Γ,2);
     A = zeros(0,n);
     if(double_sided)
@@ -113,6 +120,7 @@ function create_constraints(lb,ub,Ncc,Cy,lby,uby,Ncy,Au,Ax,bg,Ncg,Γ,Φ,N,nx,dou
     W = zeros(0,nx);
     bounds_table=zeros(Int64,0);
     issoft = falses(0)
+    isbinary= falses(0)
     # Control bounds
     if(!isempty(ub))
         if(double_sided)
@@ -123,6 +131,9 @@ function create_constraints(lb,ub,Ncc,Cy,lby,uby,Ncy,Au,Ax,bg,Ncg,Γ,Φ,N,nx,dou
             bounds_table= [collect(n+1:2*n); collect(1:n)];
             issoft= falses(2*n);
         end
+        isbinary_single = falses(length(lb)) 
+        isbinary_single[binary_controls] .= true;
+        isbinary = repeat(isbinary_single,Ncc)
     end
 
     # State bounds
@@ -132,6 +143,7 @@ function create_constraints(lb,ub,Ncc,Cy,lby,uby,Ncy,Au,Ax,bg,Ncg,Γ,Φ,N,nx,dou
             Ay,buy,bly,Wy = create_statebounds(Cy,lby,uby,Γ,Φ,N,Ncy;double_sided=true);
             my = Int(size(Ay,1));
             issoft = [issoft; trues(my)];
+            isbinary = [isbinary; falses(my)]
             bu = [bu;buy];
             bl = [bl;bly];
         else
@@ -140,6 +152,7 @@ function create_constraints(lb,ub,Ncc,Cy,lby,uby,Ncy,Au,Ax,bg,Ncg,Γ,Φ,N,nx,dou
             my = Int(size(Ay,1)/2);
             bounds_table = [bounds_table; m.+collect(my+1:2*my); m.+collect(1:my)];
             issoft = [issoft; trues(2*my)];
+            isbinary = [isbinary; falses(2*my)]
         end
         A = [A;Ay];
         W = [W;Wy];
@@ -155,19 +168,21 @@ function create_constraints(lb,ub,Ncc,Cy,lby,uby,Ncy,Au,Ax,bg,Ncg,Γ,Φ,N,nx,dou
             bl = [bl;blg];
             bounds_table = [bounds_table; m.+collect(1:mg)];
             issoft = [issoft; repeat(sum(abs.(Ax),dims=2).>0,Ncg)];
+            isbinary = [isbinary; falses(length(bug))];
         else
             Ag,bg,Wg = create_generalconstraints(Au,Ax,bg,Γ,Φ,N,Ncg);
             b = [b;bg];
             bounds_table = [bounds_table; m.+collect(1:mg)];
             issoft = [issoft; repeat(sum(abs.(Ax),dims=2).>0,Ncg)];
+            isbinary = [isbinary; falses(length(b))];
         end
         A = [A;Ag];
         W = [W;Wg];
     end
     if(double_sided)
-        return A,bu,bl,W,bounds_table,issoft
+        return A,bu,bl,W,bounds_table,issoft,isbinary
     else
-        return A,b,W,bounds_table,issoft
+        return A,b,W,bounds_table,issoft,isbinary
     end
 end
 
@@ -232,7 +247,7 @@ min			0.5 U' H U+th'F_theta' U + 0.5 th' H_theta th
 subject to 	A U <= b + Wth
 ```
 """
-function mpc2mpqp(mpc::MPC;explicit_soft=true)
+function mpc2mpqp(mpc::MPC;explicit_soft=true,reference_tracking=true)
     mpQP = LinearMPC.MPQP();
 
     Φ,Γ=state_predictor(mpc.F,mpc.G,mpc.Np,mpc.Nc);
@@ -241,12 +256,16 @@ function mpc2mpqp(mpc::MPC;explicit_soft=true)
     H, f_theta, H_theta = objective(mpc,Φ,Γ)
     # Create Constraints 
     if(mpc.constraints.double_sided)
-        A, bu, bl, W, bounds_table, issoft = create_constraints(mpc,Φ,Γ)
+        A, bu, bl, W, bounds_table, issoft, isbinary = create_constraints(mpc,Φ,Γ)
     else
-        A, b, W, bounds_table, issoft = create_constraints(mpc,Φ,Γ)
+        A, b, W, bounds_table, issoft,isbinary = create_constraints(mpc,Φ,Γ)
     end
 
-    W = [W zeros(size(W,1),size(f_theta,2)-mpc.nx)]; # Add zeros for r and u-
+    if(reference_tracking)
+        W = [W zeros(size(W,1),size(f_theta,2)-mpc.nx)]; # Add zeros for r and u-
+    else
+        f_theta = f_theta[:,1:mpc.nx] # Remove terms for r and u-
+    end
 
     if(explicit_soft && any(issoft))
         A = [A zeros(size(A,1))];
@@ -257,6 +276,8 @@ function mpc2mpqp(mpc::MPC;explicit_soft=true)
     end
     f = zeros(size(H,1),1); 
     senses = zeros(Cint,size(W,1)); 
+    #senses[issoft[:]].+=DAQP.SOFT
+    senses[isbinary[:]].+=DAQP.BINARY
     if(mpc.constraints.double_sided)
         return (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
                 A=Matrix{Float64}(A), bu=bu, bl=bl, W=W, senses=senses, bounds_table=bounds_table)
