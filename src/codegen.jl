@@ -1,8 +1,8 @@
 using DAQP
 
-function codegen(mpc;fname="mpc_workspace")
+function codegen(mpc;fname="mpc_workspace",explicit_soft=false,reference_tracking=false)
     # Generate QP workspace
-    mpQP = mpc2mpqp(mpc)
+    mpQP = mpc2mpqp(mpc;explicit_soft,reference_tracking)
     d = DAQP.Model()
     DAQP.setup(d,mpQP.H,mpQP.f[:],mpQP.A,mpQP.bu[:],mpQP.bl[:],mpQP.senses)
     DAQP.codegen(d;filename=fname)
