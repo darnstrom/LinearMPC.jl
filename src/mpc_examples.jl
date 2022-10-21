@@ -190,11 +190,7 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
                   ub = 4.0*ones(nx))
     elseif(s=="invpend_contact")
         # Inverted pendulum with contact forces
-        mc=1;
-        mp =1;
-        g = 10;
-        l =1;
-        d=0.5;
+        mc,mp,g,l,d=1,1,10,1,0.5;
         κ,ν = 100,10;
 
         A = [0 0 1 0;
@@ -221,13 +217,14 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
         mpc = MPC(F,G,C,Np);
         mpc.Nc = Nc;
 
-        mpc.weights.Q = diagm([1.0,1,1,1]); 
-        mpc.weights.R = diagm([1.0;1.0;1.0; ones(4)])
+        mpc.weights.Q = diagm(1e3*[1.0,1,1,1]); 
+        mpc.weights.R = diagm([1.0;1e-4;1e-4; 1e-4*ones(4)])
         mpc.weights.Rr = diagm(zeros(7))
 
         mpc.constraints.lb = [-1.0;0;0;zeros(4)];
-        mpc.constraints.ub = [1.0;Inf;Inf;ones(4)];
+        mpc.constraints.ub = [1.0;1e30;1e30;ones(4)];
         mpc.constraints.Ncc = mpc.Nc;
+        mpc.constraints.binary_controls = collect(4:7);
         mpc.constraints.double_sided = double_sided;
 
         mpc.constraints.Cy = [C];
@@ -236,13 +233,21 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
         mpc.constraints.Ncy = [1:mpc.Nc]
 
 
-        δ2l, δ2u = -uby[1]+l*lby[2], -lby[1]+l*uby[2]
+        δ2l, δ2u = -uby[1]+l*lby[2]-d, -lby[1]+l*uby[2]-d
         dotδ2l, dotδ2u = -uby[3]+l*lby[4], -lby[3]+uby[4] 
-        δ3l, δ3u = lby[1]-l*uby[2], uby[1]-l*lby[2]
+        δ3l, δ3u = lby[1]-l*uby[2]-d, uby[1]-l*lby[2]-d
         dotδ3l, dotδ3u = lby[3]-l*uby[4], uby[3]-l*lby[4]
 
         u2l,u2u = κ*δ2l+ν*dotδ2l, κ*δ2u+ν*dotδ2u
         u3l,u3u = κ*δ3l+ν*dotδ3l, κ*δ3u+ν*dotδ3u
+
+        println("δ2: $δ2l, $δ2u")
+        println("dotδ2: $dotδ2l, $dotδ2u")
+        println("u2: $u2l, $u2u")
+        
+        println("δ3: $δ3l, $δ3u")
+        println("dotδ3: $dotδ3l, $dotδ3u")
+        println("u3: $u3l, $u3u")
 
         Ax = [-1 l 0 0;
               1 -l 0 0;
@@ -259,7 +264,7 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
                0 0 0 -u2u 0 0 0;
                0 0 0 0 0 -u2u 0;
                0 1 0 0 0 -u2l 0;
-               0 -1 0 ν*dotδ2u 0 0 0;
+               0 -1 0 u2u 0 0 0;
               ]
         Au3 = [0 0 0 0 -δ3u 0 0;
                0 0 0 0 -δ3l 0 0;
@@ -268,31 +273,37 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
                0 0 0 0 -u3u 0 0;
                0 0 0 0 0 0 -u3u;
                0 0 1 0 0 0 -u3l;
-               0 0 -1 0 ν*dotδ3u 0 0;
+               0 0 -1 0 u3u 0 0;
               ]
         bg2 = [d; 
-               δ2l-d;
+               -δ2l-d;
                κ*d;
                -κ*d-u2l;
                0;
                0;
-               -u2l;
-               ν*dotδ2u]
+               -u2l-κ*d;
+               u2u+κ*d]
         bg3 = [d; 
-               δ3l-d;
+               -δ3l-d;
                κ*d;
                -κ*d-u3l;
                0;
                0;
-               -u3l;
-               ν*dotδ3u]
+               -u3l-κ*d;
+               u3u+κ*d]
 
-        mpc.constraints.Au = [Au2;Au3]
-        mpc.constraints.Ax = [Ax;-Ax]
-        mpc.constraints.bg = [bg2;bg3];
-        mpc.constraints.Ncg = mpc.Nc
+        #mpc.constraints.Au = [Au2;Au3]
+        #mpc.constraints.Ax = [Ax;-Ax]
+        #mpc.constraints.bg = [bg2;bg3];
+        #mpc.constraints.Ncg = mpc.Nc
 
-        mpQP = mpc2mpqp(mpc,explicit_soft=false);
+        #ids = [collect(1:6);8]
+        #ids_tot = [ids;8 .+ ids];
+        #mpc.constraints.Au  = mpc.constraints.Au[ids_tot,:];
+        #mpc.constraints.Ax  = mpc.constraints.Ax[ids_tot,:];
+        #mpc.constraints.bg  = mpc.constraints.bg[ids_tot];
+
+        mpQP = mpc2mpqp(mpc,explicit_soft=false,reference_tracking=false);
         P_theta =(A =zeros(8,0),
                   b = zeros(0),
                   lb =-[20*ones(5);20*ones(2);2],
