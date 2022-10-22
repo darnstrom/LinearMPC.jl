@@ -1,4 +1,4 @@
-function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
+function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
     if(s=="inv_pend"||s=="invpend")
         # Inverted pendulum
         A = [0 1 0 0 0; 0 -10 9.81 0 0 ; 0 0 0 1 0 ; 0 -20 39.24 0 2; 0 0 0 0 0];
@@ -22,14 +22,17 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
         mpc.constraints.ub = [2.0];
         mpc.constraints.Ncc = mpc.Nc;
 
-        mpc.settings.QP_double_sided = double_sided;
+        if(isnothing(settings))
+            mpc.settings.QP_double_sided = false;
+        else
+            mpc.settings=settings
+        end
 
         mpQP = mpc2mpqp(mpc);
         P_theta =(A =zeros(8,0),
                   b = zeros(0),
                   lb =-[20*ones(5);20*ones(2);2],
                   ub = [20*ones(5);20*ones(2);2])
-        return mpQP,P_theta,mpc
 
     elseif(s=="dc_motor"||s=="dcmotor")
         A = [0 1.0 0 0; -51.21 -1 2.56 0; 0 0 0 1; 128 0 -6.401 -10.2];
@@ -59,14 +62,20 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
         mpc.constraints.lby = [[-0.5]];
         mpc.constraints.uby = [[0.5]];
         mpc.constraints.Ncy = [1:3];
-        mpc.settings.QP_double_sided = double_sided;
+
+        if(isnothing(settings))
+            mpc.settings.QP_double_sided = false;
+            mpc.settings.reference_tracking=true;
+            mpc.settings.explicit_soft=true;
+        else
+            mpc.settings=settings
+        end
 
         mpQP = mpc2mpqp(mpc);
         P_theta =(A =zeros(6,0),
                   b = zeros(0),
                   lb =-[100*ones(4);0.79577;0.5023],
                   ub = [100*ones(4);0.79577;0.5023;])
-        return mpQP,P_theta,mpc
     elseif(s=="aircraft")
         A = [-0.0151 -60.5651  0       -32.174 0 0;
              -0.0001   -1.3411  0.9929   0     0 0;
@@ -98,7 +107,13 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
         mpc.constraints.uby = [[0.5;0.5]];
         mpc.constraints.Ncy = [1:1];
 
-        mpc.settings.QP_double_sided= double_sided;
+        if(isnothing(settings))
+            mpc.settings.QP_double_sided= false;
+            mpc.settings.reference_tracking=true;
+            mpc.settings.explicit_soft=true;
+        else
+            mpc.settings=settings
+        end
 
         mpQP = mpc2mpqp(mpc);
         P_theta =(A =zeros(10,0),
@@ -131,14 +146,19 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
         mpc.constraints.uby = [10.0*ones(nx)];
         mpc.constraints.Ncy = [1:mpc.Nc]
 
-        mpc.settings.QP_double_sided= double_sided;
+        if(isnothing(settings))
+            mpc.settings.QP_double_sided= false;
+            mpc.settings.reference_tracking=true;
+            mpc.settings.explicit_soft=true;
+        else
+            mpc.settings=settings
+        end
 
         mpQP = mpc2mpqp(mpc);
         P_theta =(A =zeros(2*nx+1,0),
                   b = zeros(0),
                   lb =[-10*ones(2*nx);-1],
                   ub =[10*ones(2*nx);1])
-        return mpQP,P_theta,mpc
     elseif(s=="mass-spring" || s=="mass" || s=="spring")
         κ=1; # spring
         λ=0; # damping
@@ -176,7 +196,11 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
         mpc.constraints.uby = [4.0*ones(nm)];
         mpc.constraints.Ncy = [1:mpc.Nc]
 
-        mpc.settings.QP_double_sided= double_sided;
+        if(isnothing(settings))
+            mpc.settings.QP_double_sided= false;
+        else
+            mpc.settings=settings
+        end
 
         mpQP = mpc2mpqp(mpc);
         # Remove references and u_{-1} since regulation problem 
@@ -230,7 +254,13 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
         mpc.constraints.Ncc = mpc.Nc;
         mpc.constraints.binary_controls = collect(4:7);
 
-        mpc.settings.QP_double_sided= double_sided;
+        if(isnothing(settings))
+            mpc.settings.QP_double_sided= true;
+            mpc.settings.reference_tracking=false;
+            mpc.settings.explicit_soft=false;
+        else
+            mpc.settings=settings
+        end
 
         mpc.constraints.Cy = [C];
         mpc.constraints.lby = [lby];
@@ -307,22 +337,21 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
         #mpc.constraints.Ax  = mpc.constraints.Ax[ids_tot,:];
         #mpc.constraints.bg  = mpc.constraints.bg[ids_tot];
 
-        mpQP = mpc2mpqp(mpc,explicit_soft=false,reference_tracking=false);
+        mpQP = mpc2mpqp(mpc);
         P_theta =(A =zeros(8,0),
                   b = zeros(0),
                   lb =-[20*ones(5);20*ones(2);2],
                   ub = [20*ones(5);20*ones(2);2])
-        return mpQP,P_theta,mpc
     end
     return mpQP,P_theta,mpc
 end
 
-function mpc_examples(s;double_sided=false)
+function mpc_examples(s;settings=nothing)
     if(s=="inv_pend"||s=="invpend")
-        mpc_examples(s,50,5;double_sided)
+        mpc_examples(s,50,5;setings)
     elseif(s=="dc_motor"||s=="dcmotor")
-        mpc_examples(s,10,2;double_sided)
+        mpc_examples(s,10,2;settings)
     elseif(s=="aircraft")
-        mpc_examples(s,10,2;double_sided)
+        mpc_examples(s,10,2;settings)
     end
 end
