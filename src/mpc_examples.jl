@@ -257,7 +257,7 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         if(isnothing(settings))
             mpc.settings.QP_double_sided= true;
             mpc.settings.reference_tracking=false;
-            mpc.settings.explicit_soft=false;
+            mpc.settings.soft_constraints=false;
         else
             mpc.settings=settings
         end
