@@ -21,14 +21,12 @@ mutable struct MPCConstraints
     bg::Vector{Float64}
     Ncg::Int64
     #sense_cg::Vector{Int64}
-
-    double_sided::Bool # Termines if the mpQP has constraints bl+W <= Ax <= bu+W or Ax <=b+W
 end
 
 function MPCConstraints(nx,nu)
     return MPCConstraints(zeros(0),zeros(0),0,zeros(0),
                           Matrix{Float64}[],Vector{Float64}[],Vector{Float64}[],[0:0],
-                          zeros(0,nu),zeros(0,nx),zeros(0),0,false)
+                          zeros(0,nu),zeros(0,nx),zeros(0),0)
 end
 
 # Weights used to define the objective function of the OCP
@@ -44,7 +42,7 @@ function MPCWeights(nu,nr)
 end
 
 Base.@kwdef mutable struct MPCSettings
-    QP_double_sided::Bool = false
+    QP_double_sided::Bool = true 
     reference_tracking::Bool= true
     soft_constraints::Bool= true
     explicit_soft::Bool= false
