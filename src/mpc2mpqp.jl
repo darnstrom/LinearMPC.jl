@@ -200,7 +200,7 @@ min			0.5 U' H U+th'F_theta' U + 0.5 th' H_theta th
 subject to 	A U <= b + Wth
 ```
 """
-function mpc2mpqp(mpc::MPC;explicit_soft=true,reference_tracking=true)
+function mpc2mpqp(mpc::MPC)
     mpQP = LinearMPC.MPQP();
 
     Φ,Γ=state_predictor(mpc.F,mpc.G,mpc.Np,mpc.Nc);
@@ -210,13 +210,13 @@ function mpc2mpqp(mpc::MPC;explicit_soft=true,reference_tracking=true)
     # Create Constraints 
     A, bu, bl, W, issoft, isbinary = create_constraints(mpc,Φ,Γ)
 
-    if(reference_tracking)
+    if(mpc.settings.reference_tracking)
         W = [W zeros(size(W,1),size(f_theta,2)-mpc.nx)]; # Add zeros for r and u-
     else
         f_theta = f_theta[:,1:mpc.nx] # Remove terms for r and u-
     end
 
-    if(explicit_soft && any(issoft))
+    if(mpc.settings.explicit_soft && any(issoft))
         A = [A zeros(size(A,1))];
         A[issoft[size(H,1)+1:end],end].=-1;
 
@@ -234,7 +234,7 @@ function mpc2mpqp(mpc::MPC;explicit_soft=true,reference_tracking=true)
         ncstr = length(bu);
         n_bounds = ncstr-size(A,1);
         bounds_table=[collect(ncstr+1:2*ncstr);collect(1:ncstr)]
-        A = [I(n_bounds);A]
+        A = [I(n_bounds) zeros(n_bounds,size(A,2)-n_bounds);A]
         A = [A;-A]
         b = [bu;-bl]
         W = [W;-W]
