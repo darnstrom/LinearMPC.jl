@@ -216,21 +216,24 @@ function mpc2mpqp(mpc::MPC)
         f_theta = f_theta[:,1:mpc.nx] # Remove terms for r and u-
     end
 
-    if(mpc.settings.explicit_soft && any(issoft))
-        A = [A zeros(size(A,1))];
-        A[issoft[size(H,1)+1:end],end].=-1;
+    senses = zeros(Cint,size(W,1)); 
 
-        H = cat(H,mpc.weights.rho,dims=(1,2));
-        f_theta =[f_theta;zeros(1,size(f_theta,2))];
+    if(mpc.settings.soft_constraints)
+        senses[issoft[:]].+=DAQP.SOFT
+        if(mpc.settings.explicit_soft && any(issoft))
+            A = [A zeros(size(A,1))];
+            A[issoft[size(H,1)+1:end],end].=-1;
+
+            H = cat(H,mpc.weights.rho,dims=(1,2));
+            f_theta =[f_theta;zeros(1,size(f_theta,2))];
+        end
     end
     f = zeros(size(H,1),1); 
-    senses = zeros(Cint,size(W,1)); 
-    #senses[issoft[:]].+=DAQP.SOFT
     senses[isbinary[:]].+=DAQP.BINARY
     if(mpc.settings.QP_double_sided)
         return (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
                 A=Matrix{Float64}(A), bu=bu, bl=bl, W=W, senses=senses)
-    else
+    else # Transform bl + W θ ≤ A U ≤ bu + W θ → A U ≤ b + W
         ncstr = length(bu);
         n_bounds = ncstr-size(A,1);
         bounds_table=[collect(ncstr+1:2*ncstr);collect(1:ncstr)]
