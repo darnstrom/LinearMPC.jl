@@ -21,7 +21,8 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
         mpc.constraints.lb = [-2.0];
         mpc.constraints.ub = [2.0];
         mpc.constraints.Ncc = mpc.Nc;
-        mpc.constraints.double_sided = double_sided;
+
+        mpc.settings.QP_double_sided = double_sided;
 
         mpQP = mpc2mpqp(mpc);
         P_theta =(A =zeros(8,0),
@@ -58,7 +59,7 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
         mpc.constraints.lby = [[-0.5]];
         mpc.constraints.uby = [[0.5]];
         mpc.constraints.Ncy = [1:3];
-        mpc.constraints.double_sided = double_sided;
+        mpc.settings.QP_double_sided = double_sided;
 
         mpQP = mpc2mpqp(mpc);
         P_theta =(A =zeros(6,0),
@@ -96,7 +97,8 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
         mpc.constraints.lby = [[-0.5;-0.5]];
         mpc.constraints.uby = [[0.5;0.5]];
         mpc.constraints.Ncy = [1:1];
-        mpc.constraints.double_sided = double_sided;
+
+        mpc.settings.QP_double_sided= double_sided;
 
         mpQP = mpc2mpqp(mpc);
         P_theta =(A =zeros(10,0),
@@ -128,7 +130,8 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
         mpc.constraints.lby = [-10.0*ones(nx)];
         mpc.constraints.uby = [10.0*ones(nx)];
         mpc.constraints.Ncy = [1:mpc.Nc]
-        mpc.constraints.double_sided = double_sided;
+
+        mpc.settings.QP_double_sided= double_sided;
 
         mpQP = mpc2mpqp(mpc);
         P_theta =(A =zeros(2*nx+1,0),
@@ -172,7 +175,8 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
         mpc.constraints.lby = [-4.0*ones(nm)];
         mpc.constraints.uby = [4.0*ones(nm)];
         mpc.constraints.Ncy = [1:mpc.Nc]
-        mpc.constraints.double_sided = double_sided;
+
+        mpc.settings.QP_double_sided= double_sided;
 
         mpQP = mpc2mpqp(mpc);
         # Remove references and u_{-1} since regulation problem 
@@ -225,13 +229,13 @@ function mpc_examples(s, Np, Nc;nx=0,double_sided=false)
         mpc.constraints.ub = [1.0;1e30;1e30;ones(4)];
         mpc.constraints.Ncc = mpc.Nc;
         mpc.constraints.binary_controls = collect(4:7);
-        mpc.constraints.double_sided = double_sided;
+
+        mpc.settings.QP_double_sided= double_sided;
 
         mpc.constraints.Cy = [C];
         mpc.constraints.lby = [lby];
         mpc.constraints.uby = [uby];
         mpc.constraints.Ncy = [1:mpc.Nc]
-
 
         δ2l, δ2u = -uby[1]+l*lby[2]-d, -lby[1]+l*uby[2]-d
         dotδ2l, dotδ2u = -uby[3]+l*lby[4], -lby[3]+uby[4] 
