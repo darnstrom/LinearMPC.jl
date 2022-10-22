@@ -236,6 +236,9 @@ function mpc2mpqp(mpc::MPC)
         bounds_table=[collect(ncstr+1:2*ncstr);collect(1:ncstr)]
         A = [I(n_bounds) zeros(n_bounds,size(A,2)-n_bounds);A]
         A = [A;-A]
+        if(mpc.settings.explicit_soft && any(issoft))# Correct sign for slack
+            A[:,end].= -abs.(A[:,end])
+        end
         b = [bu;-bl]
         W = [W;-W]
         senses = [senses;senses]
