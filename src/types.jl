@@ -43,6 +43,14 @@ function MPCWeights(nu,nr)
     return MPCWeights(Matrix{Float64}(I,nr,nr),Matrix{Float64}(I,nu,nu),Matrix{Float64}(I,nu,nu),1e6)
 end
 
+Base.@kwdef mutable struct MPCSettings
+    QP_double_sided::Bool = false
+    reference_tracking::Bool= true
+    soft_constraints::Bool= true
+    explicit_soft::Bool= false
+end
+
+
 # MPC controller
 mutable struct MPC 
     # Plant
@@ -60,12 +68,15 @@ mutable struct MPC
     C::Matrix{Float64}
     weights::MPCWeights
     constraints::MPCConstraints
+
+    # Settings
+    settings::MPCSettings
 end
 
 function MPC(F,G,C,N)
     nx,nu = size(G);
     nr = size(C,1);
-    MPC(F,G,1,nx,nu,N,N,C,MPCWeights(nu,nr),MPCConstraints(nx,nu));
+    MPC(F,G,1,nx,nu,N,N,C,MPCWeights(nu,nr),MPCConstraints(nx,nu),MPCSettings());
 end
 
 
