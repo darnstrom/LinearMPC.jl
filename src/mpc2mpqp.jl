@@ -127,6 +127,7 @@ function create_constraints(mpc,Φ,Γ)
     # General constraints 
     if(!isempty(mpc.constraints.bg))
         m = size(A,1);
+        Ncg = mpc.constraints.Ncg
         mg = Ncg*length(mpc.constraints.bg);
         Ag,bug,blg,Wg = create_generalconstraints(mpc,Γ,Φ);
         bu = [bu;bug];
@@ -231,7 +232,7 @@ function mpc2mpqp(mpc::MPC)
     f = zeros(size(H,1),1); 
     senses[isbinary[:]].+=DAQP.BINARY
     if(mpc.settings.QP_double_sided)
-        return (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
+        mpQP = (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
                 A=Matrix{Float64}(A), bu=bu, bl=bl, W=W, senses=senses)
     else # Transform bl + W θ ≤ A U ≤ bu + W θ → A U ≤ b + W
         ncstr = length(bu);
@@ -245,9 +246,11 @@ function mpc2mpqp(mpc::MPC)
         b = [bu;-bl]
         W = [W;-W]
         senses = [senses;senses]
-        return (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
+        mpQP = (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
                 A=Matrix{Float64}(A), b=b, W=W, senses=senses, bounds_table=bounds_table)
     end
+    mpc.mpQP = mpQP
+    return mpQP
 end
 
 function dualize(mpQP,n_control;normalize=true)
