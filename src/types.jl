@@ -69,12 +69,15 @@ mutable struct MPC
 
     # Settings
     settings::MPCSettings
+
+    #Optimization problem
+    mpQP
 end
 
 function MPC(F,G,C,N)
     nx,nu = size(G);
     nr = size(C,1);
-    MPC(F,G,1,nx,nu,N,N,C,MPCWeights(nu,nr),MPCConstraints(nx,nu),MPCSettings());
+    MPC(F,G,1,nx,nu,N,N,C,MPCWeights(nu,nr),MPCConstraints(nx,nu),MPCSettings(),nothing);
 end
 
 
