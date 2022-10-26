@@ -11,6 +11,7 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         G = 100*G; # TODO: Make scaling more systematic...
 
         # MPC
+
         mpc = MPC(F,G,C,Np);
         mpc.Nc = Nc;
 
@@ -245,7 +246,7 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         mpc = MPC(F,G,C,Np);
         mpc.Nc = Nc;
 
-        mpc.weights.Q = diagm(1e3*[1.0,1,1,1]); 
+        mpc.weights.Q = diagm(1*[1.0,1,1,1]); 
         mpc.weights.R = diagm([1.0;1e-4;1e-4; 1e-4*ones(4)])
         mpc.weights.Rr = diagm(zeros(7))
 
@@ -295,8 +296,8 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
                0 0 0 -δ2l 0 0 0;
                0 0 0 0 0 -u2u 0;
                0 0 0 0 0 -u2l 0;
-               0 0 0 -u2u 0 0 0;
-               0 0 0 0 0 -u2u 0;
+               0 1 0 -u2u 0 0 0;
+               0 1 0 0 0 -u2u 0;
                0 1 0 0 0 -u2l 0;
                0 -1 0 u2u 0 0 0;
               ]
@@ -304,8 +305,8 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
                0 0 0 0 -δ3l 0 0;
                0 0 0 0 0 0 -u3u;
                0 0 0 0 0 0 -u3l;
-               0 0 0 0 -u3u 0 0;
-               0 0 0 0 0 0 -u3u;
+               0 0 1 0 -u3u 0 0;
+               0 0 1 0 0 0 -u3u;
                0 0 1 0 0 0 -u3l;
                0 0 -1 0 u3u 0 0;
               ]
@@ -326,10 +327,10 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
                -u3l-κ*d;
                u3u+κ*d]
 
-        #mpc.constraints.Au = [Au2;Au3]
-        #mpc.constraints.Ax = [Ax;-Ax]
-        #mpc.constraints.bg = [bg2;bg3];
-        #mpc.constraints.Ncg = mpc.Nc
+        mpc.constraints.Au = [Au2;Au3]
+        mpc.constraints.Ax = [Ax;-Ax]
+        mpc.constraints.bg = [bg2;bg3];
+        mpc.constraints.Ncg = mpc.Nc
 
         #ids = [collect(1:6);8]
         #ids_tot = [ids;8 .+ ids];
@@ -348,7 +349,7 @@ end
 
 function mpc_examples(s;settings=nothing)
     if(s=="inv_pend"||s=="invpend")
-        mpc_examples(s,50,5;setings)
+        mpc_examples(s,50,5;settings)
     elseif(s=="dc_motor"||s=="dcmotor")
         mpc_examples(s,10,2;settings)
     elseif(s=="aircraft")
