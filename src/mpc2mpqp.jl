@@ -225,13 +225,15 @@ function mpc2mpqp(mpc::MPC)
     senses = zeros(Cint,size(W,1)); 
 
     if(mpc.settings.soft_constraints)
-        senses[issoft[:]].+=DAQP.SOFT
         if(mpc.settings.explicit_soft && any(issoft))
             A = [A zeros(size(A,1))];
             A[issoft[size(H,1)+1:end],end].=-1;
 
             H = cat(H,mpc.weights.rho,dims=(1,2));
             f_theta =[f_theta;zeros(1,size(f_theta,2))];
+        end
+        if(!mpc.settings.explicit_soft)
+            senses[issoft[:]].+=DAQP.SOFT
         end
     end
     f = zeros(size(H,1),1); 
