@@ -1,5 +1,8 @@
 module LinearMPC
 using LinearAlgebra
+using JuMP
+using Gurobi
+using MatrixEquations
 
 include("types.jl");
 include("utils.jl");
