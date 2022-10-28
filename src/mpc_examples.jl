@@ -271,7 +271,7 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         mpc.constraints.Ncy = [1:mpc.Nc]
 
         δ2l, δ2u = -uby[1]+l*lby[2]-d, -lby[1]+l*uby[2]-d
-        dotδ2l, dotδ2u = -uby[3]+l*lby[4], -lby[3]+uby[4] 
+        dotδ2l, dotδ2u = -uby[3]+l*lby[4], -lby[3]+l*uby[4] 
         δ3l, δ3u = lby[1]-l*uby[2]-d, uby[1]-l*lby[2]-d
         dotδ3l, dotδ3u = lby[3]-l*uby[4], uby[3]-l*lby[4]
 
@@ -334,7 +334,7 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         mpc.constraints.bg = [bg2;bg3];
         mpc.constraints.Ncg = mpc.Nc
 
-        #ids = [collect(1:6);8]
+        #ids = [1;2;3;4;7;8]
         #ids_tot = [ids;8 .+ ids];
         #mpc.constraints.Au  = mpc.constraints.Au[ids_tot,:];
         #mpc.constraints.Ax  = mpc.constraints.Ax[ids_tot,:];
