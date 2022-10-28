@@ -35,10 +35,11 @@ mutable struct MPCWeights
     R::Matrix{Float64}
     Rr::Matrix{Float64}
     rho::Float64
+    Qf
 end
 
 function MPCWeights(nu,nr)
-    return MPCWeights(Matrix{Float64}(I,nr,nr),Matrix{Float64}(I,nu,nu),Matrix{Float64}(I,nu,nu),1e6)
+    return MPCWeights(Matrix{Float64}(I,nr,nr),Matrix{Float64}(I,nu,nu),Matrix{Float64}(I,nu,nu),1e6,nothing)
 end
 
 Base.@kwdef mutable struct MPCSettings

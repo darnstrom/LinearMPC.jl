@@ -156,9 +156,9 @@ end
 # MPC problem is formulated as 0.5 U' H U+th'F_theta' U + 0.5 th' H_theta th
 # (where th contains x0, r and u(k-1))
 function objective(mpc,Φ,Γ)
-    return objective(Φ,Γ,mpc.C,mpc.weights.Q,mpc.weights.R,mpc.weights.Rr,mpc.Np,mpc.Nc,mpc.nu)
+    return objective(Φ,Γ,mpc.C,mpc.weights.Q,mpc.weights.R,mpc.weights.Rr,mpc.Np,mpc.Nc,mpc.nu,mpc.weights.Qf,mpc.nx)
 end
-function objective(Φ,Γ,C,Q,R,Rr,N,Nc,nu)
+function objective(Φ,Γ,C,Q,R,Rr,N,Nc,nu,Qf,nx)
     pos_ids= findall(diag(Q).>0); # Ignore zero indices... (and negative)
     Q = Q[pos_ids,pos_ids];
     C = C[pos_ids,:];
@@ -171,7 +171,11 @@ function objective(Φ,Γ,C,Q,R,Rr,N,Nc,nu)
     H += T'*Rrtot*T; # from Δu'Rr Δu
 
     Qtot = kron(I(N+1),Q);
+    if(!isnothing(Qf))
+        Qtot[end-nx+1:end, end-nx+1:end] .= Qf
+    end
     Ctot  = kron(I(N+1),C);
+
     H += Γ'*Ctot'*Qtot*Ctot*Γ; # from (Cx-r)Q(Cx-r)
 
     Reftot = repeat(I(nr),N+1); # Assume r constant over the horizon
@@ -208,6 +212,7 @@ function mpc2mpqp(mpc::MPC)
 
     # Create objective function 
     H, f_theta, H_theta = objective(mpc,Φ,Γ)
+    H = (H+H')/2
     # Create Constraints 
     A, bu, bl, W, issoft, isbinary = create_constraints(mpc,Φ,Γ)
 
