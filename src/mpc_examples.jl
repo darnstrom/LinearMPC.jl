@@ -247,7 +247,7 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         mpc.Nc = Nc;
 
         mpc.weights.Q = diagm(1*[1.0,1,1,1]); 
-        mpc.weights.R = diagm([1.0;1e-2;1e-2; 1e-2*ones(4)])
+        mpc.weights.R = diagm([1.0;1e-4*ones(6)])
         mpc.weights.Rr = diagm(zeros(7))
         Qf,~ = ared(mpc.F,mpc.G[:,1],mpc.weights.R[1:1,1:1],mpc.weights.Q)
         mpc.weights.Qf= Qf 

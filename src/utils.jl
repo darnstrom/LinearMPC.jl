@@ -26,8 +26,12 @@ function compute_control(mpc::MPC,θ)
         DAQP.settings(d,Dict(:iter_limit=>1e4))
         DAQP.settings(d,Dict(:cycle_tol=>25))
         DAQP.settings(d,Dict(:primal_tol=>1e-6))
-        DAQP.settings(d,Dict(:pivot_tol=>1e-4))
+        DAQP.settings(d,Dict(:progress_tol=>1e-14))
+        #DAQP.settings(d,Dict(:dual_tol=>1e-6))
+        DAQP.settings(d,Dict(:pivot_tol=>1e-3))
         udaqp,~,exitflag,info = DAQP.solve(d)
+        f_daqp = 0.5*udaqp'*mpQP.H*udaqp+(f'*udaqp)[1]
+        slack = minimum([bu-[I(length(udaqp));mpQP.A]*udaqp; [I(length(udaqp));mpQP.A]*udaqp-bl])
         #println(info)
 
         # Test jump 
@@ -35,17 +39,27 @@ function compute_control(mpc::MPC,θ)
         optimize!(model)
         #display(solution_summary(model))
         u = value.(model[:x])
+        #u = zeros(length(udaqp))
+        f_jmp = 0.5*u'*mpQP.H*u+(f'*u)[1]
         #u,~,exitflag,info = DAQP.quadprog(mpQP.H,f[:],mpQP.A,bu[:],bl[:],mpQP.senses[:])
         println("flag: $exitflag, iterations: $(info.iterations), nodes: $(info.nodes)")
-        println("DIFF: $(norm(u-udaqp))")
+        #diff = norm(u-udaqp)
+        diff = f_jmp-f_daqp 
+        println("DIFF: $(diff)")
+        display([u udaqp])
+        display([f_daqp f_jmp])
+        display(slack)
+        #@assert(diff<1e0)
+        @assert(exitflag==1)
         if(exitflag != 1)
-            #return;
+            #@error("DAQP failed")
+            #return
             #mpQP.senses[:].=0;
             #u,~,exitflag,info = DAQP.quadprog(mpQP.H,f[:],mpQP.A,bu[:],bl[:],mpQP.senses)
             #println("Completely relaxed: $exitflag") 
         end
     end
-    return u[1:mpc.nu]
+    return udaqp[1:mpc.nu],diff
 end
 
 function step(mpc::MPC,x;r=nothing,uprev=nothing)
@@ -56,9 +70,9 @@ function step(mpc::MPC,x;r=nothing,uprev=nothing)
     else
         θ = x
     end
-    u = compute_control(mpc,θ)
+    u,diff = compute_control(mpc,θ)
     x = mpc.F*x+mpc.G*u
-    return x,u
+    return x,u,diff
 end
 
 function simulate(mpc::MPC,x0,N_steps;r=nothing)
@@ -69,6 +83,7 @@ function simulate(mpc::MPC,x0,N_steps;r=nothing)
 
     xs = zeros(mpc.nx,N_steps+1); xs[:,1] = x0
     us = zeros(mpc.nu,N_steps)
+    diffs = zeros(N_steps)
 
     # Setup reference 
     if(!isnothing(r))
@@ -77,11 +92,12 @@ function simulate(mpc::MPC,x0,N_steps;r=nothing)
     end
 
     for i = 1:N_steps
-        x,u = step(mpc,x;r=rs[:,i],uprev=u)
+        x,u,diff = step(mpc,x;r=rs[:,i],uprev=u)
         us[:,i] = u 
         xs[:,i+1] = x
+        diffs[i] = diff
     end
-    return xs,us,rs
+    return xs,us,rs,diffs
 end
 
 function create_jump(H,f,A,bu,bl,bin_ids)
@@ -92,7 +108,7 @@ function create_jump(H,f,A,bu,bl,bin_ids)
         bu = [bu[1:nb];1e30*ones(n-nb);bu[nb+1:end]]
     end
     model = direct_model(Gurobi.Optimizer())
-    #set_optimizer_attribute(model, "OutputFlag", 0)
+    set_optimizer_attribute(model, "OutputFlag", 0)
     @variable(model, bl[i] <= x[i = 1:n] <= bu[i])
     for i in bin_ids
         set_binary(x[i])
