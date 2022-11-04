@@ -80,7 +80,7 @@ function create_generalconstraints(mpc::MPC,Γ,Φ)
     m = length(bg)
     nx,nu = mpc.nx, mpc.nu
 
-    Axtot = [zeros(m*Ncg,nx) kron(I(Ncg),Ax) zeros(m*Ncg,nx*(N-Ncg))];
+    Axtot = [zeros(m*Ncg,nx) kron(I(Ncg),Ax) zeros(m*Ncg,nx*(mpc.Np-Ncg))];
     Autot = [kron(I(Ncg),Au) zeros(m*Ncg,nu*(N-Ncg))];
     b= repeat(bg,Ncg,1);
     A=Axtot*Γ+Autot;
@@ -156,9 +156,9 @@ end
 # MPC problem is formulated as 0.5 U' H U+th'F_theta' U + 0.5 th' H_theta th
 # (where th contains x0, r and u(k-1))
 function objective(mpc,Φ,Γ)
-    return objective(Φ,Γ,mpc.C,mpc.weights.Q,mpc.weights.R,mpc.weights.Rr,mpc.Np,mpc.Nc,mpc.nu,mpc.weights.Qf,mpc.nx)
+    return objective(Φ,Γ,mpc.C,mpc.weights.Q,mpc.weights.R,mpc.weights.Rr,mpc.Np,mpc.Nc,mpc.nu,mpc.weights.Qf,mpc.nx,mpc)
 end
-function objective(Φ,Γ,C,Q,R,Rr,N,Nc,nu,Qf,nx)
+function objective(Φ,Γ,C,Q,R,Rr,N,Nc,nu,Qf,nx,mpc)
     pos_ids= findall(diag(Q).>0); # Ignore zero indices... (and negative)
     Q = Q[pos_ids,pos_ids];
     C = C[pos_ids,:];
@@ -193,7 +193,18 @@ function objective(Φ,Γ,C,Q,R,Rr,N,Nc,nu,Qf,nx)
 
     H_theta = cat([Hth_xx Hth_rx';Hth_rx Hth_rr],Hth_uu,dims=(1,2)); 
 
-    return H,f_theta,H_theta
+    # Add regularization for binaries (won't change the solution)
+
+    f = zeros(size(H,1),1); 
+
+    fbin_part = zeros(mpc.nu)
+
+    fbin_part[mpc.constraints.binary_controls] .= 1 
+    fbin = repeat(fbin_part,Nc)
+    f -= 0.5*fbin
+    H += diagm(fbin)
+
+    return H,f,f_theta,H_theta
 end
 
 """
@@ -211,7 +222,7 @@ function mpc2mpqp(mpc::MPC)
     Φ,Γ=state_predictor(mpc.F,mpc.G,mpc.Np,mpc.Nc);
 
     # Create objective function 
-    H, f_theta, H_theta = objective(mpc,Φ,Γ)
+    H,f, f_theta, H_theta = objective(mpc,Φ,Γ)
     H = (H+H')/2
     # Create Constraints 
     A, bu, bl, W, issoft, isbinary = create_constraints(mpc,Φ,Γ)
@@ -236,7 +247,6 @@ function mpc2mpqp(mpc::MPC)
             senses[issoft[:]].+=DAQP.SOFT
         end
     end
-    f = zeros(size(H,1),1); 
     senses[isbinary[:]].+=DAQP.BINARY
     if(mpc.settings.QP_double_sided)
         mpQP = (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
@@ -263,28 +273,30 @@ end
 function dualize(mpQP,n_control;normalize=true)
     n = size(mpQP.H,1)
     R = cholesky((mpQP.H+mpQP.H')/2)
-    M = mpQP.A/R.U
+    Mext = [Matrix{Float64}(I(n)); mpQP.A]/R.U
     Vth = (R.L)\mpQP.f_theta
-    Dth = mpQP.W + [Matrix{Float64}(I(n))/R.U; M]*Vth
-    du = mpQP.bu
-    dl = mpQP.bl
+    Dth = mpQP.W + Mext*Vth
+    du = mpQP.bu[:]
+    dl = mpQP.bl[:]
 
-    Dth = Dth'[:,:]# Col major...
+    #Dth = Dth'[:,:]# Col major...
     if(normalize)
         # Normalize
-        norm_factor = 0
-        for i in 1:size(M,1)
-            norm_factor = norm(M[i,:],2)
-            M[i,:]./=norm_factor
-            Dth[:,i]./=norm_factor
+        for i in 1:size(Mext,1)
+            norm_factor = norm(Mext[i,:],2)
+            Mext[i,:]./=norm_factor
+            Dth[i,:]./=norm_factor
             du[i]/= norm_factor
             dl[i]/= norm_factor
         end
     end
     Xth = -mpQP.H\mpQP.f_theta;
     Xth = Xth[1:n_control,:];
-    Xth = Xth'[:,:] # col major => row major
 
-    return (M=M, Dth=Dth, du=du, dl=dl, Xth=Xth)
+    # col major => row major
+    Dth = Dth'[:,:]
+    Xth = Xth'[:,:]
+
+    return (M=Mext[n+1:end,:], Dth=Dth, du=du, dl=dl, Xth=Xth)
 end
 
