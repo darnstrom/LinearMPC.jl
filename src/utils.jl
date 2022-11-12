@@ -25,7 +25,7 @@ function compute_control(mpc::MPC,θ)
         DAQP.setup(d,mpQP.H[:,:],f[:],mpQP.A,bu[:],bl[:],mpQP.senses[:])
         DAQP.settings(d,mpc.settings.solver_opts)
         udaqp,fval,exitflag,info = DAQP.solve(d)
-        @assert(exitflag==1)
+        @assert(exitflag>=1)
 
         #model = create_jump(mpQP.H,f[:],mpQP.A,bu[:],bl[:],findall(mpQP.senses .== 16))
         #optimize!(model)
