@@ -47,6 +47,7 @@ Base.@kwdef mutable struct MPCSettings
     reference_tracking::Bool= true
     soft_constraints::Bool= true
     explicit_soft::Bool= false
+    solver_opts::Dict{Symbol,Any} = Dict()
 end
 
 

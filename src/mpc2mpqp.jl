@@ -80,7 +80,8 @@ function create_generalconstraints(mpc::MPC,Γ,Φ)
     m = length(bg)
     nx,nu = mpc.nx, mpc.nu
 
-    Axtot = [zeros(m*Ncg,nx) kron(I(Ncg),Ax) zeros(m*Ncg,nx*(mpc.Np-Ncg))];
+    #Axtot = [zeros(m*Ncg,nx) kron(I(Ncg),Ax) zeros(m*Ncg,nx*(mpc.Np-Ncg))];
+    Axtot = [kron(I(Ncg),Ax) zeros(m*Ncg,nx*(1+mpc.Np-Ncg))];
     Autot = [kron(I(Ncg),Au) zeros(m*Ncg,nu*(N-Ncg))];
     b= repeat(bg,Ncg,1);
     A=Axtot*Γ+Autot;
@@ -242,6 +243,7 @@ function mpc2mpqp(mpc::MPC)
 
             H = cat(H,mpc.weights.rho,dims=(1,2));
             f_theta =[f_theta;zeros(1,size(f_theta,2))];
+            f = [f;0];
         end
         if(!mpc.settings.explicit_soft)
             senses[issoft[:]].+=DAQP.SOFT
@@ -272,8 +274,9 @@ end
 
 function dualize(mpQP,n_control;normalize=true)
     n = size(mpQP.H,1)
+    nb = length(mpQP.bu)-size(mpQP.A,1)
     R = cholesky((mpQP.H+mpQP.H')/2)
-    Mext = [Matrix{Float64}(I(n)); mpQP.A]/R.U
+    Mext = [Matrix{Float64}(I(n)[1:nb,:]); mpQP.A]/R.U
     Vth = (R.L)\mpQP.f_theta
     Dth = mpQP.W + Mext*Vth
     du = mpQP.bu[:]

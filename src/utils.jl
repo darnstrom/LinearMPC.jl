@@ -23,43 +23,15 @@ function compute_control(mpc::MPC,θ)
         f = mpQP.f +mpQP.f_theta*θ
         d = DAQP.Model()
         DAQP.setup(d,mpQP.H[:,:],f[:],mpQP.A,bu[:],bl[:],mpQP.senses[:])
-        DAQP.settings(d,Dict(:iter_limit=>1e4))
-        DAQP.settings(d,Dict(:cycle_tol=>25))
-        DAQP.settings(d,Dict(:primal_tol=>1e-6))
-        DAQP.settings(d,Dict(:progress_tol=>1e-4))
-        #DAQP.settings(d,Dict(:dual_tol=>1e-6))
-        DAQP.settings(d,Dict(:pivot_tol=>1e-3))
-        udaqp,~,exitflag,info = DAQP.solve(d)
-        display(udaqp')
-        f_daqp = 0.5*udaqp'*mpQP.H*udaqp+(f'*udaqp)[1]
-        slack = minimum([bu-[I(length(udaqp));mpQP.A]*udaqp; [I(length(udaqp));mpQP.A]*udaqp-bl])
-        #println(info)
-
-        # Test jump 
-        model = create_jump(mpQP.H,f[:],mpQP.A,bu[:],bl[:],findall(mpQP.senses .== 16))
-        optimize!(model)
-        #display(solution_summary(model))
-        u = value.(model[:x])
-        #diff=0
-        f_jmp = 0.5*u'*mpQP.H*u+(f'*u)[1]
-        diff = f_jmp-f_daqp 
-        #u,~,exitflag,info = DAQP.quadprog(mpQP.H,f[:],mpQP.A,bu[:],bl[:],mpQP.senses[:])
-        println("flag: $exitflag, iterations: $(info.iterations), nodes: $(info.nodes), time: $(info.solve_time)")
-        #diff = norm(u-udaqp)
-        #display([u udaqp])
-        #display([f_daqp f_jmp])
-        #display(slack)
-        #@assert(diff<1e0)
+        DAQP.settings(d,mpc.settings.solver_opts)
+        udaqp,fval,exitflag,info = DAQP.solve(d)
         @assert(exitflag==1)
-        if(exitflag != 1)
-            #@error("DAQP failed")
-            #return
-            #mpQP.senses[:].=0;
-            #u,~,exitflag,info = DAQP.quadprog(mpQP.H,f[:],mpQP.A,bu[:],bl[:],mpQP.senses)
-            #println("Completely relaxed: $exitflag") 
-        end
+
+        #model = create_jump(mpQP.H,f[:],mpQP.A,bu[:],bl[:],findall(mpQP.senses .== 16))
+        #optimize!(model)
+
     end
-    return udaqp[1:mpc.nu],diff
+    return udaqp[1:mpc.nu]
 end
 
 function step(mpc::MPC,x;r=nothing,uprev=nothing)
@@ -70,12 +42,12 @@ function step(mpc::MPC,x;r=nothing,uprev=nothing)
     else
         θ = x
     end
-    u,diff = compute_control(mpc,θ)
+    u = compute_control(mpc,θ)
     x = mpc.F*x+mpc.G*u
-    return x,u,diff
+    return x,u
 end
 
-function simulate(mpc::MPC,x0,N_steps;r=nothing)
+function simulate(mpc::MPC,x0,N_steps;r=nothing, callback=(x,u,k)->nothing)
     x = x0
     u = zeros(mpc.nu)
     
@@ -83,7 +55,6 @@ function simulate(mpc::MPC,x0,N_steps;r=nothing)
 
     xs = zeros(mpc.nx,N_steps+1); xs[:,1] = x0
     us = zeros(mpc.nu,N_steps)
-    diffs = zeros(N_steps)
 
     # Setup reference 
     if(!isnothing(r))
@@ -91,13 +62,12 @@ function simulate(mpc::MPC,x0,N_steps;r=nothing)
         rs[:,size(r,2)+1:end] .= r[:,end]
     end
 
-    for i = 1:N_steps
-        x,u,diff = step(mpc,x;r=rs[:,i],uprev=u)
-        us[:,i] = u 
-        xs[:,i+1] = x
-        diffs[i] = diff
+    for k = 1:N_steps
+        x,u = step(mpc,x;r=rs[:,k],uprev=u)
+        callback(x,u,k)
+        us[:,k], xs[:,k+1] = u, x
     end
-    return xs,us,rs,diffs
+    return xs,us,rs
 end
 
 function create_jump(H,f,A,bu,bl,bin_ids)

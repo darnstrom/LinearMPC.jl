@@ -1,6 +1,6 @@
 using DAQP
 
-function codegen(mpc;fname="mpc_workspace", opt_settings=nothing)
+function codegen(mpc;fname="mpc_workspace", dir="", opt_settings=nothing)
     # Generate QP workspace
     mpQP = mpc2mpqp(mpc)
     d = DAQP.Model()
@@ -8,11 +8,11 @@ function codegen(mpc;fname="mpc_workspace", opt_settings=nothing)
     if(!isnothing(opt_settings))
         DAQP.settings(d,opt_settings)
     end
-    DAQP.codegen(d;filename=fname)
+    DAQP.codegen(d;filename=fname,dir)
 
     # Append MPC-specific data/functions
     mpLDP = dualize(mpQP,mpc.nu) 
-    render_mpc_workspace(mpLDP,mpc.nu;fname=fname, fmode="a")
+    render_mpc_workspace(mpLDP,mpc.nu;fname,dir, fmode="a")
 end
 
 function render_mpc_workspace(mpLDP,n_control;fname="mpc_workspace",dir="",fmode="w")
