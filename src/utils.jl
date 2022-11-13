@@ -27,8 +27,10 @@ function compute_control(mpc::MPC,θ)
         udaqp,fval,exitflag,info = DAQP.solve(d)
         @assert(exitflag>=1)
 
-        #model = create_jump(mpQP.H,f[:],mpQP.A,bu[:],bl[:],findall(mpQP.senses .== 16))
+        #model = create_jump(mpQP.H,f[:],mpQP.A,bu[:],bl[:],
+        #                    findall(mpQP.senses .== 16),findall(mpQP.senses .== 8))
         #optimize!(model)
+        #ugrb = value.(model[:x])
 
     end
     return udaqp[1:mpc.nu]
@@ -70,9 +72,11 @@ function simulate(mpc::MPC,x0,N_steps;r=nothing, callback=(x,u,k)->nothing)
     return xs,us,rs
 end
 
-function create_jump(H,f,A,bu,bl,bin_ids)
+function create_jump(H,f,A,bu,bl,bin_ids,soft_ids)
     n = length(f)
+    m = length(bu)
     nb = length(bu)-size(A,1)
+    ns = length(soft_ids)
     if(n > nb)
         bl = [bl[1:nb];-1e30*ones(n-nb);bl[nb+1:end]]
         bu = [bu[1:nb];1e30*ones(n-nb);bu[nb+1:end]]
@@ -83,8 +87,15 @@ function create_jump(H,f,A,bu,bl,bin_ids)
     for i in bin_ids
         set_binary(x[i])
     end
-    @objective(model, Min, 0.5*x'*H*x+f'*x)
-    @constraint(model, A*x .<= bu[n+1:end])
-    @constraint(model, A*x .>= bl[n+1:end])
+    # TODO: currently only supports soft constraints on non-bounds 
+    @variable(model, ϵ[i = 1:ns])
+    S = zeros(m-nb,ns)
+    for (j,soft_id) in enumerate(soft_ids)
+        S[soft_id-nb,j] =1
+    end
+
+    @objective(model, Min, 0.5*x'*H*x+f'*x+0.5*1e1*ϵ'*ϵ)
+    @constraint(model, A*x - S*ϵ .<= bu[n+1:end])
+    @constraint(model, A*x + S*ϵ .>= bl[n+1:end])
     return model
 end
