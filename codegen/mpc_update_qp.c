@@ -20,3 +20,27 @@ void mpc_get_solution(c_float* th, c_float* control, c_float* xstar){
         control[i] = xstar[i]+ctr_shift_th;
     }
 }
+
+#include"daqp.h"
+#ifdef DAQP_BNB
+#include "bnb.h"
+#endif
+
+int mpc_compute_control(c_float* theta, c_float* control, DAQPWorkspace* work){
+    mpc_update_qp(theta,work->dupper,work->dlower);
+
+#ifdef DAQP_BNB
+    node_cleanup_workspace(0, work);
+    int exitflag = daqp_bnb(work);
+#else
+#ifndef DAQP_WARMSTART
+    deactivate_constraints(work);
+    reset_daqp_workspace(work);
+#endif
+    int exitflag = daqp_ldp(work);
+#endif
+
+    ldp2qp_solution(work);
+    mpc_get_solution(theta,control,work->x);
+    return exitflag;
+}
