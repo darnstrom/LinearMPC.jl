@@ -8,7 +8,10 @@ function codegen(mpc;fname="mpc_workspace", dir="", opt_settings=nothing)
     if(!isnothing(opt_settings))
         DAQP.settings(d,opt_settings)
     end
-    DAQP.codegen(d;filename=fname,dir)
+    # TODO: move this to DAQP.jl
+    @assert(d.has_model, "setup the model before code generation")
+    exitflag = ccall((:render_daqp_workspace,DAQP.libdaqp),Cvoid,
+                     (Ptr{DAQP.Workspace},Cstring,Cstring,), d.work,fname,dir);
 
     # Append MPC-specific data/functions
     mpLDP = dualize(mpQP,mpc.nu) 
