@@ -1,7 +1,5 @@
 module LinearMPC
 using LinearAlgebra
-using JuMP
-using Gurobi
 
 include("types.jl");
 include("utils.jl");
