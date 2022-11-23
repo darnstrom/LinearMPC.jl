@@ -27,34 +27,35 @@ function state_predictor(F,G,Np,Nc)
     return Φ,Γ
 end
 
-
 # Create A u <= b+W*theta 
 # correspoding to  lb<=u_i<=ub for i ∈ {1,2,...,Nc}
-function create_controlbounds(lb,ub,N,Ncc,nx; double_sided=false)
-    Ncc= min(Ncc,N); # Cannot have constraint over N...
-    nu = length(lb);
+function create_controlbounds(mpc::MPC)
+    c = mpc.constraints
+    Ncc= min(c.Ncc,mpc.Nc); # Cannot have constraint over N...
+    nu,nx = mpc.nu, mpc.nx 
+    lb,ub = c.lb, c.ub
+
+
     A = kron(I(Ncc),I(nu)); 
-    if(double_sided)
-        ubs = repeat(ub,Ncc,1)
-        lbs = repeat(lb,Ncc,1)
-        return A,ubs,lbs, zeros(length(ubs),nx) 
-    else
-        A = [A;-A];
-        b= [repeat(ub,Ncc,1);-repeat(lb,Ncc,1)];
-        W = zeros(length(b),nx); 
-        return A,b,W
-    end
+    ubs = repeat(ub,Ncc,1)
+    lbs = repeat(lb,Ncc,1)
+    return A,ubs,lbs, zeros(length(ubs),nx) 
 end
 
 # Create A u <= b+W*theta 
 # correspoding to  lby<=Cy xi<=uby for i ∈ {1,2,...,Ncy}
-function create_statebounds(Cy,lby,uby,Γ,Φ,N,yb_inds;double_sided=false)
+function create_statebounds(mpc::MPC,Γ,Φ)
+    c = mpc.constraints
+    N = mpc.Np
+    Cy,lby,uby,yb_inds = c.Cy, c.lby, c.uby, c.Ncy
+
     m = length(Cy);
     nx = size(Φ,2);
     Ctot = zeros(0,nx*(N+1));
     ubtot = zeros(0,1);
     lbtot = zeros(0,1);
     eye = I(N);
+
     for i in 1:m
         mi = size(Cy[i],1);
         Ni = length(yb_inds[i]);
@@ -64,112 +65,80 @@ function create_statebounds(Cy,lby,uby,Γ,Φ,N,yb_inds;double_sided=false)
         lbtot= [lbtot;repeat(lby[i],Ni,1)];
     end
     A=Ctot*Γ
-    if(double_sided)
-        return A,ubtot,lbtot,-Ctot*Φ
-    else
-        A=[A;-A] # TODO soft constraints
-        b= [ubtot;-lbtot];
-        W = [-Ctot;Ctot]*Φ;
-        return A,b,W
-    end
+    return A,ubtot,lbtot,-Ctot*Φ
 end
-
 
 # Create A u <= b+W*theta 
 # correspoding to Au * u_i+ Ax *x_i <=bg for i ∈ {1,2,...,Ncg} 
 # (and Au  u_i <=bg for i = 0)
-function create_generalconstraints(Au,Ax,bg,Γ,Φ,N,Ncg;double_sided=false)
-    Ncg= min(Ncg,N); # Cannot have constraint over N...
-    m,nx = size(Ax);
-    nu = size(Au,2);
-    Axtot = [zeros(m*Ncg,nx) kron(I(Ncg),Ax) zeros(m*Ncg,nx*(N-Ncg))];
+function create_generalconstraints(mpc::MPC,Γ,Φ)
+    # extract data
+    c = mpc.constraints
+    Au,Ax,bg = c.Au, c.Ax, c.bg
+    N = mpc.Nc
+    Ncg= min(c.Ncg,N); # Cannot have constraint over N...
+    m = length(bg)
+    nx,nu = mpc.nx, mpc.nu
+
+    #Axtot = [zeros(m*Ncg,nx) kron(I(Ncg),Ax) zeros(m*Ncg,nx*(mpc.Np-Ncg))];
+    Axtot = [kron(I(Ncg),Ax) zeros(m*Ncg,nx*(1+mpc.Np-Ncg))];
     Autot = [kron(I(Ncg),Au) zeros(m*Ncg,nu*(N-Ncg))];
     b= repeat(bg,Ncg,1);
     A=Axtot*Γ+Autot;
     W = - Axtot*Φ;
-    if(double_sided)
-        return A,b,repeat(-Inf,length(b)),W
-    else
-        return A,b,W
-    end
+
+    return A,b,repeat([-1e30],length(b)),W
 end
 
 # Compute A,b,W such that the constraints for a given MPC structure
 # are on the form A U<=b W th
-function create_constraints(mpc,Φ,Γ;double_sided=false)
-    c=mpc.constraints
-    return create_constraints(c.lb,c.ub,c.Ncc,c.Cy,c.lby,c.uby,c.Ncy,c.Au,c.Ax,c.bg,c.Ncg,Γ,Φ,mpc.Np,mpc.nx,c.double_sided)
-end
 
-function create_constraints(lb,ub,Ncc,Cy,lby,uby,Ncy,Au,Ax,bg,Ncg,Γ,Φ,N,nx,double_sided)
+function create_constraints(mpc,Φ,Γ)
     n = size(Γ,2);
     A = zeros(0,n);
-    if(double_sided)
-        bu = zeros(0);
-        bl = zeros(0);
-    else
-        b = zeros(0);
-    end
-    W = zeros(0,nx);
-    bounds_table=zeros(Int64,0);
+    Ax = mpc.constraints.Ax
+    bu = zeros(0);
+    bl = zeros(0);
+    W = zeros(0,mpc.nx);
     issoft = falses(0)
+    isbinary= falses(0)
+
     # Control bounds
-    if(!isempty(ub))
-        if(double_sided)
-            A,bu,bl,W = create_controlbounds(lb,ub,N,Ncc,nx;double_sided=true)
-            issoft= falses(n);
-        else
-            A,b,W = create_controlbounds(lb,ub,N,Ncc,nx);
-            bounds_table= [collect(n+1:2*n); collect(1:n)];
-            issoft= falses(2*n);
-        end
+    if(!isempty(mpc.constraints.ub))
+        ~,bu,bl,W = create_controlbounds(mpc)
+        issoft= falses(n);
+        isbinary_single = falses(mpc.nu) 
+        isbinary_single[mpc.constraints.binary_controls] .= true;
+        isbinary = repeat(isbinary_single,mpc.constraints.Ncc)
     end
 
     # State bounds
-    if(!isempty(lby))
+    if(!isempty(mpc.constraints.lby))
         m = size(A,1);
-        if(double_sided)
-            Ay,buy,bly,Wy = create_statebounds(Cy,lby,uby,Γ,Φ,N,Ncy;double_sided=true);
-            my = Int(size(Ay,1));
-            issoft = [issoft; trues(my)];
-            bu = [bu;buy];
-            bl = [bl;bly];
-        else
-            Ay,by,Wy = create_statebounds(Cy,lby,uby,Γ,Φ,N,Ncy);
-            b = [b;by];
-            my = Int(size(Ay,1)/2);
-            bounds_table = [bounds_table; m.+collect(my+1:2*my); m.+collect(1:my)];
-            issoft = [issoft; trues(2*my)];
-        end
+        Ay,buy,bly,Wy = create_statebounds(mpc,Γ,Φ);
+        my = Int(size(Ay,1));
+        issoft = [issoft; trues(my)];
+        isbinary = [isbinary; falses(my)]
+        bu = [bu;buy];
+        bl = [bl;bly];
         A = [A;Ay];
         W = [W;Wy];
     end
 
     # General constraints 
-    if(!isempty(bg))
+    if(!isempty(mpc.constraints.bg))
         m = size(A,1);
-        mg = Ncg*length(bg);
-        if(double_sided)
-            Ag,bug,blg,Wg = create_generalconstraints(Au,Ax,bg,Γ,Φ,N,Ncg);
-            bu = [bu;bug];
-            bl = [bl;blg];
-            bl = [bl;blg];
-            bounds_table = [bounds_table; m.+collect(1:mg)];
-            issoft = [issoft; repeat(sum(abs.(Ax),dims=2).>0,Ncg)];
-        else
-            Ag,bg,Wg = create_generalconstraints(Au,Ax,bg,Γ,Φ,N,Ncg);
-            b = [b;bg];
-            bounds_table = [bounds_table; m.+collect(1:mg)];
-            issoft = [issoft; repeat(sum(abs.(Ax),dims=2).>0,Ncg)];
-        end
+        Ncg = mpc.constraints.Ncg
+        mg = Ncg*length(mpc.constraints.bg);
+        Ag,bug,blg,Wg = create_generalconstraints(mpc,Γ,Φ);
+        bu = [bu;bug];
+        bl = [bl;blg];
+        issoft = [issoft; repeat(sum(abs.(Ax),dims=2).>0,Ncg)];
+        isbinary = [isbinary; falses(length(bug))];
         A = [A;Ag];
         W = [W;Wg];
     end
-    if(double_sided)
-        return A,bu,bl,W,bounds_table,issoft
-    else
-        return A,b,W,bounds_table,issoft
-    end
+    return A,bu,bl,W,issoft,isbinary
 end
 
 
@@ -188,9 +157,9 @@ end
 # MPC problem is formulated as 0.5 U' H U+th'F_theta' U + 0.5 th' H_theta th
 # (where th contains x0, r and u(k-1))
 function objective(mpc,Φ,Γ)
-    return objective(Φ,Γ,mpc.C,mpc.weights.Q,mpc.weights.R,mpc.weights.Rr,mpc.Np,mpc.Nc,mpc.nu)
+    return objective(Φ,Γ,mpc.C,mpc.weights.Q,mpc.weights.R,mpc.weights.Rr,mpc.Np,mpc.Nc,mpc.nu,mpc.weights.Qf,mpc.nx,mpc)
 end
-function objective(Φ,Γ,C,Q,R,Rr,N,Nc,nu)
+function objective(Φ,Γ,C,Q,R,Rr,N,Nc,nu,Qf,nx,mpc)
     pos_ids= findall(diag(Q).>0); # Ignore zero indices... (and negative)
     Q = Q[pos_ids,pos_ids];
     C = C[pos_ids,:];
@@ -203,7 +172,11 @@ function objective(Φ,Γ,C,Q,R,Rr,N,Nc,nu)
     H += T'*Rrtot*T; # from Δu'Rr Δu
 
     Qtot = kron(I(N+1),Q);
+    if(!isnothing(Qf))
+        Qtot[end-nx+1:end, end-nx+1:end] .= Qf
+    end
     Ctot  = kron(I(N+1),C);
+
     H += Γ'*Ctot'*Qtot*Ctot*Γ; # from (Cx-r)Q(Cx-r)
 
     Reftot = repeat(I(nr),N+1); # Assume r constant over the horizon
@@ -221,7 +194,18 @@ function objective(Φ,Γ,C,Q,R,Rr,N,Nc,nu)
 
     H_theta = cat([Hth_xx Hth_rx';Hth_rx Hth_rr],Hth_uu,dims=(1,2)); 
 
-    return H,f_theta,H_theta
+    # Add regularization for binaries (won't change the solution)
+
+    f = zeros(size(H,1),1); 
+
+    fbin_part = zeros(mpc.nu)
+
+    fbin_part[mpc.constraints.binary_controls] .= 1 
+    fbin = repeat(fbin_part,Nc)
+    f -= 0.5*fbin
+    H += diagm(fbin)
+
+    return H,f,f_theta,H_theta
 end
 
 """
@@ -239,58 +223,83 @@ function mpc2mpqp(mpc::MPC)
     Φ,Γ=state_predictor(mpc.F,mpc.G,mpc.Np,mpc.Nc);
 
     # Create objective function 
-    H, f_theta, H_theta = objective(mpc,Φ,Γ)
+    H,f, f_theta, H_theta = objective(mpc,Φ,Γ)
+    H = (H+H')/2
     # Create Constraints 
-    if(mpc.constraints.double_sided)
-        A, bu, bl, W, bounds_table, issoft = create_constraints(mpc,Φ,Γ)
+    A, bu, bl, W, issoft, isbinary = create_constraints(mpc,Φ,Γ)
+
+    if(mpc.settings.reference_tracking)
+        W = [W zeros(size(W,1),size(f_theta,2)-mpc.nx)]; # Add zeros for r and u-
     else
-        A, b, W, bounds_table, issoft = create_constraints(mpc,Φ,Γ)
+        f_theta = f_theta[:,1:mpc.nx] # Remove terms for r and u-
     end
 
-    W = [W zeros(size(A,1),size(f_theta,2)-mpc.nx)]; # Add zeros for r and u-
+    senses = zeros(Cint,size(W,1)); 
 
-    if(any(issoft))
-        A = [A zeros(size(A,1))];
-        A[issoft,end].=-1;
+    if(mpc.settings.soft_constraints)
+        if(mpc.settings.explicit_soft && any(issoft))
+            A = [A zeros(size(A,1))];
+            A[issoft[size(H,1)+1:end],end].=-1;
 
-        H = cat(H,mpc.weights.rho,dims=(1,2));
-        f_theta =[f_theta;zeros(1,size(f_theta,2))];
+            H = cat(H,mpc.weights.rho,dims=(1,2));
+            f_theta =[f_theta;zeros(1,size(f_theta,2))];
+            f = [f;0];
+        end
+        if(!mpc.settings.explicit_soft)
+            senses[issoft[:]].+=DAQP.SOFT
+        end
     end
-    f = zeros(size(H,1),1); 
-    senses = zeros(Cint,size(A,1)); 
-    if(mpc.constraints.double_sided)
-        return (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
-                A=Matrix(A), bu=bu, bl=bl, W=W, senses=senses, bounds_table=bounds_table)
-    else
-        return (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
-                A=Matrix(A), b=b, W=W, senses=senses, bounds_table=bounds_table)
+    senses[isbinary[:]].+=DAQP.BINARY
+    if(mpc.settings.QP_double_sided)
+        mpQP = (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
+                A=Matrix{Float64}(A), bu=bu, bl=bl, W=W, senses=senses)
+    else # Transform bl + W θ ≤ A U ≤ bu + W θ → A U ≤ b + W
+        ncstr = length(bu);
+        n_bounds = ncstr-size(A,1);
+        bounds_table=[collect(ncstr+1:2*ncstr);collect(1:ncstr)]
+        A = [I(n_bounds) zeros(n_bounds,size(A,2)-n_bounds);A]
+        A = [A;-A]
+        if(mpc.settings.explicit_soft && any(issoft))# Correct sign for slack
+            A[:,end].= -abs.(A[:,end])
+        end
+        b = [bu;-bl]
+        W = [W;-W]
+        senses = [senses;senses]
+        mpQP = (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
+                A=Matrix{Float64}(A), b=b, W=W, senses=senses, bounds_table=bounds_table)
     end
+    mpc.mpQP = mpQP
+    return mpQP
 end
 
 function dualize(mpQP,n_control;normalize=true)
+    n = size(mpQP.H,1)
+    nb = length(mpQP.bu)-size(mpQP.A,1)
     R = cholesky((mpQP.H+mpQP.H')/2)
-    M = mpQP.A/R.U
+    Mext = [Matrix{Float64}(I(n)[1:nb,:]); mpQP.A]/R.U
     Vth = (R.L)\mpQP.f_theta
-    Dth = mpQP.W + M*Vth
-    du = mpQP.bu
-    dl = mpQP.bl
+    Dth = mpQP.W + Mext*Vth
+    du = mpQP.bu[:]
+    dl = mpQP.bl[:]
 
-    Dth = Dth'[:,:]# Col major...
+    #Dth = Dth'[:,:]# Col major...
     if(normalize)
         # Normalize
-        norm_factor = 0
-        for i in 1:size(M,1)
-            norm_factor = norm(M[i,:],2)
-            M[i,:]./=norm_factor
-            Dth[:,i]./=norm_factor
+        for i in 1:size(Mext,1)
+            norm_factor = norm(Mext[i,:],2)
+            Mext[i,:]./=norm_factor
+            Dth[i,:]./=norm_factor
             du[i]/= norm_factor
             dl[i]/= norm_factor
         end
     end
     Xth = -mpQP.H\mpQP.f_theta;
     Xth = Xth[1:n_control,:];
-    Xth = Xth'[:,:] # col major => row major
 
-    return (M=M, Dth=Dth, du=du, dl=dl, Xth=Xth)
+    # col major => row major
+    Dth = Dth'[:,:]
+    Xth = Xth'[:,:]
+
+    return (M=Mext[n+1:end,:], Dth=Dth, du=du, dl=dl, Xth=Xth)
 end
 

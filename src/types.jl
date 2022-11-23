@@ -4,26 +4,29 @@ mutable struct MPCConstraints
     lb::Vector{Float64}
     ub::Vector{Float64}
     Ncc::Int64
+    binary_controls::Vector{Int64}
+    #sense_cc::Vector{Int64}
 
     # lby <= Cy x_i <= uby for i ∈ 1,2, …, Ncy
     Cy::Vector{Matrix{Float64}}
     lby::Vector{Vector{Float64}}
     uby::Vector{Vector{Float64}}
     Ncy::Vector{AbstractVector{Int64}} # TODO change name...
+    #sense_cy::Vector{Int64}
+
 
     # Au u_i + Ax x_i <= bg for i ∈ 0,…,Ncy
     Au::Matrix{Float64}
     Ax::Matrix{Float64}
     bg::Vector{Float64}
     Ncg::Int64
-
-    double_sided::Bool # Termines if the mpQP has constraints bl+W <= Ax <= bu+W or Ax <=b+W
+    #sense_cg::Vector{Int64}
 end
 
 function MPCConstraints(nx,nu)
-    return MPCConstraints(zeros(0),zeros(0),0,
+    return MPCConstraints(zeros(0),zeros(0),0,zeros(0),
                           Matrix{Float64}[],Vector{Float64}[],Vector{Float64}[],[0:0],
-                          zeros(0,nu),zeros(0,nx),zeros(0),0,false)
+                          zeros(0,nu),zeros(0,nx),zeros(0),0)
 end
 
 # Weights used to define the objective function of the OCP
@@ -32,11 +35,21 @@ mutable struct MPCWeights
     R::Matrix{Float64}
     Rr::Matrix{Float64}
     rho::Float64
+    Qf
 end
 
 function MPCWeights(nu,nr)
-    return MPCWeights(Matrix{Float64}(I,nr,nr),Matrix{Float64}(I,nu,nu),Matrix{Float64}(I,nu,nu),1e6)
+    return MPCWeights(Matrix{Float64}(I,nr,nr),Matrix{Float64}(I,nu,nu),Matrix{Float64}(I,nu,nu),1e6,nothing)
 end
+
+Base.@kwdef mutable struct MPCSettings
+    QP_double_sided::Bool = true 
+    reference_tracking::Bool= true
+    soft_constraints::Bool= true
+    explicit_soft::Bool= false
+    solver_opts::Dict{Symbol,Any} = Dict()
+end
+
 
 # MPC controller
 mutable struct MPC 
@@ -55,12 +68,18 @@ mutable struct MPC
     C::Matrix{Float64}
     weights::MPCWeights
     constraints::MPCConstraints
+
+    # Settings
+    settings::MPCSettings
+
+    #Optimization problem
+    mpQP
 end
 
 function MPC(F,G,C,N)
     nx,nu = size(G);
     nr = size(C,1);
-    MPC(F,G,1,nx,nu,N,N,C,MPCWeights(nu,nr),MPCConstraints(nx,nu));
+    MPC(F,G,1,nx,nu,N,N,C,MPCWeights(nu,nr),MPCConstraints(nx,nu),MPCSettings(),nothing);
 end
 
 
