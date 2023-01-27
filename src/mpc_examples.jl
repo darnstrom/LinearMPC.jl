@@ -62,7 +62,7 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         mpc.constraints.Cy = [C[2:2,:]];
         mpc.constraints.lby = [[-0.5]];
         mpc.constraints.uby = [[0.5]];
-        mpc.constraints.Ncy = [1:3];
+        mpc.constraints.Ncy = [1:mpc.Nc+1];
 
         if(isnothing(settings))
             mpc.settings.QP_double_sided = false;
