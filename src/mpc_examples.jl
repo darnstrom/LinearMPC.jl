@@ -203,16 +203,8 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
             mpc.settings=settings
         end
 
+        mpc.settings.reference_tracking= false
         mpQP = mpc2mpqp(mpc);
-        # Remove references and u_{-1} since regulation problem 
-        mpQP.W = mpQP.W[:,1:nx]
-        mpQP.f_theta = mpQP.f_theta[:,1:nx]
-        # Remove slack
-        mpQP.H=mpQP.H[1:end-1,1:end-1];
-        mpQP.f_theta=mpQP.f_theta[1:end-1,:];
-        mpQP.f=mpQP.f[1:end-1,:];
-        mpQP.A=mpQP.A[:,1:end-1];
-        # 
         P_theta =(A =zeros(nx,0),
                   b = zeros(0),
                   lb =-4.0*ones(nx),
