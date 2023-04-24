@@ -173,8 +173,6 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         B = [zeros(nm,1);
              1;
              zeros(nm-1,1)]
-        display(A)
-        display(B)
         C = Matrix(I,2*nm,2*nm);
         D = zeros(2*nm,1);
         Ts = 0.5;
@@ -209,6 +207,45 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
                   b = zeros(0),
                   lb =-4.0*ones(nx),
                   ub = 4.0*ones(nx))
+    elseif(s=="nonlinear" || s == "nonlin")
+        Ts = 0.2;
+        F =[0.8187 zeros(1,4);
+              0.1474 0.6550 -0.1637 0.0489 0.4878;
+              0.01637 0.1637 0.9825 3.43*1e-3 0.0523;
+              zeros(1,3) 0.8013 -0.1801;
+              zeros(1,3) 0.1801 0.9813]; 
+        G = [0.1813 0 0;
+             0.0163 0.1637 3.43*1e-3
+             1.14*1e-3 0.0175 1.77*1e-4;
+             0 0 0.1801;
+             0 0 0.0186;
+            ]
+        C = [1.0 0 0 0 0; 0 1 2 0 0];
+        D = zeros(2,3);
+
+        mpc = MPC(F,G,C,Np)
+        mpc.Nc = Nc
+        mpc.weights.Q = diagm([1.0, 1.0])
+        mpc.weights.Rr = diagm((1e-1*[1, 1, 1]).^2)
+        mpc.weights.R = diagm(zeros(3))
+        mpc.constraints.lb = -[3.0, 2, 2]
+        mpc.constraints.ub = [3.0, 2, 2]
+        mpc.constraints.Ncc = mpc.Nc;
+
+        if(isnothing(settings))
+            mpc.settings.QP_double_sided= false;
+            mpc.settings.reference_tracking=true;
+        else
+            mpc.settings=settings
+        end
+        
+        mpQP = mpc2mpqp(mpc)
+        nth = size(mpQP.W,2)
+        P_theta = (A = zeros(nth,0),
+                   b = zeros(0),
+                   lb = -[0.5*ones(5);10;10;3;3;3],
+                   ub = [2.0;ones(4);10;10;3;3;3]) 
+
     elseif(s=="invpend_contact")
         # Inverted pendulum with contact forces
         mc,mp,g,l,d=1,1,10,1,0.5;
@@ -348,5 +385,7 @@ function mpc_examples(s;settings=nothing)
         mpc_examples(s,10,2;settings)
     elseif(s=="aircraft")
         mpc_examples(s,10,2;settings)
+    elseif(s=="nonlinear" || s=="nonlin")
+        mpc_examples(s,5,2;settings)
     end
 end
