@@ -10,7 +10,7 @@ Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 
 [compat]
-DAQP = "0.4.0"
+DAQP = "0.5.2"
 julia = "1"
 
 [extras]
