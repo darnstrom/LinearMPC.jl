@@ -54,8 +54,8 @@ end
 # MPC controller
 mutable struct MPC 
     # Plant
-    F::Matrix{Float64}
-    G::Matrix{Float64}
+    F::Union{Matrix{Float64},Vector{Matrix{Float64}}}
+    G::Union{Matrix{Float64},Vector{Matrix{Float64}}}
     Ts::Float64
 
     # Dims
