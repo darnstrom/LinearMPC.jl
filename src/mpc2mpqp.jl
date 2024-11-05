@@ -49,11 +49,9 @@ function create_statebounds(mpc::MPC,Γ,Φ)
     N = mpc.Np
     Cy,lby,uby,yb_inds = c.Cy, c.lby, c.uby, c.Ncy
 
-    m = length(Cy);
-    nx = size(Φ,2);
+    m,nx = length(Cy), size(Φ,2);
     Ctot = zeros(0,nx*(N+1));
-    ubtot = zeros(0,1);
-    lbtot = zeros(0,1);
+    ubtot,lbtot = zeros(0,1),zeros(0,1);
     eye = I(N);
 
     for i in 1:m

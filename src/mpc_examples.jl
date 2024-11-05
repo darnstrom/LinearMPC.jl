@@ -39,7 +39,6 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         A = [0 1.0 0 0; -51.21 -1 2.56 0; 0 0 0 1; 128 0 -6.401 -10.2];
         B = [0;0;0;1];
         C = [1 0 0 0;1280 0 -64.01 0];
-        D = [0;0];
         Ts = 0.1;
         tau = 78.5398;
         C = C./[2*pi;2*tau]; # Scaling 
@@ -85,7 +84,6 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
              zeros(2,6)];
         B = [-2.516 -13.136;-0.1689 -0.2514;-17.251 -1.5766;0 0; 0 0; 0 0];
         C = [0 1 0 0 1 0;0 0 0 1 0 200];
-        D = [0 0;0 0];
 
         Ts = 0.05;
         F,G = zoh(A,B,Ts);
@@ -126,7 +124,6 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         A = -Matrix(I,nx,nx)+diagm(-1=>ones(nx-1));
         B = [1;zeros(nx-1,1)];
         C = Matrix(I,nx,nx);
-        D = zeros(nx,1);
         Ts = 1;
         F,G=zoh(A,B,Ts);
 
@@ -174,7 +171,6 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
              1;
              zeros(nm-1,1)]
         C = Matrix(I,2*nm,2*nm);
-        D = zeros(2*nm,1);
         Ts = 0.5;
         F,G=zoh(A,B,Ts);
 
@@ -220,8 +216,7 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
              0 0 0.1801;
              0 0 0.0186;
             ]
-        C = [1.0 0 0 0 0; 0 1 2 0 0];
-        D = zeros(2,3);
+        C  = [1.0 0 0 0 0; 0 1 2 0 0]
 
         mpc = MPC(F,G,C,Np)
         mpc.Nc = Nc
@@ -261,8 +256,7 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
              1/(mc*l) -1/(mp*l) 1/(mp*l);]
         B = [B zeros(4,4)] # Add binary constraints...
 
-        C = I(4) 
-        D = zeros(4,1);
+        C, D = I(4), zeros(4,1);
         Ts = 0.05;
 
         F,G = zoh(A,B,Ts);
@@ -306,14 +300,6 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
 
         u2l,u2u = κ*δ2l+ν*dotδ2l, κ*δ2u+ν*dotδ2u
         u3l,u3u = κ*δ3l+ν*dotδ3l, κ*δ3u+ν*dotδ3u
-
-        println("δ2: $δ2l, $δ2u")
-        println("dotδ2: $dotδ2l, $dotδ2u")
-        println("u2: $u2l, $u2u")
-        
-        println("δ3: $δ3l, $δ3u")
-        println("dotδ3: $dotδ3l, $dotδ3u")
-        println("u3: $u3l, $u3u")
 
         Ax = [-1 l 0 0;
               1 -l 0 0;
@@ -362,12 +348,6 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         mpc.constraints.Ax = [Ax;-Ax]
         mpc.constraints.bg = [bg2;bg3];
         mpc.constraints.Ncg = mpc.Nc
-
-        #ids = [1;2;3;4;7;8]
-        #ids_tot = [ids;8 .+ ids];
-        #mpc.constraints.Au  = mpc.constraints.Au[ids_tot,:];
-        #mpc.constraints.Ax  = mpc.constraints.Ax[ids_tot,:];
-        #mpc.constraints.bg  = mpc.constraints.bg[ids_tot];
 
         mpQP = mpc2mpqp(mpc);
         P_theta =(A =zeros(8,0),
