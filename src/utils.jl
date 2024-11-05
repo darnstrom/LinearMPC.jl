@@ -4,11 +4,9 @@ function zoh(A,B,Ts)
 	nx = dims[1]
 	nu = 1
   else
-	nx = dims[1]
-	nu = dims[2]
+	nx,nu = dims
   end
-  M = exp([A*Ts  B*Ts;
-		   zeros(nu, nx + nu)])
+  M = exp([A*Ts  B*Ts; zeros(nu, nx + nu)])
   F = M[1:nx, 1:nx]
   G = M[1:nx, nx+1:nx+nu]
   return F,G
@@ -26,23 +24,16 @@ function compute_control(mpc::MPC,θ)
         DAQP.settings(d,mpc.settings.solver_opts)
         udaqp,fval,exitflag,info = DAQP.solve(d)
         @assert(exitflag>=1)
-
-        #model = create_jump(mpQP.H,f[:],mpQP.A,bu[:],bl[:],
-        #                    findall(mpQP.senses .== 16),findall(mpQP.senses .== 8))
-        #optimize!(model)
-        #ugrb = value.(model[:x])
-
     end
     return udaqp[1:mpc.nu]
 end
 
 function step(mpc::MPC,x;r=nothing,uprev=nothing)
+    θ = x
     if(mpc.settings.reference_tracking)
-        if(r==nothing) r = zeros(size(mpc.C,1)) end
-        if(uprev==nothing) uprev = zeros(mpc.nu) end
-        θ = [x;r;uprev]
-    else
-        θ = x
+        r==nothing &&  (r = zeros(size(mpc.C,1)))
+        uprev==nothing &&  (uprev = zeros(mpc.nu)) 
+        θ = [θ;r;uprev]
     end
     u = compute_control(mpc,θ)
     x = mpc.F*x+mpc.G*u
@@ -50,8 +41,7 @@ function step(mpc::MPC,x;r=nothing,uprev=nothing)
 end
 
 function simulate(mpc::MPC,x0,N_steps;r=nothing, callback=(x,u,k)->nothing)
-    x = x0
-    u = zeros(mpc.nu)
+    x,u = x0,zeros(mpc.nu)
     
     rs = zeros(size(mpc.C,1),N_steps);
 
