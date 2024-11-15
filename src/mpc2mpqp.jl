@@ -10,23 +10,19 @@ function state_predictor(F,G,Np,Nc)
     Φ = zeros((Np+1)*nx,nx);
     Φ[1:nx,:] = I(nx);
 
-    G = G isa AbstractMatrix ? G = [G for i in 1:Nc] : G = G ∪  [G[end] for i in length(G)+1:Nc]
-    F = F isa AbstractMatrix ? F = [F for i in 1:Nc] : F = F ∪  [F[end] for i in length(F)+1:Nc]
-
     Gtot = G; 
-    Ftot = F[1];
+    Ftot = F;
     for i in 1:Nc 
         for j in 0:(Nc-i)
-            Γ[((i+j)*nx+1):(i+j+1)*nx,(j*nu+1):(j+1)*nu] = Gtot[j+1]; 
+            Γ[((i+j)*nx+1):(i+j+1)*nx,(j*nu+1):(j+1)*nu] = Gtot; 
         end
         Φ[i*nx+1:(i+1)*nx,:] = Ftot;
         i == Nc && break
-        Ftot*=F[i+1];
-        Gtot=[F[i+1]*G[j] for j in 1:(Nc-i)];
+        Ftot*=F;
+        Gtot=F*Gtot
     end
     # Set ui = u_Nc for i>Nc 
     # TODO add infinite LQR gain alternative
-    F,G = F[end],G[end] # For now, just keep this constant... #TODO do this
     for i in Nc+1:Np
         Γ[(nx*i+1):nx*(i+1),:] .= F*Γ[(nx*(i-1)+1):nx*i,:];
         Γ[(nx*i+1):nx*(i+1),end-nu+1:end] +=G;
