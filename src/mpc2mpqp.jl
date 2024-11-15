@@ -1,7 +1,11 @@
 # Create Φ and Γ such that 
 # X = Φ x0 + Γ U  (where X and U contains xi and ui stacked..)
 function state_predictor(F,G,Np,Nc)
-    nx,nu = size(G);
+    if G isa AbstractMatrix
+        nx,nu = size(G);
+    else
+        nx,nu = size(G[1]);
+    end
     Γ = zeros((Np+1)*nx,Nc*nu);
     Φ = zeros((Np+1)*nx,nx);
     Φ[1:nx,:] = I(nx);
@@ -189,7 +193,8 @@ function objective(Φ,Γ,C,Q,R,Rr,N,Nc,nu,Qf,nx,mpc)
     f_theta = [f_theta -Γ'*Ctot'*Qtot*Reftot]; # from r
     f_theta = [f_theta T'*Rrtot *S]; # from u[k-1]
 
-    # Quadratic parameter term (relevant to maintain a positive definite value function)
+    # Quadratic parameter term 
+    # (relevant to maintain a positive definite value function)
     Hth_xx=Φ'*Ctot'*Qtot*Ctot*Φ; 
     Hth_rx = Reftot'*Qtot*Ctot*Φ; 
     Hth_rr= Reftot'*Qtot*Reftot
@@ -198,11 +203,8 @@ function objective(Φ,Γ,C,Q,R,Rr,N,Nc,nu,Qf,nx,mpc)
     H_theta = cat([Hth_xx Hth_rx';Hth_rx Hth_rr],Hth_uu,dims=(1,2)); 
 
     # Add regularization for binaries (won't change the solution)
-
     f = zeros(size(H,1),1); 
-
     fbin_part = zeros(mpc.nu)
-
     fbin_part[mpc.constraints.binary_controls] .= 1 
     fbin = repeat(fbin_part,Nc)
     f -= 0.5*fbin
@@ -216,8 +218,8 @@ end
 
 For a given MPC structure `mpc`, form the multi-parametric QP `mpQP` in the form 
 ```
-min			0.5 U' H U+th'F_theta' U + 0.5 th' H_theta th
-subject to 	A U <= b + Wth
+min			0.5 U' H U+(f+f_theta*θ)' U + 0.5 th' H_theta θ 
+subject to 	A U <= b + W*θ
 ```
 """
 function mpc2mpqp(mpc::MPC)
@@ -269,40 +271,9 @@ function mpc2mpqp(mpc::MPC)
         W = [W;-W]
         senses = [senses;senses]
         mpQP = (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
-                A=Matrix{Float64}(A), b=b, W=W, senses=senses, bounds_table=bounds_table)
+                A=Matrix{Float64}(A), b=b, W=W, senses=senses,
+                bounds_table=bounds_table)
     end
     mpc.mpQP = mpQP
     return mpQP
 end
-
-function dualize(mpQP,n_control;normalize=true)
-    n = size(mpQP.H,1)
-    nb = length(mpQP.bu)-size(mpQP.A,1)
-    R = cholesky((mpQP.H+mpQP.H')/2)
-    Mext = [Matrix{Float64}(I(n)[1:nb,:]); mpQP.A]/R.U
-    Vth = (R.L)\mpQP.f_theta
-    Dth = mpQP.W + Mext*Vth
-    du = mpQP.bu[:]
-    dl = mpQP.bl[:]
-
-    #Dth = Dth'[:,:]# Col major...
-    if(normalize)
-        # Normalize
-        for i in 1:size(Mext,1)
-            norm_factor = norm(Mext[i,:],2)
-            Mext[i,:]./=norm_factor
-            Dth[i,:]./=norm_factor
-            du[i]/= norm_factor
-            dl[i]/= norm_factor
-        end
-    end
-    Xth = -mpQP.H\mpQP.f_theta;
-    Xth = Xth[1:n_control,:];
-
-    # col major => row major
-    Dth = Dth'[:,:]
-    Xth = Xth'[:,:]
-
-    return (M=Mext[n+1:end,:], Dth=Dth, du=du, dl=dl, Xth=Xth)
-end
-

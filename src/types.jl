@@ -15,7 +15,7 @@ mutable struct MPCConstraints
     #sense_cy::Vector{Int64}
 
 
-    # Au u_i + Ax x_i <= bg for i ∈ 0,…,Ncy
+    # Au u_i + Ax x_i <= bg for i ∈ 0,…,Ncg
     Au::Matrix{Float64}
     Ax::Matrix{Float64}
     bg::Vector{Float64}

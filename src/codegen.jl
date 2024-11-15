@@ -14,7 +14,7 @@ function codegen(mpc;fname="mpc_workspace", dir="", opt_settings=nothing)
                      (Ptr{DAQP.Workspace},Cstring,Cstring,), d.work,fname,dir);
 
     # Append MPC-specific data/functions
-    mpLDP = dualize(mpQP,mpc.nu) 
+    mpLDP = qp2ldp(mpQP,mpc.nu) 
     render_mpc_workspace(mpLDP,mpc.nu;fname,dir, fmode="a")
 end
 
@@ -71,3 +71,36 @@ function write_float_array(f,a::Vector{<:Real},name::String)
     @printf(f, "};\n");
 end
 
+
+function qp2ldp(mpQP,n_control;normalize=true)
+    n = size(mpQP.H,1)
+    nb = length(mpQP.bu)-size(mpQP.A,1)
+    R = cholesky((mpQP.H+mpQP.H')/2)
+    Mext = [Matrix{Float64}(I(n)[1:nb,:]); mpQP.A]/R.U
+    Vth = (R.L)\mpQP.f_theta
+    v = R.L\mpQP.f#  usually zero since mpQP.f = 0 for MPC
+    Dth = mpQP.W + Mext*Vth
+    Δd = Mext*v
+    du = mpQP.bu[:]+Δd 
+    dl = mpQP.bl[:]+Δd
+
+    #Dth = Dth'[:,:]# Col major...
+    if(normalize)
+        # Normalize
+        for i in 1:size(Mext,1)
+            norm_factor = norm(Mext[i,:],2)
+            Mext[i,:]./=norm_factor
+            Dth[i,:]./=norm_factor
+            du[i]/= norm_factor
+            dl[i]/= norm_factor
+        end
+    end
+    Xth = -mpQP.H\mpQP.f_theta;
+    Xth = Xth[1:n_control,:];
+
+    # col major => row major
+    Dth = Dth'[:,:]
+    Xth = Xth'[:,:]
+
+    return (M=Mext[n+1:end,:], Dth=Dth, du=du, dl=dl, Xth=Xth)
+end
