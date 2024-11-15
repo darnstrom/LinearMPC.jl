@@ -48,8 +48,7 @@ function create_controlbounds(mpc::MPC)
 end
 
 # Create A u <= b+W*theta 
-# correspoding to Au * u_i+ Ax *x_i <=bg for i ∈ {1,2,...,Ncg} 
-# (and Au  u_i <=bg for i = 0)
+# correspoding to lb <= Au*uk+ Ax*xk <=ub for k ∈ ks 
 function create_general_constraints(mpc::MPC,Γ,Φ)
     # extract data
     Np, Nc= mpc.Np, mpc.Nc
@@ -186,8 +185,6 @@ subject to 	A U <= b + W*θ
 ```
 """
 function mpc2mpqp(mpc::MPC)
-    mpQP = LinearMPC.MPQP();
-
     Φ,Γ=state_predictor(mpc.F,mpc.G,mpc.Np,mpc.Nc);
 
     # Create objective function 

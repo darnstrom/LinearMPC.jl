@@ -10,8 +10,6 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         F,G = zoh(A,B,Ts);
         G = 100*G; # TODO: Make scaling more systematic...
 
-        # MPC
-
         mpc = MPC(F,G,C,Np,Nc=Nc);
 
         Q,R,Rr= [1.2^2,1], [0.0], [1.0]
