@@ -12,16 +12,13 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
 
         # MPC
 
-        mpc = MPC(F,G,C,Np);
-        mpc.Nc = Nc;
+        mpc = MPC(F,G,C,Np,Nc=Nc);
 
-        mpc.weights.Q = diagm([1.2^2, 1]); 
-        mpc.weights.R = diagm([0.0])
-        mpc.weights.Rr = diagm([1.0])
+        Q,R,Rr= [1.2^2,1], [0.0], [1.0]
+        set_weights!(mpc;Q,R,Rr)
 
-        mpc.constraints.lb = [-2.0];
-        mpc.constraints.ub = [2.0];
-        mpc.constraints.Ncc = mpc.Nc;
+        umin,umax = [-2.0], [2.0]
+        set_bounds!(mpc; umin,umax)
 
         if(isnothing(settings))
             mpc.settings.QP_double_sided = false;
@@ -46,22 +43,17 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         F,G= zoh(A,B,Ts);
         G = 440*G;
 
-        mpc = MPC(F,G,C,Np);
+        mpc = MPC(F,G,C,Np, Nc = Nc);
 
-        mpc.Nc = Nc;
+        Q = [0.1^2, 0]; 
+        R = [0.0]
+        Rr = [0.1^2]
+        set_weights!(mpc;Q,R,Rr)
 
-        mpc.weights.Q = diagm([0.1^2, 0]); 
-        mpc.weights.R = diagm([0.0])
-        mpc.weights.Rr = diagm([0.1^2])
+        umin,umax = [-0.5],[0.5]
+        set_bounds!(mpc;umin,umax)
 
-        mpc.constraints.lb = [-0.5];
-        mpc.constraints.ub = [0.5];
-        mpc.constraints.Ncc = mpc.Nc;
-
-        mpc.constraints.Cy = [C[2:2,:]];
-        mpc.constraints.lby = [[-0.5]];
-        mpc.constraints.uby = [[0.5]];
-        mpc.constraints.Ncy = [1:mpc.Nc+1];
+        add_constraint!(mpc,Ax=C[2:2,:],lb = [-0.5] ,ub = [0.5], ks = 2:mpc.Nc+1)
 
         if(isnothing(settings))
             mpc.settings.QP_double_sided = false;
@@ -89,22 +81,17 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         F,G = zoh(A,B,Ts);
         C = C./[1;200];
 
-        mpc = MPC(F,50*G,C,Np);
+        mpc = MPC(F,50*G,C,Np, Nc=Nc);
 
-        mpc.Nc = Nc;
 
-        mpc.weights.Q = diagm([10,10].^2); 
-        mpc.weights.R = diagm([0.0, 0.0])
-        mpc.weights.Rr = diagm([0.1, 0.1].^2)
+        Q = [10,10].^2; 
+        R = [0.0, 0.0]
+        Rr = [0.1, 0.1].^2
+        set_weights!(mpc;Q,R,Rr)
 
-        mpc.constraints.lb = [-0.5;-0.5];
-        mpc.constraints.ub = [0.5;0.5];
-        mpc.constraints.Ncc = mpc.Nc;
+        set_bounds!(mpc,umin=[-0.5;-0.5],umax=[0.5;0.5])
 
-        mpc.constraints.Cy = [C];
-        mpc.constraints.lby = [[-0.5;-0.5]];
-        mpc.constraints.uby = [[0.5;0.5]];
-        mpc.constraints.Ncy = [1:1];
+        set_output_bounds!(mpc, ymin = [-0.5;-0.5], ymax=[0.5;0.5],ks=2:2)
 
         if(isnothing(settings))
             mpc.settings.QP_double_sided= false;
@@ -127,22 +114,15 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         Ts = 1;
         F,G=zoh(A,B,Ts);
 
-        mpc = MPC(F,G,C,Np)
-        mpc.Nc = Nc;
+        mpc = MPC(F,G,C,Np, Nc=Nc)
 
-        mpc.weights.Q = diagm(ones(nx));
-        #mpc.weights.Q = diagm([1.0;zeros(nx-1)]);
-        mpc.weights.R = diagm([0.0])
-        mpc.weights.Rr = diagm([1.0])
+        Q = ones(nx);
+        R = [0.0]
+        Rr = [1.0]
+        set_weights!(mpc;Q,R,Rr)
 
-        mpc.constraints.lb = [-1.0]
-        mpc.constraints.ub = [1.0]
-        mpc.constraints.Ncc = mpc.Nc
-
-        mpc.constraints.Cy = [C];
-        mpc.constraints.lby = [-10.0*ones(nx)];
-        mpc.constraints.uby = [10.0*ones(nx)];
-        mpc.constraints.Ncy = [1:mpc.Nc]
+        set_bounds!(mpc,umin = [-1.0], umax=[1.0])
+        set_output_bounds!(mpc,ymin = -10*ones(nx), ymax=10*ones(nx), ks = 2:mpc.Nc)
 
         if(isnothing(settings))
             mpc.settings.QP_double_sided= false;
@@ -174,22 +154,16 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         Ts = 0.5;
         F,G=zoh(A,B,Ts);
 
-        mpc = MPC(F,G,C,Np)
-        mpc.Nc = Nc;
+        mpc = MPC(F,G,C,Np, Nc=Nc)
 
-        mpc.weights.Q = diagm(100*ones(nx));
-        #mpc.weights.Q = diagm([1.0;zeros(nx-1)]);
-        mpc.weights.R = diagm([1.0])
-        mpc.weights.Rr = diagm([0.0])
-
-        mpc.constraints.lb = [-0.5]
-        mpc.constraints.ub = [0.5]
-        mpc.constraints.Ncc = mpc.Nc
-
-        mpc.constraints.Cy = [Matrix(I,nm,2*nm)];
-        mpc.constraints.lby = [-4.0*ones(nm)];
-        mpc.constraints.uby = [4.0*ones(nm)];
-        mpc.constraints.Ncy = [1:mpc.Nc]
+        Q = 100*ones(nx);
+        R = [1.0]
+        Rr = [0.0]
+        set_weights!(mpc;Q,R,Rr)
+        set_bounds!(mpc,umin=[-0.5],umax=[0.5])
+        add_constraint!(mpc, Ax = Matrix(I,nm,2*nm), 
+                        lb = -4*ones(nm), ub = 4*ones(nm),
+                        ks = 2:mpc.Nc)
 
         if(isnothing(settings))
             mpc.settings.QP_double_sided= false;
@@ -203,6 +177,7 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
                   b = zeros(0),
                   lb =-4.0*ones(nx),
                   ub = 4.0*ones(nx))
+
     elseif(s=="nonlinear" || s == "nonlin")
         Ts = 0.2;
         F =[0.8187 zeros(1,4);
@@ -218,14 +193,13 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
             ]
         C  = [1.0 0 0 0 0; 0 1 2 0 0]
 
-        mpc = MPC(F,G,C,Np)
-        mpc.Nc = Nc
-        mpc.weights.Q = diagm([1.0, 1.0])
-        mpc.weights.Rr = diagm((1e-1*[1, 1, 1]).^2)
-        mpc.weights.R = diagm(zeros(3))
-        mpc.constraints.lb = -[3.0, 2, 2]
-        mpc.constraints.ub = [3.0, 2, 2]
-        mpc.constraints.Ncc = mpc.Nc;
+        mpc = MPC(F,G,C,Np, Nc = Nc)
+
+        Q = [1.0, 1.0]
+        R = zeros(3)
+        Rr = (1e-1*[1, 1, 1]).^2
+        set_weights!(mpc;Q,R,Rr)
+        set_bounds!(mpc, umin = [-3.0,2,2], umax = [3.0,2,2])
 
         if(isnothing(settings))
             mpc.settings.QP_double_sided= false;

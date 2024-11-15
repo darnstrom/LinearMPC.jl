@@ -39,62 +39,42 @@ end
 # Create A u <= b+W*theta 
 # correspoding to  lb<=u_i<=ub for i ∈ {1,2,...,Nc}
 function create_controlbounds(mpc::MPC)
-    c = mpc.constraints
-    Ncc= min(c.Ncc,mpc.Nc); # Cannot have constraint over N...
     nu,nx = mpc.nu, mpc.nx 
-    lb,ub = c.lb, c.ub
 
-
-    A = kron(I(Ncc),I(nu)); 
-    ubs = repeat(ub,Ncc,1)
-    lbs = repeat(lb,Ncc,1)
-    return A,ubs,lbs, zeros(length(ubs),nx) 
-end
-
-# Create A u <= b+W*theta 
-# correspoding to  lby<=Cy xi<=uby for i ∈ {1,2,...,Ncy}
-function create_statebounds(mpc::MPC,Γ,Φ)
-    c = mpc.constraints
-    N = mpc.Np
-    Cy,lby,uby,yb_inds = c.Cy, c.lby, c.uby, c.Ncy
-
-    m,nx = length(Cy), size(Φ,2);
-    Ctot = zeros(0,nx*(N+1));
-    ubtot,lbtot = zeros(0,1),zeros(0,1);
-    eye = I(N);
-
-    for i in 1:m
-        mi = size(Cy[i],1);
-        Ni = length(yb_inds[i]);
-        Ctot = [Ctot;
-                zeros(Ni*mi,nx) kron(eye[yb_inds[i],:],Cy[i]) ];
-        ubtot = [ubtot;repeat(uby[i],Ni,1)];
-        lbtot= [lbtot;repeat(lby[i],Ni,1)];
-    end
-    A=Ctot*Γ
-    return A,ubtot,lbtot,-Ctot*Φ
+    A = kron(I(mpc.Nb),I(nu)); 
+    ub = repeat(mpc.umax,mpc.Nb,1)
+    lb = repeat(mpc.umin,mpc.Nb,1)
+    return A,ub,lb, zeros(length(ub),nx) 
 end
 
 # Create A u <= b+W*theta 
 # correspoding to Au * u_i+ Ax *x_i <=bg for i ∈ {1,2,...,Ncg} 
 # (and Au  u_i <=bg for i = 0)
-function create_generalconstraints(mpc::MPC,Γ,Φ)
+function create_general_constraints(mpc::MPC,Γ,Φ)
     # extract data
-    c = mpc.constraints
-    Au,Ax,bg = c.Au, c.Ax, c.bg
-    N = mpc.Nc
-    Ncg= min(c.Ncg,N); # Cannot have constraint over N...
-    m = length(bg)
-    nx,nu = mpc.nx, mpc.nu
+    Np, Nc= mpc.Np, mpc.Nc
+    m= length(mpc.constraints)
+    nu,nx = mpc.nu, mpc.nx 
 
-    #Axtot = [zeros(m*Ncg,nx) kron(I(Ncg),Ax) zeros(m*Ncg,nx*(mpc.Np-Ncg))];
-    Axtot = [kron(I(Ncg),Ax) zeros(m*Ncg,nx*(1+mpc.Np-Ncg))];
-    Autot = [kron(I(Ncg),Au) zeros(m*Ncg,nu*(N-Ncg))];
-    b= repeat(bg,Ncg,1);
+    ubtot,lbtot = zeros(0,1),zeros(0,1);
+    Axtot,Autot = zeros(0,nx*(Np+1)), zeros(0,nu*Nc);
+
+    eyeX, eyeU = I(Np+1), I(Nc);
+    eyeU = [eyeU;zeros(Bool,1+Np-Nc,Nc)] # Zeros address that Nc < Np (terminal state)
+
+    for c in mpc.constraints 
+        mi = size(c.Au,1);
+        Ni = length(c.ks);
+        Autot = [Autot; kron(eyeU[c.ks,:],c.Au)]
+        Axtot = [Axtot; kron(eyeX[c.ks,:],c.Ax)]
+
+        ubtot = [ubtot;repeat(c.ub,Ni,1)];
+        lbtot = [lbtot;repeat(c.lb,Ni,1)];
+    end
     A=Axtot*Γ+Autot;
-    W = - Axtot*Φ;
+    W = -Axtot*Φ;
 
-    return A,b,repeat([-1e30],length(b)),W
+    return A,ubtot,lbtot,W
 end
 
 # Compute A,b,W such that the constraints for a given MPC structure
@@ -103,48 +83,31 @@ end
 function create_constraints(mpc,Φ,Γ)
     n = size(Γ,2);
     A = zeros(0,n);
-    Ax = mpc.constraints.Ax
-    bu = zeros(0);
-    bl = zeros(0);
-    W = zeros(0,mpc.nx);
-    issoft = falses(0)
-    isbinary= falses(0)
+    bu,bl,W = zeros(0),zeros(0),zeros(0,mpc.nx);
+    issoft,isbinary = falses(0),falses(0)
 
     # Control bounds
-    if(!isempty(mpc.constraints.ub))
+    if(!isempty(mpc.umax))
         ~,bu,bl,W = create_controlbounds(mpc)
         issoft= falses(n);
         isbinary_single = falses(mpc.nu) 
-        isbinary_single[mpc.constraints.binary_controls] .= true;
-        isbinary = repeat(isbinary_single,mpc.constraints.Ncc)
+        isbinary_single[mpc.binary_controls] .= true;
+        isbinary = repeat(isbinary_single,mpc.Nb)
     end
 
-    # State bounds
-    if(!isempty(mpc.constraints.lby))
-        m = size(A,1);
-        Ay,buy,bly,Wy = create_statebounds(mpc,Γ,Φ);
-        my = Int(size(Ay,1));
-        issoft = [issoft; trues(my)];
+    # General constraints
+    if(!isempty(mpc.constraints))
+        Ag,bug,blg,Wg = create_general_constraints(mpc,Γ,Φ);
+        my = Int(size(Ag,1));
+        issoft = [issoft; trues(my)]; # Start with sofetning all general constraints
         isbinary = [isbinary; falses(my)]
-        bu = [bu;buy];
-        bl = [bl;bly];
-        A = [A;Ay];
-        W = [W;Wy];
-    end
-
-    # General constraints 
-    if(!isempty(mpc.constraints.bg))
-        m = size(A,1);
-        Ncg = mpc.constraints.Ncg
-        mg = Ncg*length(mpc.constraints.bg);
-        Ag,bug,blg,Wg = create_generalconstraints(mpc,Γ,Φ);
         bu = [bu;bug];
         bl = [bl;blg];
-        issoft = [issoft; repeat(sum(abs.(Ax),dims=2).>0,Ncg)];
-        isbinary = [isbinary; falses(length(bug))];
         A = [A;Ag];
         W = [W;Wg];
     end
+    # TODO remove inf bounds...
+
     return A,bu,bl,W,issoft,isbinary
 end
 
@@ -205,7 +168,7 @@ function objective(Φ,Γ,C,Q,R,Rr,N,Nc,nu,Qf,nx,mpc)
     # Add regularization for binaries (won't change the solution)
     f = zeros(size(H,1),1); 
     fbin_part = zeros(mpc.nu)
-    fbin_part[mpc.constraints.binary_controls] .= 1 
+    fbin_part[mpc.binary_controls] .= 1 
     fbin = repeat(fbin_part,Nc)
     f -= 0.5*fbin
     H += diagm(fbin)
@@ -239,7 +202,7 @@ function mpc2mpqp(mpc::MPC)
         f_theta = f_theta[:,1:mpc.nx] # Remove terms for r and u-
     end
 
-    senses = zeros(Cint,size(W,1)); 
+    senses = zeros(Cint,length(bu)); 
 
     if(mpc.settings.soft_constraints)
         if(mpc.settings.explicit_soft && any(issoft))
