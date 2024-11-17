@@ -77,8 +77,17 @@ mutable struct MPC
     mpQP
 end
 
-function MPC(F,G,C,Np; Nc = Np, Nb = Nc)
+function MPC(F::AbstractMatrix{Float64},G::AbstractMatrix{Float64},C,Np; Nc = Np, Nb = Nc)
     nx,nu = size(G);
+    nr = size(C,1);
+    MPC(F,G,1,nx,nu,
+        Np,Nc,Nc,C,MPCWeights(nu,nr),
+        zeros(0),zeros(0),zeros(0),
+        Constraint[],MPCSettings(),nothing);
+end
+# TODO Also let C be vector of matrices...
+function MPC(F::Vector{AbstractMatrix{Float64}},G::Vector{AbstractMatrix{Float64}},C,Np; Nc = Np, Nb = Nc)
+    nx,nu = size(G[1]);
     nr = size(C,1);
     MPC(F,G,1,nx,nu,
         Np,Nc,Nc,C,MPCWeights(nu,nr),
