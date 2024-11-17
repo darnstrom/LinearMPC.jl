@@ -10,11 +10,11 @@ function state_predictor(F,G,Np,Nc)
     Φ = zeros((Np+1)*nx,nx);
     Φ[1:nx,:] = I(nx);
 
-    G = G isa AbstractMatrix ? G = [G for i in 1:Nc] : G = G ∪  [G[end] for i in length(G)+1:Nc]
-    F = F isa AbstractMatrix ? F = [F for i in 1:Nc] : F = F ∪  [F[end] for i in length(F)+1:Nc]
+    G = G isa AbstractMatrix ? [G for i in 1:Nc] : G ∪ [G[end] for i in length(G)+1:Nc]
+    F = F isa AbstractMatrix ? [F for i in 1:Nc] : F ∪ [F[end] for i in length(F)+1:Nc]
 
-    Gtot = G; 
-    Ftot = F[1];
+    Gtot = copy(G);
+    Ftot = copy(F[1]);
     for i in 1:Nc 
         for j in 0:(Nc-i)
             Γ[((i+j)*nx+1):(i+j+1)*nx,(j*nu+1):(j+1)*nu] = Gtot[j+1]; 
@@ -22,7 +22,7 @@ function state_predictor(F,G,Np,Nc)
         Φ[i*nx+1:(i+1)*nx,:] = Ftot;
         i == Nc && break
         Ftot*=F[i+1];
-        Gtot=[F[i+1]*G[j] for j in 1:(Nc-i)];
+        Gtot=[F[i+1]*Gtot[j] for j in 1:(Nc-i)];
     end
     # Set ui = u_Nc for i>Nc 
     # TODO add infinite LQR gain alternative
@@ -153,7 +153,7 @@ function objective(Φ,Γ,C,Q,R,Rr,N,Nc,nu,Qf,nx,mpc)
     # Linear term
     f_theta = Γ'*Ctot'*Qtot*Ctot*Φ; # from x0
     f_theta = [f_theta -Γ'*Ctot'*Qtot*Reftot]; # from r
-    f_theta = [f_theta T'*Rrtot *S]; # from u[k-1]
+    f_theta = [f_theta T'*Rrtot*S]; # from u[k-1]
 
     # Quadratic parameter term 
     # (relevant to maintain a positive definite value function)
