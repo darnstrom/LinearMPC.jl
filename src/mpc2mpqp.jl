@@ -57,6 +57,7 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
 
     ubtot,lbtot = zeros(0,1),zeros(0,1);
     Axtot,Autot = zeros(0,nx*(Np+1)), zeros(0,nu*Nc);
+    issoft,isbinary = falses(0),falses(0)
 
     eyeX, eyeU = I(Np+1), I(Nc);
     eyeU = [eyeU;zeros(Bool,1+Np-Nc,Nc)] # Zeros address that Nc < Np (terminal state)
@@ -67,13 +68,16 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
         Autot = [Autot; kron(eyeU[c.ks,:],c.Au)]
         Axtot = [Axtot; kron(eyeX[c.ks,:],c.Ax)]
 
-        ubtot = [ubtot;repeat(c.ub,Ni,1)];
-        lbtot = [lbtot;repeat(c.lb,Ni,1)];
+        ubtot = [ubtot;repeat(c.ub,Ni,1)]
+        lbtot = [lbtot;repeat(c.lb,Ni,1)]
+
+        issoft = [isbinary;repeat([c.binary],mi*Ni)]
+        isbinary = [isbinary;repeat([c.soft],mi*Ni)]
     end
     A=Axtot*Γ+Autot;
     W = -Axtot*Φ;
 
-    return A,ubtot,lbtot,W
+    return A,ubtot,lbtot,W,issoft,isbinary
 end
 
 # Compute A,b,W such that the constraints for a given MPC structure
@@ -96,10 +100,10 @@ function create_constraints(mpc,Φ,Γ)
 
     # General constraints
     if(!isempty(mpc.constraints))
-        Ag,bug,blg,Wg = create_general_constraints(mpc,Γ,Φ);
+        Ag,bug,blg,Wg,softg,binaryg = create_general_constraints(mpc,Γ,Φ);
         my = Int(size(Ag,1));
-        issoft = [issoft; trues(my)]; # Start with sofetning all general constraints
-        isbinary = [isbinary; falses(my)]
+        issoft = [issoft; softg]; # Start with sofetning all general constraints
+        isbinary = [isbinary; binaryg]
         bu = [bu;bug];
         bl = [bl;blg];
         A = [A;Ag];
