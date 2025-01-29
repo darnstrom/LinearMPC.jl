@@ -58,6 +58,7 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
     ubtot,lbtot = zeros(0,1),zeros(0,1);
     Axtot,Autot = zeros(0,nx*(Np+1)), zeros(0,nu*Nc);
     issoft,isbinary = falses(0),falses(0)
+    prios = zeros(Int,0)
 
     eyeX, eyeU = I(Np+1), I(Nc);
     eyeU = [eyeU;zeros(Bool,1+Np-Nc,Nc)] # Zeros address that Nc < Np (terminal state)
@@ -73,11 +74,12 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
 
         issoft = [isbinary;repeat([c.binary],mi*Ni)]
         isbinary = [isbinary;repeat([c.soft],mi*Ni)]
+        prios = [prios;repeat([c.prio],mi*Ni)]
     end
     A=Axtot*Γ+Autot;
     W = -Axtot*Φ;
 
-    return A,ubtot,lbtot,W,issoft,isbinary
+    return A,ubtot,lbtot,W,issoft,isbinary,prios
 end
 
 # Compute A,b,W such that the constraints for a given MPC structure
@@ -93,6 +95,7 @@ function create_constraints(mpc,Φ,Γ)
     if(!isempty(mpc.umax))
         ~,bu,bl,W = create_controlbounds(mpc)
         issoft= falses(n);
+        prios = zeros(Int,n)
         isbinary_single = falses(mpc.nu) 
         isbinary_single[mpc.binary_controls] .= true;
         isbinary = repeat(isbinary_single,mpc.Nb)
@@ -100,8 +103,9 @@ function create_constraints(mpc,Φ,Γ)
 
     # General constraints
     if(!isempty(mpc.constraints))
-        Ag,bug,blg,Wg,softg,binaryg = create_general_constraints(mpc,Γ,Φ);
+        Ag,bug,blg,Wg,softg,binaryg,priog = create_general_constraints(mpc,Γ,Φ);
         my = Int(size(Ag,1));
+        prios = [prios;priog]
         issoft = [issoft; softg]; # Start with sofetning all general constraints
         isbinary = [isbinary; binaryg]
         bu = [bu;bug];
@@ -111,7 +115,7 @@ function create_constraints(mpc,Φ,Γ)
     end
     # TODO remove inf bounds...
 
-    return A,bu,bl,W,issoft,isbinary
+    return A,bu,bl,W,issoft,isbinary,prios
 end
 
 
@@ -195,7 +199,7 @@ function mpc2mpqp(mpc::MPC)
     H,f, f_theta, H_theta = objective(mpc,Φ,Γ)
     H = (H+H')/2
     # Create Constraints 
-    A, bu, bl, W, issoft, isbinary = create_constraints(mpc,Φ,Γ)
+    A, bu, bl, W, issoft, isbinary, prio = create_constraints(mpc,Φ,Γ)
 
     if(mpc.settings.reference_tracking)
         W = [W zeros(size(W,1),size(f_theta,2)-mpc.nx)]; # Add zeros for r and u-
@@ -221,7 +225,7 @@ function mpc2mpqp(mpc::MPC)
     senses[isbinary[:]].+=DAQP.BINARY
     if(mpc.settings.QP_double_sided)
         mpQP = (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
-                A=Matrix{Float64}(A), bu=bu, bl=bl, W=W, senses=senses)
+                A=Matrix{Float64}(A), bu=bu, bl=bl, W=W, senses=senses, prio=prio)
     else # Transform bl + W θ ≤ A U ≤ bu + W θ → A U ≤ b + W
         ncstr = length(bu);
         n_bounds = ncstr-size(A,1);
@@ -234,9 +238,10 @@ function mpc2mpqp(mpc::MPC)
         b = [bu;-bl]
         W = [W;-W]
         senses = [senses;senses]
+        prio = [prio;prio]
         mpQP = (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
                 A=Matrix{Float64}(A), b=b, W=W, senses=senses,
-                bounds_table=bounds_table)
+                bounds_table=bounds_table, prio=prio)
     end
     mpc.mpQP = mpQP
     mpc.opt_model = DAQP.Model()

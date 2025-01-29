@@ -10,7 +10,7 @@ end
 
 
 function add_constraint!(mpc::MPC; Ax = nothing, Au= nothing, ub = zeros(0), lb = zeros(0), 
-        ks = 2:mpc.Np, soft=false, binary=false)
+        ks = 2:mpc.Np, soft=false, binary=false, prio = 0)
     if isnothing(Ax) && isnothing(Bx)
         return
     end
@@ -26,12 +26,12 @@ function add_constraint!(mpc::MPC; Ax = nothing, Au= nothing, ub = zeros(0), lb 
     Ax = isnothing(Ax) ? zeros(m,mpc.nx) : Ax
     Au = isnothing(Au) ? zeros(m,mpc.nu) : Au
 
-    push!(mpc.constraints,Constraint(Au,Ax,ub,lb,ks,soft,binary))
+    push!(mpc.constraints,Constraint(Au,Ax,ub,lb,ks,soft,binary,prio))
 
 end
 
-function set_output_bounds!(mpc::MPC; ymin=nothing, ymax=nothing, ks = nothing, soft = true, binary=false)
-    add_constraint!(mpc, Ax = mpc.C, lb = ymin, ub = ymax;ks,soft,binary)
+function set_output_bounds!(mpc::MPC; ymin=nothing, ymax=nothing, ks = nothing, soft = true, binary=false, prio = 0)
+    add_constraint!(mpc, Ax = mpc.C, lb = ymin, ub = ymax;ks,soft,binary,prio)
 end
 
 function set_weights!(mpc::MPC;Q = nothing,R=nothing,Rr=nothing,rho=nothing, Qf=nothing)
