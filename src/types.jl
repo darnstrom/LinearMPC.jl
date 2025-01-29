@@ -51,6 +51,7 @@ mutable struct MPC
     # Dims
     nx::Int
     nu::Int
+    ny::Int
 
     # Horizons 
     Np::Int # Prediction
@@ -75,24 +76,27 @@ mutable struct MPC
 
     #Optimization problem
     mpQP
+
+    # DAQP optimization model
+    opt_model 
 end
 
 function MPC(F::AbstractMatrix{Float64},G::AbstractMatrix{Float64},C,Np; Nc = Np, Nb = Nc)
     nx,nu = size(G);
-    nr = size(C,1);
-    MPC(F,G,1,nx,nu,
-        Np,Nc,Nc,C,MPCWeights(nu,nr),
+    ny = size(C,1);
+    MPC(F,G,1,nx,nu,ny,
+        Np,Nc,Nc,C,MPCWeights(nu,ny),
         zeros(0),zeros(0),zeros(0),
-        Constraint[],MPCSettings(),nothing);
+        Constraint[],MPCSettings(),nothing,nothing);
 end
 # TODO Also let C be vector of matrices...
 function MPC(F::Vector{AbstractMatrix{Float64}},G::Vector{AbstractMatrix{Float64}},C,Np; Nc = Np, Nb = Nc)
     nx,nu = size(G[1]);
-    nr = size(C,1);
-    MPC(F,G,1,nx,nu,
-        Np,Nc,Nc,C,MPCWeights(nu,nr),
+    ny = size(C,1);
+    MPC(F,G,1,nx,nu,ny,
+        Np,Nc,Nc,C,MPCWeights(nu,ny),
         zeros(0),zeros(0),zeros(0),
-        Constraint[],MPCSettings(),nothing);
+        Constraint[],MPCSettings(),nothing,nothing);
 end
 
 
@@ -111,3 +115,4 @@ mutable struct MPQP
     MPQP()=new()
     MPQP(H,f,f_theta,H_theta,A,b,W,bounds_table,senses) = new(H,f,f_theta,H_theta,A,b,W,bounds_table,senses) 
 end
+

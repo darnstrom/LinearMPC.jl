@@ -52,6 +52,17 @@ function set_weights!(mpc::MPC;Q = nothing,R=nothing,Rr=nothing,rho=nothing, Qf=
     end
 end
 
+function set_terminal_cost!(mpc,Qf::AbstractMatrix)
+    mpc.weights.Qf = Qf isa AbstractMatrix ? Qf : diagm(Qf) 
+end
+function set_terminal_cost!(mpc,type)
+    if type =="lqr" || type == "LQR" || type == "riccati"
+        # solve riccatti 
+        Qf, _, _ = ared(A, B, R, Q)
+        mpc.weights.Qf = Qf
+    end
+end
+
 function update_dynamics!(mpc::MPC,F,G)
     mpc.F,mpc.G = F,G
     mpc.mpQP = mpc2mpqp(mpc)

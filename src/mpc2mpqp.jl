@@ -239,5 +239,11 @@ function mpc2mpqp(mpc::MPC)
                 bounds_table=bounds_table)
     end
     mpc.mpQP = mpQP
+    mpc.opt_model = DAQP.Model()
+    if(mpc.settings.QP_double_sided)
+        DAQP.setup(mpc.opt_model,H[:,:],f[:],A,bu[:],bl[:],senses[:])
+    else
+        DAQP.setup(mpc.opt_model,H[:,:],f[:],A,mpQP.b[:],-1e30*ones(length(mpQP.b)),senses[:])
+    end
     return mpQP
 end

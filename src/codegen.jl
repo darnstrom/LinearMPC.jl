@@ -1,20 +1,21 @@
 using DAQP
 
-function codegen(mpc;fname="mpc_workspace", dir="", opt_settings=nothing)
+function codegen(mpc;fname="mpc_workspace", dir="codegen", opt_settings=nothing, src=true)
+    length(dir)==0 && (dir="codegen")
+    dir[end] != '/' && (dir*="/") ## Make sure it is a correct directory path
+    ## Generate mpQP
+    mpc.settings.QP_double_sided = true # force double-sided constraint for generated code
+    mpc2mpqp(mpc)
     # Generate QP workspace
-    mpQP = mpc2mpqp(mpc)
-    d = DAQP.Model()
-    DAQP.setup(d,mpQP.H[:,:],mpQP.f[:],mpQP.A[:,:],mpQP.bu[:],mpQP.bl[:],mpQP.senses[:])
+    d = mpc.opt_model
     if(!isnothing(opt_settings))
         DAQP.settings(d,opt_settings)
     end
     # TODO: move this to DAQP.jl
-    @assert(d.has_model, "setup the model before code generation")
-    exitflag = ccall((:render_daqp_workspace,DAQP.libdaqp),Cvoid,
-                     (Ptr{DAQP.Workspace},Cstring,Cstring,), d.work,fname,dir);
+    DAQP.codegen(d;fname,dir,src)
 
     # Append MPC-specific data/functions
-    mpLDP = qp2ldp(mpQP,mpc.nu) 
+    mpLDP = qp2ldp(mpc.mpQP,mpc.nu) 
     render_mpc_workspace(mpLDP,mpc.nu;fname,dir, fmode="a")
 end
 
