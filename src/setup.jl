@@ -52,15 +52,32 @@ function set_weights!(mpc::MPC;Q = nothing,R=nothing,Rr=nothing,rho=nothing, Qf=
     end
 end
 
+# Terminal ingredients
+using MatrixEquations 
 function set_terminal_cost!(mpc,Qf::AbstractMatrix)
     mpc.weights.Qf = Qf isa AbstractMatrix ? Qf : diagm(Qf) 
 end
 function set_terminal_cost!(mpc,type)
     if type =="lqr" || type == "LQR" || type == "riccati"
-        # solve riccatti 
-        Qf, _, _ = ared(A, B, R, Q)
+        Qf, _, _ = ared(mpc.F, mpc.G, mpc.weights.R, mpc.C'*mpc.weights.Q*mpc.C) # solve Riccatti
         mpc.weights.Qf = Qf
     end
+end
+function set_terminal_cost!(mpc)
+    set_terminal_cost!(mpc,"lqr")
+end
+
+function set_prestabilizing_feedback!(mpc,K::AbstractMatrix)
+    mpc.K = K
+end
+
+function set_prestabilizing_feedback!(mpc,type)
+    if type =="lqr" || type == "LQR" || type == "riccati"
+        _, _,mpc.K,_ = ared(mpc.F, mpc.G, mpc.weights.R, mpc.C'*mpc.weights.Q*mpc.C) # solve Ricatti
+    end
+end
+function set_prestabilizing_feedback!(mpc)
+    set_prestabilizing_feedback!(mpc,"lqr")
 end
 
 function update_dynamics!(mpc::MPC,F,G)

@@ -8,6 +8,8 @@ include("explicit.jl");
 
 include("utils.jl");
 include("setup.jl");
+export set_bounds!,add_constraints!,set_output_bounds!,set_weights!
+export set_terminal_cost!,set_prestabilizing_feedback!
 
 include("mpc2mpqp.jl");
 include("mpc_examples.jl");

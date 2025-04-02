@@ -69,24 +69,29 @@ mutable struct MPC
 
     # DAQP optimization model
     opt_model 
+
+    # Prestabilizing feedback
+    K::Matrix{Real}
 end
 
-function MPC(F::AbstractMatrix{Float64},G::AbstractMatrix{Float64},C,Np; Nc = Np, Nb = Nc)
-    nx,nu = size(G);
+function MPC(F::AbstractMatrix{Float64},G::AbstractMatrix{Float64},C=nothing,Np=10; Nc = Np, Nb = Nc)
+    nx,nu = size(G)
+    C = isnothing(C) ? Matrix{Float64}(I,nr,nr) : C
     ny = size(C,1);
     MPC(F,G,1,nx,nu,ny,
         Np,Nc,Nc,C,MPCWeights(nu,ny),
         zeros(0),zeros(0),zeros(0),
-        Constraint[],MPCSettings(),nothing,nothing);
+        Constraint[],MPCSettings(),nothing,nothing,zeros(0,0));
 end
 # TODO Also let C be vector of matrices...
-function MPC(F::Vector{AbstractMatrix{Float64}},G::Vector{AbstractMatrix{Float64}},C,Np; Nc = Np, Nb = Nc)
+function MPC(F::Vector{AbstractMatrix{Float64}},G::Vector{AbstractMatrix{Float64}},C=nothing,Np=10; Nc = Np, Nb = Nc)
     nx,nu = size(G[1]);
+    C = isnothing(C) ? Matrix{Float64}(I,nr,nr) : C
     ny = size(C,1);
     MPC(F,G,1,nx,nu,ny,
         Np,Nc,Nc,C,MPCWeights(nu,ny),
         zeros(0),zeros(0),zeros(0),
-        Constraint[],MPCSettings(),nothing,nothing);
+        Constraint[],MPCSettings(),nothing,nothing,zeros(0,0));
 end
 
 

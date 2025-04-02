@@ -6,14 +6,15 @@ version = "0.1.0"
 [deps]
 DAQP = "c47d62df-3981-49c8-9651-128b1cd08617"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+MatrixEquations = "99c1a7ee-ab34-5fd5-8076-27c950a045f4"
 PGFPlotsX = "8314cec4-20b6-5062-9cdb-752b83310925"
 ParametricDAQP = "19f72acb-e2a9-45c8-96b9-4d5487c8db2e"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 
 [compat]
-julia = "1"
 ParametricDAQP = "0.2.0"
+julia = "1"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
