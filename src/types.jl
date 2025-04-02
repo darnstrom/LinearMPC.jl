@@ -9,16 +9,6 @@ mutable struct Constraint
     binary::Bool
 end
 
-# Constraints for the OCP
-mutable struct MPCConstraints
-
-end
-
-function MPCConstraints(nx,nu)
-    return MPCConstraints(zeros(0),zeros(0),0,zeros(0),Constraint[])
-end
-
-
 # Weights used to define the objective function of the OCP
 mutable struct MPCWeights
     Q::Matrix{Float64}
