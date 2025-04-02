@@ -7,6 +7,7 @@ mutable struct Constraint
     ks::AbstractVector{Int64}
     soft::Bool
     binary::Bool
+    prio::Int
 end
 
 # Weights used to define the objective function of the OCP
