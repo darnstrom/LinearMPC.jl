@@ -71,7 +71,7 @@ mutable struct MPC
     opt_model 
 
     # Prestabilizing feedback
-    K::Matrix{Real}
+    K::Matrix{Float64}
 end
 
 function MPC(F::AbstractMatrix{Float64},G::AbstractMatrix{Float64},C=nothing,Np=10; Nc = Np, Nb = Nc)

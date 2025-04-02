@@ -39,9 +39,13 @@ end
 # Create A u <= b+W*theta 
 # correspoding to  lb<=u_i<=ub for i ∈ {1,2,...,Nc}
 function create_controlbounds(mpc::MPC)
-    nu,nx = mpc.nu, mpc.nx 
+    nu,nx = mpc.nu, mpc.nx
 
-    A = kron(I(mpc.Nb),I(nu)); 
+    if !isempty(mpc.K) || !mpc.settings.QP_double_sided
+        A = Matrix{Float64}(kron(I(mpc.Nb),I(nu)))
+    else
+        A = nothing;
+    end
     ub = repeat(mpc.umax,mpc.Nb,1)
     lb = repeat(mpc.umin,mpc.Nb,1)
     return A,ub,lb, zeros(length(ub),nx) 
@@ -91,7 +95,8 @@ function create_constraints(mpc,Φ,Γ)
 
     # Control bounds
     if(!isempty(mpc.umax))
-        ~,bu,bl,W = create_controlbounds(mpc)
+        Ac,bu,bl,W = create_controlbounds(mpc)
+        if !isnothing(Ac) A = Ac end
         issoft= falses(n);
         isbinary_single = falses(mpc.nu) 
         isbinary_single[mpc.binary_controls] .= true;
@@ -226,7 +231,6 @@ function mpc2mpqp(mpc::MPC)
         ncstr = length(bu);
         n_bounds = ncstr-size(A,1);
         bounds_table=[collect(ncstr+1:2*ncstr);collect(1:ncstr)]
-        A = [I(n_bounds) zeros(n_bounds,size(A,2)-n_bounds);A]
         A = [A;-A]
         if(mpc.settings.explicit_soft && any(issoft))# Correct sign for slack
             A[:,end].= -abs.(A[:,end])
