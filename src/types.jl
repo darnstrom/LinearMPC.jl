@@ -15,12 +15,13 @@ mutable struct MPCWeights
     Q::Matrix{Float64}
     R::Matrix{Float64}
     Rr::Matrix{Float64}
+    S::Matrix{Float64}
     rho::Float64
     Qf
 end
 
-function MPCWeights(nu,nr)
-    return MPCWeights(Matrix{Float64}(I,nr,nr),Matrix{Float64}(I,nu,nu),zeros(nu,nu),1e6,nothing)
+function MPCWeights(nu,nx,nr)
+    return MPCWeights(Matrix{Float64}(I,nr,nr),Matrix{Float64}(I,nu,nu),zeros(nu,nu),zeros(nx,nu),1e6,nothing)
 end
 
 Base.@kwdef mutable struct MPCSettings
@@ -28,6 +29,7 @@ Base.@kwdef mutable struct MPCSettings
     reference_tracking::Bool= true
     soft_constraints::Bool= true
     explicit_soft::Bool= false
+    move_block::Symbol = :Hold
     solver_opts::Dict{Symbol,Any} = Dict()
 end
 
@@ -80,7 +82,7 @@ function MPC(F::AbstractMatrix{Float64},G::AbstractMatrix{Float64},C=nothing,Np=
     C = isnothing(C) ? Matrix{Float64}(I,nr,nr) : C
     ny = size(C,1);
     MPC(F,G,1,nx,nu,ny,
-        Np,Nc,Nc,C,MPCWeights(nu,ny),
+        Np,Nc,Nc,C,MPCWeights(nu,nx,ny),
         zeros(0),zeros(0),zeros(0),
         Constraint[],MPCSettings(),nothing,nothing,zeros(0,0));
 end
@@ -90,7 +92,7 @@ function MPC(F::Vector{AbstractMatrix{Float64}},G::Vector{AbstractMatrix{Float64
     C = isnothing(C) ? Matrix{Float64}(I,nr,nr) : C
     ny = size(C,1);
     MPC(F,G,1,nx,nu,ny,
-        Np,Nc,Nc,C,MPCWeights(nu,ny),
+        Np,Nc,Nc,C,MPCWeights(nu,nx,ny),
         zeros(0),zeros(0),zeros(0),
         Constraint[],MPCSettings(),nothing,nothing,zeros(0,0));
 end

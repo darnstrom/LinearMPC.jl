@@ -34,7 +34,7 @@ function set_output_bounds!(mpc::MPC; ymin=nothing, ymax=nothing, ks = nothing, 
     add_constraint!(mpc, Ax = mpc.C, lb = ymin, ub = ymax;ks,soft,binary,prio)
 end
 
-function set_weights!(mpc::MPC;Q = nothing,R=nothing,Rr=nothing,rho=nothing, Qf=nothing)
+function set_weights!(mpc::MPC;Q = nothing,R=nothing,Rr=nothing, S= nothing, rho=nothing, Qf=nothing)
     if !isnothing(Q)
         mpc.weights.Q = Q isa AbstractMatrix ? Q : diagm(Q) 
     end
@@ -43,6 +43,9 @@ function set_weights!(mpc::MPC;Q = nothing,R=nothing,Rr=nothing,rho=nothing, Qf=
     end
     if !isnothing(Rr)
         mpc.weights.Rr = Rr isa AbstractMatrix ? Rr : diagm(Rr) 
+    end
+    if !isnothing(S)
+        mpc.weights.S = S
     end
     if !isnothing(rho)
         mpc.weights.rho = rho

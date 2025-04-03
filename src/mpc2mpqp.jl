@@ -1,6 +1,6 @@
 # Create Φ and Γ such that 
 # X = Φ x0 + Γ U  (where X and U contains xi and ui stacked..)
-function state_predictor(F,G,Np,Nc)
+function state_predictor(F,G,Np,Nc;move_block=:Hold)
     if G isa AbstractMatrix
         nx,nu = size(G);
     else
@@ -26,7 +26,10 @@ function state_predictor(F,G,Np,Nc)
     # TODO add infinite LQR gain alternative
     for i in Nc+1:Np
         Γ[(nx*i+1):nx*(i+1),:] .= F*Γ[(nx*(i-1)+1):nx*i,:];
-        Γ[(nx*i+1):nx*(i+1),end-nu+1:end] +=G;
+        if(move_block==:Hold)
+            Γ[(nx*i+1):nx*(i+1),end-nu+1:end] +=G;
+        #else Zero
+        end
 
         Φ[i*nx+1:(i+1)*nx,:] = F*Φ[nx*(i-1)+1:nx*i,:]
     end
@@ -121,34 +124,40 @@ function create_constraints(mpc,Φ,Γ)
 end
 
 
-# Return T and S such that
-# Δu = T*u+S u_minus
-# u = inv(T)*Δu - inv(T) S u_minus
-# Δu' D Δu = u'T'*D*Tu+2*(T' D S u_minus)' u + u_minus S' D S u_minus
-# I.e. : Hd = T'DT, f_theta = 2T'DS, Hth = S'DS
+# Return V and W such that
+# Δu = V*u+W u_minus
+# u = inv(V)*Δu - inv(V) W u_minus
+# Δu' D Δu = u'V'*D*Vu+2*(V' D W u_minus)' u + u_minus W' D W u_minus
+# I.e. : Hd = V'DV, f_theta = 2V'DW, Hth = W'DW
 function rate_to_abs(nu,N)
-    T = diagm(0=>ones(nu*N),-nu=>-ones(nu*(N-1))); 
-    S = [-I(nu);zeros(nu*(N-1),nu)];
-    return T,S
+    V = diagm(0=>ones(nu*N),-nu=>-ones(nu*(N-1)));
+    W = [-I(nu);zeros(nu*(N-1),nu)];
+    return V,W
 end
 
 # Create H, f_theta, H_theta such that the objective function for a given
 # MPC problem is formulated as 0.5 U' H U+th'F_theta' U + 0.5 th' H_theta th
 # (where th contains x0, r and u(k-1))
 function objective(mpc,Φ,Γ)
-    return objective(Φ,Γ,mpc.C,mpc.weights.Q,mpc.weights.R,mpc.weights.Rr,mpc.Np,mpc.Nc,mpc.nu,mpc.weights.Qf,mpc.nx,mpc)
+    return objective(Φ,Γ,mpc.C,mpc.weights.Q,mpc.weights.R,mpc.weights.Rr,mpc.weights.S,
+                     mpc.Np,mpc.Nc,mpc.nu,mpc.weights.Qf,mpc.nx,mpc)
 end
-function objective(Φ,Γ,C,Q,R,Rr,N,Nc,nu,Qf,nx,mpc)
+function objective(Φ,Γ,C,Q,R,Rr,S,N,Nc,nu,Qf,nx,mpc)
     pos_ids= findall(diag(Q).>0); # Ignore zero indices... (and negative)
     Q = Q[pos_ids,pos_ids];
     C = C[pos_ids,:];
     nr = size(Q,1);
-    T,S= rate_to_abs(nu,Nc);
+    V,W= rate_to_abs(nu,Nc);
 
     # Quadratic term 
     H = kron(I(Nc),R);  # from u'R u
     Rrtot = kron(I(Nc),Rr)
-    H += T'*Rrtot*T; # from Δu'Rr Δu
+    H += V'*Rrtot*V; # from Δu'Rr Δu
+
+    if(mpc.settings.move_block==:Hold) # from u_i = u_Nc for i > Nc
+        H[end-nu+1:end,end-nu+1:end] .+= (N-Nc)*R;
+    end
+
 
     Qtot = kron(I(N+1),Q);
     if(!isnothing(Qf))
@@ -163,14 +172,26 @@ function objective(Φ,Γ,C,Q,R,Rr,N,Nc,nu,Qf,nx,mpc)
     # Linear term
     f_theta = Γ'*Ctot'*Qtot*Ctot*Φ; # from x0
     f_theta = [f_theta -Γ'*Ctot'*Qtot*Reftot]; # from r
-    f_theta = [f_theta T'*Rrtot*S]; # from u[k-1]
+    f_theta = [f_theta V'*Rrtot*W]; # from u[k-1]
+
+    # From x' S u
+    if(!iszero(S))
+        Stot = kron(I(Nc),S);
+        Stot = [Stot;zeros((N+1-Nc)*nx,Nc*nu)]
+        if(mpc.settings.move_block==:Hold)
+            Stot[Nc*nx+1:Np*nx,end-nu+1:end-nu+1] = repeat(S,Nc-Np,1)
+        end
+        GS = Γ'*Stot
+        H += GS + GS'
+        f_theta[:,1:nx] += Stot'*Φ
+    end
 
     # Quadratic parameter term 
     # (relevant to maintain a positive definite value function)
     Hth_xx=Φ'*Ctot'*Qtot*Ctot*Φ; 
     Hth_rx = Reftot'*Qtot*Ctot*Φ; 
     Hth_rr= Reftot'*Qtot*Reftot
-    Hth_uu=  S'*Rrtot*S
+    Hth_uu=  W'*Rrtot*W
 
     H_theta = cat([Hth_xx Hth_rx';Hth_rx Hth_rr],Hth_uu,dims=(1,2)); 
 
@@ -195,7 +216,7 @@ subject to 	A U <= b + W*θ
 ```
 """
 function mpc2mpqp(mpc::MPC)
-    Φ,Γ=state_predictor(mpc.F,mpc.G,mpc.Np,mpc.Nc);
+    Φ,Γ=state_predictor(mpc.F,mpc.G,mpc.Np,mpc.Nc; move_block = mpc.settings.move_block);
 
     # Create objective function 
     H,f, f_theta, H_theta = objective(mpc,Φ,Γ)
