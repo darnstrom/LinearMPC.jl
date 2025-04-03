@@ -140,10 +140,6 @@ end
 # (where th contains x0, r and u(k-1))
 function objective(mpc,Φ,Γ)
     Q,R,Rr,S = mpc.weights.Q, mpc.weights.R, mpc.weights.Rr, mpc.weights.S 
-    if(!iszero(mpc.K))
-        Q += mpc.K'*R*mpc.K
-        S = -mpc.K'*R # TODO: account for nominal S...
-    end
 
     return objective(Φ,Γ,mpc.C,Q,R,Rr,S,
                      mpc.Np,mpc.Nc,mpc.nu,mpc.weights.Qf,mpc.nx,mpc)
@@ -155,73 +151,31 @@ function objective(Φ,Γ,C,Q,R,Rr,S,N,Nc,nu,Qf,nx,mpc)
     nr = size(Q,1);
 
     f_theta_x = zeros(Nc*nu,nx)
-    f_theta_r = zeros(Nc*nu,nr)
-    f_theta_u0 = zeros(Nc*nu,nu)
 
     # ==== From u' R u ====
-    H = kron(I(Nc),R);  # from u'R u
-    if(mpc.settings.move_block==:Hold) # from u_i = u_Nc for i > Nc
-        H[end-nu+1:end,end-nu+1:end] .+= (N-Nc)*R;
-    end
+    H = kron(I(Nc),R);
 
 
-
-    # ==== From (Cx-r)'Q(Cx-r) ====
+    # ==== From (Cx)'Q(Cx) ====
     Qtot = kron(I(N+1),Q);
     if(!isnothing(Qf))
         Qtot[end-nx+1:end, end-nx+1:end] .= Qf
     end
     Ctot  = kron(I(N+1),C);
+    CQCtot  = kron(I(N+1),C'*Q*C);
 
-    H += Γ'*Ctot'*Qtot*Ctot*Γ; 
-    Reftot = repeat(I(nr),N+1); # Assume r constant over the horizon
-    f_theta_x += Γ'*Ctot'*Qtot*Ctot*Φ; # from x0
-    f_theta_r +=-Γ'*Ctot'*Qtot*Reftot; # from r
+    H += Γ'*CQCtot*Γ; 
+    f_theta += Γ'*CQCtot*Φ; # from x0
+    H_theta = Φ'*CQCTot*Φ
 
-    H_theta_xx=Φ'*Ctot'*Qtot*Ctot*Φ
-    H_theta_rx = Reftot'*Qtot*Ctot*Φ; 
-    H_theta_rr= Reftot'*Qtot*Reftot
-
-    # ==== From Δu' Rr Δu  ====
-    V,W= rate_to_abs(nu,Nc);
-    # Setup the transformation Δu = [Tu Tx Tu0]*[u;x0;u0]
-    if(iszero(mpc.K))
-        Tu, Tx, Tu0 = V,0,W;
-    else
-        Ktot = kron(I,mpc.K)
-        Tu, Tx, Tu0 = V*(I-Ktot*Γ), -V*Ktot*Φ, W
+    # ==== From x' S u ====
+    if(!iszero(S))
+        Stot = kron(I(Nc),S);
+        GS = Γ'*Stot
+        H += GS + GS'
+        f_theta += Stot'*Φ
     end
 
-    Rrtot = kron(I(Nc),Rr)
-    H += Tu'*Rrtot*Tu;
-    f_theta_u0 = Tu'*Rrtot*Tu0;
-    H_theta_uu =  Tu0'*Rrtot*Tu0
-    H_theta_ux = zeros(nu,nx)
-
-    if(!iszero(Tx))
-        f_theta_x += Tu'*Rrtot*Tx
-        H_theta_xx .+=Tx'*Rrtot*Tx; 
-        H_theta_ux .+=  Tu0'*Rrtot*Tx
-    end
-
-    # From x' S u
-    #if(!iszero(S))
-    #    Stot = kron(I(Nc),S);
-    #    Stot = [Stot;zeros((N+1-Nc)*nx,Nc*nu)]
-    #    if(mpc.settings.move_block==:Hold)
-    #        Stot[Nc*nx+1:N*nx,end-nu+1:end-nu+1] = repeat(S,N-Nc,1)
-    #    end
-    #    GS = Γ'*Stot
-    #    H += GS + GS'
-    #    f_theta[:,1:nx] += Stot'*Φ
-    #end
-
-    # Parametric terms 
-    f_theta = [f_theta_x f_theta_r f_theta_u0]
-
-    H_theta = [H_theta_xx H_theta_rx' H_theta_ux';
-               H_theta_rx H_theta_rr zeros(nr,nu); 
-               H_theta_ux zeros(nu,nr) H_theta_uu]
 
     # Add regularization for binaries (won't change the solution)
     f = zeros(size(H,1),1); 
