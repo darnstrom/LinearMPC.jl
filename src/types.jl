@@ -84,7 +84,7 @@ function MPC(F::AbstractMatrix{Float64},G::AbstractMatrix{Float64},C=nothing,Np=
     MPC(F,G,1,nx,nu,ny,
         Np,Nc,Nc,C,MPCWeights(nu,nx,ny),
         zeros(0),zeros(0),zeros(0),
-        Constraint[],MPCSettings(),nothing,nothing,zeros(0,0));
+        Constraint[],MPCSettings(),nothing,nothing,zeros(nu,nx));
 end
 # TODO Also let C be vector of matrices...
 function MPC(F::Vector{AbstractMatrix{Float64}},G::Vector{AbstractMatrix{Float64}},C=nothing,Np=10; Nc = Np, Nb = Nc)
@@ -94,7 +94,7 @@ function MPC(F::Vector{AbstractMatrix{Float64}},G::Vector{AbstractMatrix{Float64
     MPC(F,G,1,nx,nu,ny,
         Np,Nc,Nc,C,MPCWeights(nu,nx,ny),
         zeros(0),zeros(0),zeros(0),
-        Constraint[],MPCSettings(),nothing,nothing,zeros(0,0));
+        Constraint[],MPCSettings(),nothing,nothing,zeros(nx,nu));
 end
 
 

@@ -41,7 +41,7 @@ end
 function create_controlbounds(mpc::MPC)
     nu,nx = mpc.nu, mpc.nx
 
-    if !isempty(mpc.K) || !mpc.settings.QP_double_sided
+    if !iszero(mpc.K) || !mpc.settings.QP_double_sided
         A = Matrix{Float64}(kron(I(mpc.Nb),I(nu)))
     else
         A = nothing;
@@ -139,7 +139,13 @@ end
 # MPC problem is formulated as 0.5 U' H U+th'F_theta' U + 0.5 th' H_theta th
 # (where th contains x0, r and u(k-1))
 function objective(mpc,Φ,Γ)
-    return objective(Φ,Γ,mpc.C,mpc.weights.Q,mpc.weights.R,mpc.weights.Rr,mpc.weights.S,
+    Q,R,Rr,S = mpc.weights.Q, mpc.weights.R, mpc.weights.Rr, mpc.weights.S 
+    if(!iszero(mpc.K))
+        Q += mpc.K'*R*mpc.K
+        S = -mpc.K'*R # TODO: account for nominal S...
+    end
+
+    return objective(Φ,Γ,mpc.C,Q,R,Rr,S,
                      mpc.Np,mpc.Nc,mpc.nu,mpc.weights.Qf,mpc.nx,mpc)
 end
 function objective(Φ,Γ,C,Q,R,Rr,S,N,Nc,nu,Qf,nx,mpc)
@@ -147,53 +153,75 @@ function objective(Φ,Γ,C,Q,R,Rr,S,N,Nc,nu,Qf,nx,mpc)
     Q = Q[pos_ids,pos_ids];
     C = C[pos_ids,:];
     nr = size(Q,1);
-    V,W= rate_to_abs(nu,Nc);
 
-    # Quadratic term 
+    f_theta_x = zeros(Nc*nu,nx)
+    f_theta_r = zeros(Nc*nu,nr)
+    f_theta_u0 = zeros(Nc*nu,nu)
+
+    # ==== From u' R u ====
     H = kron(I(Nc),R);  # from u'R u
-    Rrtot = kron(I(Nc),Rr)
-    H += V'*Rrtot*V; # from Δu'Rr Δu
-
     if(mpc.settings.move_block==:Hold) # from u_i = u_Nc for i > Nc
         H[end-nu+1:end,end-nu+1:end] .+= (N-Nc)*R;
     end
 
 
+
+    # ==== From (Cx-r)'Q(Cx-r) ====
     Qtot = kron(I(N+1),Q);
     if(!isnothing(Qf))
         Qtot[end-nx+1:end, end-nx+1:end] .= Qf
     end
     Ctot  = kron(I(N+1),C);
 
-    H += Γ'*Ctot'*Qtot*Ctot*Γ; # from (Cx-r)Q(Cx-r)
-
+    H += Γ'*Ctot'*Qtot*Ctot*Γ; 
     Reftot = repeat(I(nr),N+1); # Assume r constant over the horizon
+    f_theta_x += Γ'*Ctot'*Qtot*Ctot*Φ; # from x0
+    f_theta_r +=-Γ'*Ctot'*Qtot*Reftot; # from r
 
-    # Linear term
-    f_theta = Γ'*Ctot'*Qtot*Ctot*Φ; # from x0
-    f_theta = [f_theta -Γ'*Ctot'*Qtot*Reftot]; # from r
-    f_theta = [f_theta V'*Rrtot*W]; # from u[k-1]
+    H_theta_xx=Φ'*Ctot'*Qtot*Ctot*Φ
+    H_theta_rx = Reftot'*Qtot*Ctot*Φ; 
+    H_theta_rr= Reftot'*Qtot*Reftot
 
-    # From x' S u
-    if(!iszero(S))
-        Stot = kron(I(Nc),S);
-        Stot = [Stot;zeros((N+1-Nc)*nx,Nc*nu)]
-        if(mpc.settings.move_block==:Hold)
-            Stot[Nc*nx+1:N*nx,end-nu+1:end-nu+1] = repeat(S,N-Nc,1)
-        end
-        GS = Γ'*Stot
-        H += GS + GS'
-        f_theta[:,1:nx] += Stot'*Φ
+    # ==== From Δu' Rr Δu  ====
+    V,W= rate_to_abs(nu,Nc);
+    # Setup the transformation Δu = [Tu Tx Tu0]*[u;x0;u0]
+    if(iszero(mpc.K))
+        Tu, Tx, Tu0 = V,0,W;
+    else
+        Ktot = kron(I,mpc.K)
+        Tu, Tx, Tu0 = V*(I-Ktot*Γ), -V*Ktot*Φ, W
     end
 
-    # Quadratic parameter term 
-    # (relevant to maintain a positive definite value function)
-    Hth_xx=Φ'*Ctot'*Qtot*Ctot*Φ; 
-    Hth_rx = Reftot'*Qtot*Ctot*Φ; 
-    Hth_rr= Reftot'*Qtot*Reftot
-    Hth_uu=  W'*Rrtot*W
+    Rrtot = kron(I(Nc),Rr)
+    H += Tu'*Rrtot*Tu;
+    f_theta_u0 = Tu'*Rrtot*Tu0;
+    H_theta_uu =  Tu0'*Rrtot*Tu0
+    H_theta_ux = zeros(nu,nx)
 
-    H_theta = cat([Hth_xx Hth_rx';Hth_rx Hth_rr],Hth_uu,dims=(1,2)); 
+    if(!iszero(Tx))
+        f_theta_x += Tu'*Rrtot*Tx
+        H_theta_xx .+=Tx'*Rrtot*Tx; 
+        H_theta_ux .+=  Tu0'*Rrtot*Tx
+    end
+
+    # From x' S u
+    #if(!iszero(S))
+    #    Stot = kron(I(Nc),S);
+    #    Stot = [Stot;zeros((N+1-Nc)*nx,Nc*nu)]
+    #    if(mpc.settings.move_block==:Hold)
+    #        Stot[Nc*nx+1:N*nx,end-nu+1:end-nu+1] = repeat(S,N-Nc,1)
+    #    end
+    #    GS = Γ'*Stot
+    #    H += GS + GS'
+    #    f_theta[:,1:nx] += Stot'*Φ
+    #end
+
+    # Parametric terms 
+    f_theta = [f_theta_x f_theta_r f_theta_u0]
+
+    H_theta = [H_theta_xx H_theta_rx' H_theta_ux';
+               H_theta_rx H_theta_rr zeros(nr,nu); 
+               H_theta_ux zeros(nu,nr) H_theta_uu]
 
     # Add regularization for binaries (won't change the solution)
     f = zeros(size(H,1),1); 
@@ -216,7 +244,8 @@ subject to 	A U <= b + W*θ
 ```
 """
 function mpc2mpqp(mpc::MPC)
-    Φ,Γ=state_predictor(mpc.F,mpc.G,mpc.Np,mpc.Nc; move_block = mpc.settings.move_block);
+    Φ,Γ=state_predictor(mpc.F-mpc.G*mpc.K,mpc.G,
+                        mpc.Np,mpc.Nc; move_block = mpc.settings.move_block);
 
     # Create objective function 
     H,f, f_theta, H_theta = objective(mpc,Φ,Γ)
