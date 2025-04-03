@@ -179,7 +179,7 @@ function objective(Φ,Γ,C,Q,R,Rr,S,N,Nc,nu,Qf,nx,mpc)
         Stot = kron(I(Nc),S);
         Stot = [Stot;zeros((N+1-Nc)*nx,Nc*nu)]
         if(mpc.settings.move_block==:Hold)
-            Stot[Nc*nx+1:Np*nx,end-nu+1:end-nu+1] = repeat(S,Nc-Np,1)
+            Stot[Nc*nx+1:N*nx,end-nu+1:end-nu+1] = repeat(S,N-Nc,1)
         end
         GS = Γ'*Stot
         H += GS + GS'
