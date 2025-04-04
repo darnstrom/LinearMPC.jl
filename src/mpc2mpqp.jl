@@ -38,17 +38,29 @@ end
 
 # Create A u <= b+W*theta 
 # correspoding to  lb<=u_i<=ub for i ∈ {1,2,...,Nc}
-function create_controlbounds(mpc::MPC;n_extra_states=0)
-    nu,nx = mpc.nu, mpc.nx
+function create_controlbounds(mpc::MPC, Γ, Φ;n_extra_states=0)
+    nu,nx,Nb = mpc.nu, mpc.nx, mpc.Nb
 
-    if !iszero(mpc.K) || !mpc.settings.QP_double_sided
-        A = Matrix{Float64}(kron(I(mpc.Nb),I(nu)))
+
+    # Create bounds
+    ub = repeat(mpc.umax,Nb,1)
+    lb = repeat(mpc.umin,Nb,1)
+
+    #-K*X + V = -K*(Γ V + Φ x0) + V 
+    #         = (I-K*Γ)V -K Φ x0
+    if(!iszero(mpc.K))
+        K = kron(I(Nb),mpc.K)
+        A = (I-K*Γ[1:Nb*nx, 1:Nb*nu])
+        W = K*Φ[1:Nb*nx,:]
     else
-        A = nothing;
+        A = mpc.settings.QP_double_sided ? nothing : Matrix{Float64}(kron(I(mpc.Nb),I(nu)))
+        W = zeros(length(ub),nx)
     end
+    Matrix{Float64}(kron(I(mpc.Nb),I(nu)))
     ub = repeat(mpc.umax,mpc.Nb,1)
     lb = repeat(mpc.umin,mpc.Nb,1)
-    return A,ub,lb, zeros(length(ub),nx+n_extra_states) 
+    W = [W zeros(length(ub),n_extra_states)]
+    return A,ub,lb, W 
 end
 
 # Create A u <= b+W*theta 
@@ -71,7 +83,7 @@ function create_general_constraints(mpc::MPC,Γ,Φ;n_extra_states=0)
         mi = size(c.Au,1);
         Ni = length(c.ks);
         Autot = [Autot; kron(eyeU[c.ks,:],c.Au)]
-        Axtot = [Axtot; kron(eyeX[c.ks,:],c.Ax)]
+        Axtot = [Axtot; kron(eyeX[c.ks,:],c.Ax-c.Au*mpc.K)]
 
         ubtot = [ubtot;repeat(c.ub,Ni,1)]
         lbtot = [lbtot;repeat(c.lb,Ni,1)]
@@ -98,7 +110,7 @@ function create_constraints(mpc,Φ,Γ;n_extra_states=0)
 
     # Control bounds
     if(!isempty(mpc.umax))
-        Ac,bu,bl,W = create_controlbounds(mpc;n_extra_states)
+        Ac,bu,bl,W = create_controlbounds(mpc,Γ,Φ;n_extra_states)
         if !isnothing(Ac) A = Ac end
         issoft= falses(n);
         prios = zeros(Int,n)
@@ -214,6 +226,7 @@ function mpc2mpqp(mpc::MPC)
     end
     if(!iszero(Rr)) # Penalizing u -> add uold to states 
         F = cat(F,zeros(nu,nu),dims=(1,2))
+        #F[end-nu+1:end,1:nx] .= mpc.K
         G = [G;I(nu)]
         C = cat(C,I(nu), dims=(1,2))
         Q = cat(Q,Rr,dims=(1,2))
@@ -233,6 +246,7 @@ function mpc2mpqp(mpc::MPC)
     H = (H+H')/2
     # Create Constraints 
     # TODO: correctly handle extension... 
+    Φ,Γ=state_predictor(mpc.F,mpc.G,Np,Nc; move_block = mpc.settings.move_block);
     A, bu, bl, W, issoft, isbinary, prio = create_constraints(mpc,Φ,Γ;n_extra_states)
 
     senses = zeros(Cint,length(bu)); 
