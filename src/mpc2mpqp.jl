@@ -139,25 +139,21 @@ end
 # Create H, f_theta, H_theta such that the objective function for a given
 # MPC problem is formulated as 0.5 U' H U+th'F_theta' U + 0.5 th' H_theta th
 # (where th contains x0, r and u(k-1))
-function objective(Φ,Γ,C,Q,R,S,N,Nc,nu,nx,Qf,mpc)
+function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
     pos_ids= findall(diag(Q).>0); # Ignore zero indices... (and negative)
     Q = Q[pos_ids,pos_ids];
     C = C[pos_ids,:];
-    nr = size(Q,1);
 
     f_theta = zeros(Nc*nu,nx)
 
     # ==== From u' R u ====
     H = kron(I(Nc),R);
+    H[end-nu+1:end-nu+1] .+= (N-Nc)*R # To accound for Nc < N...
 
 
     # ==== From (Cx)'Q(Cx) ====
-    Qtot = kron(I(N+1),Q);
-    if(!isnothing(Qf))
-        Qtot[end-nx+1:end, end-nx+1:end] .= Qf
-    end
-    Ctot  = kron(I(N+1),C);
-    CQCtot  = kron(I(N+1),C'*Q*C);
+    CQCtot  = kron(I(N),C'*Q*C);
+    CQCtot = cat(CQCtot,Qf,dims=(1,2))
 
     H += Γ'*CQCtot*Γ; 
     f_theta += Γ'*CQCtot*Φ; # from x0
@@ -199,6 +195,7 @@ function mpc2mpqp(mpc::MPC)
 
     F,G,C = mpc.F-mpc.G*mpc.K, mpc.G, mpc.C
     Q,R,Rr,S = mpc.weights.Q, mpc.weights.R, mpc.weights.Rr, mpc.weights.S 
+    Qf = mpc.weights.Qf
 
     nr,nx = size(mpc.C)
     nu = size(mpc.G,2)
@@ -211,6 +208,8 @@ function mpc2mpqp(mpc::MPC)
         G = [G;zeros(nr,nu)]
         C = [C -I(nr)] 
         S = [S;zeros(nr,nu)]
+        Qf = cat(Qf,zeros(nr,nr),dims=(1,2))
+        
         n_extra_states+= nr;
     end
     if(!iszero(Rr)) # Penalizing u -> add uold to states 
@@ -218,6 +217,7 @@ function mpc2mpqp(mpc::MPC)
         G = [G;I(nu)]
         C = cat(C,I(nu), dims=(1,2))
         Q = cat(Q,Rr,dims=(1,2))
+        Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
         S = [S;-Rr];
         R+=Rr
         n_extra_states+= nu;
@@ -228,8 +228,8 @@ function mpc2mpqp(mpc::MPC)
     # Create objective function 
     nxe,nue= size(G) 
     H,f,f_theta,H_theta = objective(Φ,Γ,C,
-                                    Q,R,S,
-                                    Np,Nc,nue,nxe,mpc.weights.Qf,mpc)
+                                    Q,R,S,Qf,
+                                    Np,Nc,nue,nxe,mpc)
     H = (H+H')/2
     # Create Constraints 
     # TODO: correctly handle extension... 
