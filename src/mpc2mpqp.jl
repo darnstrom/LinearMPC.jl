@@ -38,7 +38,7 @@ end
 
 # Create A u <= b+W*theta 
 # correspoding to  lb<=u_i<=ub for i ∈ {1,2,...,Nc}
-function create_controlbounds(mpc::MPC)
+function create_controlbounds(mpc::MPC;n_extra_states=0)
     nu,nx = mpc.nu, mpc.nx
 
     if !iszero(mpc.K) || !mpc.settings.QP_double_sided
@@ -48,12 +48,12 @@ function create_controlbounds(mpc::MPC)
     end
     ub = repeat(mpc.umax,mpc.Nb,1)
     lb = repeat(mpc.umin,mpc.Nb,1)
-    return A,ub,lb, zeros(length(ub),nx) 
+    return A,ub,lb, zeros(length(ub),nx+n_extra_states) 
 end
 
 # Create A u <= b+W*theta 
 # correspoding to lb <= Au*uk+ Ax*xk <=ub for k ∈ ks 
-function create_general_constraints(mpc::MPC,Γ,Φ)
+function create_general_constraints(mpc::MPC,Γ,Φ;n_extra_states=0)
     # extract data
     Np, Nc= mpc.Np, mpc.Nc
     m= length(mpc.constraints)
@@ -82,6 +82,7 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
     end
     A=Axtot*Γ+Autot;
     W = -Axtot*Φ;
+    W = [W zeros(size(W,1),n_extra_states)]
 
     return A,ubtot,lbtot,W,issoft,isbinary,prios
 end
@@ -89,7 +90,7 @@ end
 # Compute A,b,W such that the constraints for a given MPC structure
 # are on the form A U<=b W th
 
-function create_constraints(mpc,Φ,Γ)
+function create_constraints(mpc,Φ,Γ;n_extra_states=0)
     n = size(Γ,2);
     A = zeros(0,n);
     bu,bl,W = zeros(0),zeros(0),zeros(0,mpc.nx);
@@ -97,7 +98,7 @@ function create_constraints(mpc,Φ,Γ)
 
     # Control bounds
     if(!isempty(mpc.umax))
-        Ac,bu,bl,W = create_controlbounds(mpc)
+        Ac,bu,bl,W = create_controlbounds(mpc;n_extra_states)
         if !isnothing(Ac) A = Ac end
         issoft= falses(n);
         prios = zeros(Int,n)
@@ -108,7 +109,7 @@ function create_constraints(mpc,Φ,Γ)
 
     # General constraints
     if(!isempty(mpc.constraints))
-        Ag,bug,blg,Wg,softg,binaryg,priog = create_general_constraints(mpc,Γ,Φ);
+        Ag,bug,blg,Wg,softg,binaryg,priog = create_general_constraints(mpc,Γ,Φ;n_extra_states);
         my = Int(size(Ag,1));
         prios = [prios;priog]
         issoft = [issoft; softg]; # Start with sofetning all general constraints
@@ -138,19 +139,13 @@ end
 # Create H, f_theta, H_theta such that the objective function for a given
 # MPC problem is formulated as 0.5 U' H U+th'F_theta' U + 0.5 th' H_theta th
 # (where th contains x0, r and u(k-1))
-function objective(mpc,Φ,Γ)
-    Q,R,Rr,S = mpc.weights.Q, mpc.weights.R, mpc.weights.Rr, mpc.weights.S 
-
-    return objective(Φ,Γ,mpc.C,Q,R,Rr,S,
-                     mpc.Np,mpc.Nc,mpc.nu,mpc.weights.Qf,mpc.nx,mpc)
-end
-function objective(Φ,Γ,C,Q,R,Rr,S,N,Nc,nu,Qf,nx,mpc)
+function objective(Φ,Γ,C,Q,R,S,N,Nc,nu,nx,Qf,mpc)
     pos_ids= findall(diag(Q).>0); # Ignore zero indices... (and negative)
     Q = Q[pos_ids,pos_ids];
     C = C[pos_ids,:];
     nr = size(Q,1);
 
-    f_theta_x = zeros(Nc*nu,nx)
+    f_theta = zeros(Nc*nu,nx)
 
     # ==== From u' R u ====
     H = kron(I(Nc),R);
@@ -166,11 +161,14 @@ function objective(Φ,Γ,C,Q,R,Rr,S,N,Nc,nu,Qf,nx,mpc)
 
     H += Γ'*CQCtot*Γ; 
     f_theta += Γ'*CQCtot*Φ; # from x0
-    H_theta = Φ'*CQCTot*Φ
+    H_theta = Φ'*CQCtot*Φ
 
     # ==== From x' S u ====
     if(!iszero(S))
-        Stot = kron(I(Nc),S);
+        Stot = [kron(I(Nc),S);zeros((N-Nc+1)*nx,Nc*nu)]
+        if(mpc.settings.move_block==:Hold)
+            Stot[Nc*nx+1:N*nx,end-nu+1:end-nu+1] = repeat(S,N-Nc,1)
+        end
         GS = Γ'*Stot
         H += GS + GS'
         f_theta += Stot'*Φ
@@ -198,20 +196,44 @@ subject to 	A U <= b + W*θ
 ```
 """
 function mpc2mpqp(mpc::MPC)
-    Φ,Γ=state_predictor(mpc.F-mpc.G*mpc.K,mpc.G,
-                        mpc.Np,mpc.Nc; move_block = mpc.settings.move_block);
+
+    F,G,C = mpc.F-mpc.G*mpc.K, mpc.G, mpc.C
+    Q,R,Rr,S = mpc.weights.Q, mpc.weights.R, mpc.weights.Rr, mpc.weights.S 
+
+    nr,nx = size(mpc.C)
+    nu = size(mpc.G,2)
+    n_extra_states = 0
+
+    Np,Nc = mpc.Np, mpc.Nc
+
+    if(mpc.settings.reference_tracking) # Reference tracking -> add reference to states
+        F = cat(F,I(nr),dims=(1,2))
+        G = [G;zeros(nr,nu)]
+        C = [C -I(nr)] 
+        S = [S;zeros(nr,nu)]
+        n_extra_states+= nr;
+    end
+    if(!iszero(Rr)) # Penalizing u -> add uold to states 
+        F = cat(F,zeros(nu,nu),dims=(1,2))
+        G = [G;I(nu)]
+        C = cat(C,I(nu), dims=(1,2))
+        Q = cat(Q,Rr,dims=(1,2))
+        S = [S;-Rr];
+        R+=Rr
+        n_extra_states+= nu;
+    end
+
+    Φ,Γ=state_predictor(F,G,Np,Nc; move_block = mpc.settings.move_block);
 
     # Create objective function 
-    H,f, f_theta, H_theta = objective(mpc,Φ,Γ)
+    nxe,nue= size(G) 
+    H,f,f_theta,H_theta = objective(Φ,Γ,C,
+                                    Q,R,S,
+                                    Np,Nc,nue,nxe,mpc.weights.Qf,mpc)
     H = (H+H')/2
     # Create Constraints 
-    A, bu, bl, W, issoft, isbinary, prio = create_constraints(mpc,Φ,Γ)
-
-    if(mpc.settings.reference_tracking)
-        W = [W zeros(size(W,1),size(f_theta,2)-mpc.nx)]; # Add zeros for r and u-
-    else
-        f_theta = f_theta[:,1:mpc.nx] # Remove terms for r and u-
-    end
+    # TODO: correctly handle extension... 
+    A, bu, bl, W, issoft, isbinary, prio = create_constraints(mpc,Φ,Γ;n_extra_states)
 
     senses = zeros(Cint,length(bu)); 
 
