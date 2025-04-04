@@ -5,7 +5,6 @@ using LinearMPC
 opts = LinearMPC.MPCSettings()
 opts.QP_double_sided=true
 mpQP,TH,mpc = LinearMPC.mpc_examples("invpend",settings=opts)
-# TODO handle double sided.. 
 empc = LinearMPC.ExplicitMPC(mpc;TH,build_tree=true)
 
 x0 = [0.0,0.0,0.0,0.0,0]; 
