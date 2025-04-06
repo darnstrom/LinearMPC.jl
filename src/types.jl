@@ -84,7 +84,8 @@ function MPC(F::AbstractMatrix{Float64},G::AbstractMatrix{Float64},C=nothing,Np=
     MPC(F,G,1,nx,nu,ny,
         Np,Nc,Nc,C,MPCWeights(nu,nx,ny),
         zeros(0),zeros(0),zeros(0),
-        Constraint[],MPCSettings(),nothing,nothing,zeros(nu,nx));
+        Constraint[],MPCSettings(),nothing,nothing,zeros(nu,nx))
+       
 end
 # TODO Also let C be vector of matrices...
 function MPC(F::Vector{AbstractMatrix{Float64}},G::Vector{AbstractMatrix{Float64}},C=nothing,Np=10; Nc = Np, Nb = Nc)
@@ -94,7 +95,7 @@ function MPC(F::Vector{AbstractMatrix{Float64}},G::Vector{AbstractMatrix{Float64
     MPC(F,G,1,nx,nu,ny,
         Np,Nc,Nc,C,MPCWeights(nu,nx,ny),
         zeros(0),zeros(0),zeros(0),
-        Constraint[],MPCSettings(),nothing,nothing,zeros(nx,nu));
+        Constraint[],MPCSettings(),nothing,nothing,zeros(nx,nu))
 end
 
 
@@ -114,3 +115,44 @@ mutable struct MPQP
     MPQP(H,f,f_theta,H_theta,A,b,W,bounds_table,senses) = new(H,f,f_theta,H_theta,A,b,W,bounds_table,senses) 
 end
 
+struct ParameterRange
+    xmin::Vector{Float64}
+    xmax::Vector{Float64}
+
+    rmin::Vector{Float64}
+    rmax::Vector{Float64}
+
+    umin::Vector{Float64}
+    umax::Vector{Float64}
+
+    dmin::Vector{Float64}
+    dmax::Vector{Float64}
+end
+
+function ParameterRange(mpc)
+
+    # states
+    xmin,xmax = -100*ones(mpc.nx), 100*ones(mpc.nx)
+
+    # references 
+    nr = mpc.settings.reference_tracking ? size(mpc.C,1) : 0
+    rmin,rmax = -100*ones(nr),100*ones(nr)
+
+    # previous control (for Δu)
+    if(!iszero(mpc.weights.Rr))
+        nmin,nmax = length(mpc.umin),length(mpc.umax)
+        nb = max(nmin,nmax)
+        umin = [mpc.umin;-100*ones(nb-nmin)]
+        umax = [mpc.umax;+100*ones(nb-nmax)]
+    else
+        umin,umax = zeros(0),zeros(0)
+    end
+
+    # constant disturbance (TODO: implement)
+    dmin,dmax = zeros(0),zeros(0)
+
+    return ParameterRange(xmin,xmax,
+                          rmin,rmax,
+                          umin,umax,
+                          dmin,dmax)
+end

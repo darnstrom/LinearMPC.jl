@@ -10,15 +10,18 @@ mutable struct ExplicitMPC
     settings::MPCSettings
 end
 
-function ExplicitMPC(mpc::MPC; TH=nothing, build_tree=false)
+function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false)
     mpQP = mpc.mpQP
     if isnothing(mpQP)
-        mpc2mpqp(mpc)
+        mpQP = mpc2mpqp(mpc)
     end
-    nth = size(mpQP.W,2)
-    if isnothing(TH)
-        TH = (lb = -ones(nth), ub = ones(nth))
+    if(range==nothing)
+        @warn("No parameter range defined. Using default limits [-100 and 100]. If you want a bigger/smaller region, create a ParameterRange")
+        range = ParameterRange(mpc)
     end
+
+    TH = range2region(range)
+
     # Transform into single-sided QP 
     if(mpc.settings.QP_double_sided) 
         ncstr = length(mpQP.bu);
@@ -41,7 +44,7 @@ function ExplicitMPC(mpc::MPC; TH=nothing, build_tree=false)
     sol,info = ParametricDAQP.mpsolve(mpQP, TH)
     # Build binary search tree
     bst = build_tree ? ParametricDAQP.build_tree(sol) : nothing 
-    return ExplicitMPC(mpc.nx,mpc.nu,mpc.ny,nth,
+    return ExplicitMPC(mpc.nx,mpc.nu,mpc.ny,length(TH.ub),
                        sol,mpQP, TH, bst,mpc.settings)
 end
 

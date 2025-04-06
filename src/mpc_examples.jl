@@ -24,11 +24,11 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
             mpc.settings=settings
         end
 
-        mpQP = mpc2mpqp(mpc);
-        P_theta =(A =zeros(8,0),
-                  b = zeros(0),
-                  lb =-[20*ones(5);20*ones(2);2],
-                  ub = [20*ones(5);20*ones(2);2])
+        range = ParameterRange(mpc);
+        range.xmax[:] .=  20*ones(5)
+        range.xmin[:] .= -20*ones(5)
+        range.rmax[:] .= 20*ones(2)
+        range.rmin[:] .= -20*ones(2)
 
     elseif(s=="dc_motor"||s=="dcmotor")
         A = [0 1.0 0 0; -51.21 -1 2.56 0; 0 0 0 1; 128 0 -6.401 -10.2];
@@ -51,7 +51,7 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         umin,umax = [-0.5],[0.5]
         set_bounds!(mpc;umin,umax)
 
-        add_constraint!(mpc,Ax=C[2:2,:],lb = [-0.5] ,ub = [0.5], ks = 2:mpc.Nc+1)
+        add_constraint!(mpc,Ax=C[2:2,:],lb = [-0.5] ,ub = [0.5], ks = 2:mpc.Nc+1, soft=true)
 
         if(isnothing(settings))
             mpc.settings.QP_double_sided = false;
@@ -61,11 +61,14 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
             mpc.settings=settings
         end
 
-        mpQP = mpc2mpqp(mpc);
-        P_theta =(A =zeros(6,0),
-                  b = zeros(0),
-                  lb =-[100*ones(4);0.79577;0.5023],
-                  ub = [100*ones(4);0.79577;0.5023;])
+        range = ParameterRange(mpc);
+        range.xmax[:] .= 100*ones(4)
+        range.xmin[:] .= -100*ones(4)
+        range.rmax[:] .= [100;0.5]
+        range.rmin[:] .=-[100;0.5]
+        range.umax[:] .= [0.5023]
+        range.umin[:] .= -[0.5023] 
+
     elseif(s=="aircraft")
         A = [-0.0151 -60.5651  0       -32.174 0 0;
              -0.0001   -1.3411  0.9929   0     0 0;
@@ -99,12 +102,11 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
             mpc.settings=settings
         end
 
-        mpQP = mpc2mpqp(mpc);
-        P_theta =(A =zeros(10,0),
-                  b = zeros(0),
-                  lb =-[20*ones(6);1;0.05;0.5;0.5],
-                  ub = [20*ones(6);1;0.05;0.5;0.5])
-        return mpQP,P_theta,mpc
+        range = ParameterRange(mpc);
+        range.xmax[:] .= 20*ones(6); 
+        range.xmin[:] .= -20*ones(6)
+        range.rmax[:] .= [1;0.05]; 
+        range.rmin[:] .= -[1;0.05]
     elseif(s=="chained-firstorder" || s=="chained")
         A = -Matrix(I,nx,nx)+diagm(-1=>ones(nx-1));
         B = [1;zeros(nx-1,1)];
@@ -130,11 +132,12 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
             mpc.settings=settings
         end
 
-        mpQP = mpc2mpqp(mpc);
-        P_theta =(A =zeros(2*nx+1,0),
-                  b = zeros(0),
-                  lb =[-10*ones(2*nx);-1],
-                  ub =[10*ones(2*nx);1])
+        range = ParameterRange(mpc);
+        range.xmax[:] .= 10*ones(nx)
+        range.xmin[:] .= -10*ones(nx)
+        range.rmax[:] .= 10*ones(nx)
+        range.rmin[:] .= -10*ones(nx)
+
     elseif(s=="mass-spring" || s=="mass" || s=="spring")
         κ=1; # spring
         λ=0; # damping
@@ -170,11 +173,9 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         end
 
         mpc.settings.reference_tracking= false
-        mpQP = mpc2mpqp(mpc);
-        P_theta =(A =zeros(nx,0),
-                  b = zeros(0),
-                  lb =-4.0*ones(nx),
-                  ub = 4.0*ones(nx))
+        range = ParameterRange(mpc);
+        range.xmax[:] .= 4*ones(nx)
+        range.xmin[:] .= -4*ones(nx)
 
     elseif(s=="nonlinear" || s == "nonlin")
         Ts = 0.2;
@@ -206,12 +207,11 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
             mpc.settings=settings
         end
         
-        mpQP = mpc2mpqp(mpc)
-        nth = size(mpQP.W,2)
-        P_theta = (A = zeros(nth,0),
-                   b = zeros(0),
-                   lb = -[0.5*ones(5);10;10;3;3;3],
-                   ub = [2.0;ones(4);10;10;3;3;3]) 
+        range = ParameterRange(mpc);
+        range.xmax[:] .= [2;ones(4)]
+        range.xmin[:] .= [-0.5*ones(5)]
+        range.rmax[:] .= 10*ones(2)
+        range.rmin[:] .=  -10*ones(2)
 
     elseif(s=="invpend_contact")
         # Inverted pendulum with contact forces
@@ -233,23 +233,21 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
 
         F,G = zoh(A,B,Ts);
 
-        # State constraints 
-        uby = [d;pi/10;1;1];
-        lby = -uby
 
         # MPC
         mpc = MPC(F,G,C,Np);
         mpc.Nc = Nc;
 
-        mpc.weights.Q = diagm(1*[1.0,1,1,1]); 
-        mpc.weights.R = diagm([1.0;1e-4*ones(6)])
-        mpc.weights.Rr = diagm(zeros(7))
+        mpc.weights.Q = [1.0,1,1,1]; 
+        mpc.weights.R = [1.0;1e-4*ones(6)]
+        mpc.weights.Rr = zeros(7)
         Qf,~ = ared(mpc.F,mpc.G[:,1],mpc.weights.R[1:1,1:1],mpc.weights.Q)
         mpc.weights.Qf= Qf 
 
+        # Control constraints
+        set_bounds!(mpc,umin = [-1.0;0;zeros(4)], umax=[1.0;1e30;1e30;ones(4)])
         mpc.constraints.lb = [-1.0;0;0;zeros(4)];
         mpc.constraints.ub = [1.0;1e30;1e30;ones(4)];
-        mpc.constraints.Ncc = mpc.Nc;
         mpc.constraints.binary_controls = collect(4:7);
 
         if(isnothing(settings))
@@ -260,6 +258,9 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
             mpc.settings=settings
         end
 
+        # State constraints 
+        uby = [d;pi/10;1;1];
+        lby = -uby
         mpc.constraints.Cy = [C];
         mpc.constraints.lby = [lby];
         mpc.constraints.uby = [uby];
@@ -321,13 +322,13 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         mpc.constraints.bg = [bg2;bg3];
         mpc.constraints.Ncg = mpc.Nc
 
-        mpQP = mpc2mpqp(mpc);
-        P_theta =(A =zeros(8,0),
-                  b = zeros(0),
-                  lb =-[20*ones(5);20*ones(2);2],
-                  ub = [20*ones(5);20*ones(2);2])
+        range = ParameterRange(mpc);
+        range.xmax[:] .= 20*ones(5)
+        range.xmin[:] .= -20*ones(5)
+        range.rmax[:] .= 20*ones(2)
+        range.rmin[:] .= -20*ones(2)
     end
-    return mpQP,P_theta,mpc
+    return mpc,range
 end
 
 function mpc_examples(s;settings=nothing)

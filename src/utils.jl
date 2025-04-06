@@ -51,3 +51,9 @@ function simulate(dynamics,mpc::Union{MPC,ExplicitMPC},x0,N_steps;r=nothing, cal
     end
     return xs,us,rs
 end
+
+function range2region(range)
+    lb = [range.xmin;range.rmin;range.umin]
+    ub = [range.xmax;range.rmax;range.umax]
+    return (A = zeros(length(ub), 0), b=zeros(0), lb=lb,ub=ub)
+end

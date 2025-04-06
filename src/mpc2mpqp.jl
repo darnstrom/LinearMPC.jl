@@ -38,10 +38,8 @@ end
 
 # Create A u <= b+W*theta 
 # correspoding to  lb<=u_i<=ub for i ∈ {1,2,...,Nc}
-function create_controlbounds(mpc::MPC, Γ, Φ;n_extra_states=0)
+function create_controlbounds(mpc::MPC, Γ, Φ; n_extra_states=0)
     nu,nx,Nb = mpc.nu, mpc.nx, mpc.Nb
-
-
     # Create bounds
     ub = repeat(mpc.umax,Nb,1)
     lb = repeat(mpc.umin,Nb,1)
@@ -49,17 +47,15 @@ function create_controlbounds(mpc::MPC, Γ, Φ;n_extra_states=0)
     #-K*X + V = -K*(Γ V + Φ x0) + V 
     #         = (I-K*Γ)V -K Φ x0
     if(!iszero(mpc.K))
-        K = kron(I(Nb),mpc.K)
-        A = (I-K*Γ[1:Nb*nx, 1:Nb*nu])
-        W = K*Φ[1:Nb*nx,:]
+        K = kron(I(Nb),[mpc.K zeros(nu,n_extra_states)])
+        A = (I-K*Γ[1:Nb*(nx+n_extra_states), 1:Nb*nu])
+        W = K*Φ[1:Nb*(nx+n_extra_states),:]
     else
         A = mpc.settings.QP_double_sided ? nothing : Matrix{Float64}(kron(I(mpc.Nb),I(nu)))
-        W = zeros(length(ub),nx)
+        W = zeros(length(ub),nx+n_extra_states)
     end
-    Matrix{Float64}(kron(I(mpc.Nb),I(nu)))
     ub = repeat(mpc.umax,mpc.Nb,1)
     lb = repeat(mpc.umin,mpc.Nb,1)
-    W = [W zeros(length(ub),n_extra_states)]
     return A,ub,lb, W 
 end
 
@@ -72,7 +68,7 @@ function create_general_constraints(mpc::MPC,Γ,Φ;n_extra_states=0)
     nu,nx = mpc.nu, mpc.nx 
 
     ubtot,lbtot = zeros(0,1),zeros(0,1);
-    Axtot,Autot = zeros(0,nx*(Np+1)), zeros(0,nu*Nc);
+    Axtot,Autot = zeros(0,(nx+n_extra_states)*(Np+1)), zeros(0,nu*Nc);
     issoft,isbinary = falses(0),falses(0)
     prios = zeros(Int,0)
 
@@ -83,18 +79,18 @@ function create_general_constraints(mpc::MPC,Γ,Φ;n_extra_states=0)
         mi = size(c.Au,1);
         Ni = length(c.ks);
         Autot = [Autot; kron(eyeU[c.ks,:],c.Au)]
-        Axtot = [Axtot; kron(eyeX[c.ks,:],c.Ax-c.Au*mpc.K)]
+        Axtot = [Axtot; kron(eyeX[c.ks,:],[c.Ax-c.Au*mpc.K zeros(mi,n_extra_states)])]
 
         ubtot = [ubtot;repeat(c.ub,Ni,1)]
         lbtot = [lbtot;repeat(c.lb,Ni,1)]
 
-        issoft = [isbinary;repeat([c.binary],mi*Ni)]
-        isbinary = [isbinary;repeat([c.soft],mi*Ni)]
+        issoft = [issoft;repeat([c.soft],mi*Ni)]
+        isbinary = [isbinary;repeat([c.binary],mi*Ni)]
         prios = [prios;repeat([c.prio],mi*Ni)]
     end
     A=Axtot*Γ+Autot;
     W = -Axtot*Φ;
-    W = [W zeros(size(W,1),n_extra_states)]
+    #W = [W zeros(size(W,1),n_extra_states)]
 
     return A,ubtot,lbtot,W,issoft,isbinary,prios
 end
@@ -124,7 +120,7 @@ function create_constraints(mpc,Φ,Γ;n_extra_states=0)
         Ag,bug,blg,Wg,softg,binaryg,priog = create_general_constraints(mpc,Γ,Φ;n_extra_states);
         my = Int(size(Ag,1));
         prios = [prios;priog]
-        issoft = [issoft; softg]; # Start with sofetning all general constraints
+        issoft = [issoft; softg];
         isbinary = [isbinary; binaryg]
         bu = [bu;bug];
         bl = [bl;blg];
@@ -160,7 +156,7 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
 
     # ==== From u' R u ====
     H = kron(I(Nc),R);
-    H[end-nu+1:end-nu+1] .+= (N-Nc)*R # To accound for Nc < N...
+    H[end-nu+1:end,end-nu+1:end] .+= (N-Nc)*R # To accound for Nc < N...
 
 
     # ==== From (Cx)'Q(Cx) ====
@@ -175,7 +171,7 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
     if(!iszero(S))
         Stot = [kron(I(Nc),S);zeros((N-Nc+1)*nx,Nc*nu)]
         if(mpc.settings.move_block==:Hold)
-            Stot[Nc*nx+1:N*nx,end-nu+1:end-nu+1] = repeat(S,N-Nc,1)
+            Stot[Nc*nx+1:N*nx,end-nu+1:end] = repeat(S,N-Nc,1)
         end
         GS = Γ'*Stot
         H += GS + GS'
@@ -245,8 +241,7 @@ function mpc2mpqp(mpc::MPC)
                                     Np,Nc,nue,nxe,mpc)
     H = (H+H')/2
     # Create Constraints 
-    # TODO: correctly handle extension... 
-    Φ,Γ=state_predictor(mpc.F,mpc.G,Np,Nc; move_block = mpc.settings.move_block);
+    #Φ,Γ=state_predictor(mpc.F,mpc.G,Np,Nc; move_block = mpc.settings.move_block);
     A, bu, bl, W, issoft, isbinary, prio = create_constraints(mpc,Φ,Γ;n_extra_states)
 
     senses = zeros(Cint,length(bu)); 
@@ -254,7 +249,8 @@ function mpc2mpqp(mpc::MPC)
     if(mpc.settings.soft_constraints)
         if(mpc.settings.explicit_soft && any(issoft))
             A = [A zeros(size(A,1))];
-            A[issoft[size(H,1)+1:end],end].=-1;
+            ns = length(issoft)-size(A,1)
+            A[issoft[ns+1:end],end].=-1;
 
             H = cat(H,mpc.weights.rho,dims=(1,2));
             f_theta =[f_theta;zeros(1,size(f_theta,2))];
