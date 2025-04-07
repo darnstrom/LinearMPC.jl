@@ -220,9 +220,21 @@ function mpc2mpqp(mpc::MPC)
         
         n_extra_states+= nr;
     end
-    if(!iszero(Rr)) # Penalizing u -> add uold to states 
+
+    if(!iszero(mpc.Gw)) # add measureable disturabnce to w
+        nw = size(mpc.Gw,2)
+        F = cat(F,I(nw),dims=(1,2))
+        F[1:nx,end-nw+1:end] .= mpc.Gw
+        G = [G;zeros(nw,nu)]
+        Qf = cat(Qf,zeros(nw,nw),dims=(1,2))
+        S = [S;zeros(nw,nu)]
+        C = [C zeros(size(C,1),nw)]
+        n_extra_states+= nw;
+    end
+
+    if(!iszero(Rr)) # Penalizing Δu -> add uold to states 
         F = cat(F,zeros(nu,nu),dims=(1,2))
-        #F[end-nu+1:end,1:nx] .= mpc.K
+        F[end-nu+1:end,1:nx] .= -mpc.K
         G = [G;I(nu)]
         C = cat(C,I(nu), dims=(1,2))
         Q = cat(Q,Rr,dims=(1,2))
@@ -231,6 +243,7 @@ function mpc2mpqp(mpc::MPC)
         R+=Rr
         n_extra_states+= nu;
     end
+
 
     Φ,Γ=state_predictor(F,G,Np,Nc; move_block = mpc.settings.move_block);
 

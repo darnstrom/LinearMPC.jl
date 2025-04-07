@@ -40,11 +40,13 @@ mutable struct MPC
     F::Union{Matrix{Float64},Vector{Matrix{Float64}}}
     G::Union{Matrix{Float64},Vector{Matrix{Float64}}}
     Ts::Float64
+    Gw::Matrix{Float64}
 
     # Dims
     nx::Int
     nu::Int
     ny::Int
+    nw::Int
 
     # Horizons 
     Np::Int # Prediction
@@ -77,22 +79,24 @@ mutable struct MPC
     K::Matrix{Float64}
 end
 
-function MPC(F::AbstractMatrix{Float64},G::AbstractMatrix{Float64},C=nothing,Np=10; Nc = Np, Nb = Nc)
+function MPC(F::AbstractMatrix{Float64},G::AbstractMatrix{Float64},C=nothing,Np=10; Nc = Np, Nb = Nc, Gw = nothing)
     nx,nu = size(G)
     C = isnothing(C) ? Matrix{Float64}(I,nr,nr) : C
+    Gw = isnothing(Gw) ? zeros(nx,0) : Gw
     ny = size(C,1);
-    MPC(F,G,1,nx,nu,ny,
+    MPC(F,G,1,Gw,nx,nu,ny,size(Gw,2),
         Np,Nc,Nc,C,MPCWeights(nu,nx,ny),
         zeros(0),zeros(0),zeros(0),
         Constraint[],MPCSettings(),nothing,nothing,zeros(nu,nx))
        
 end
 # TODO Also let C be vector of matrices...
-function MPC(F::Vector{AbstractMatrix{Float64}},G::Vector{AbstractMatrix{Float64}},C=nothing,Np=10; Nc = Np, Nb = Nc)
+function MPC(F::Vector{AbstractMatrix{Float64}},G::Vector{AbstractMatrix{Float64}},C=nothing,Np=10; Nc = Np, Nb = Nc, Gw = nothing)
     nx,nu = size(G[1]);
     C = isnothing(C) ? Matrix{Float64}(I,nr,nr) : C
+    Gw = isnothing(Gw) ? zeros(nx,0) : Gw
     ny = size(C,1);
-    MPC(F,G,1,nx,nu,ny,
+    MPC(F,G,1,Gw,nx,nu,ny,size(Gw,2),
         Np,Nc,Nc,C,MPCWeights(nu,nx,ny),
         zeros(0),zeros(0),zeros(0),
         Constraint[],MPCSettings(),nothing,nothing,zeros(nx,nu))
@@ -122,11 +126,11 @@ struct ParameterRange
     rmin::Vector{Float64}
     rmax::Vector{Float64}
 
-    umin::Vector{Float64}
-    umax::Vector{Float64}
-
     dmin::Vector{Float64}
     dmax::Vector{Float64}
+
+    umin::Vector{Float64}
+    umax::Vector{Float64}
 end
 
 function ParameterRange(mpc)
@@ -149,10 +153,16 @@ function ParameterRange(mpc)
     end
 
     # constant disturbance (TODO: implement)
-    dmin,dmax = zeros(0),zeros(0)
+    nw =  size(mpc.Gw,2)
+    if(iszero(mpc.Gw))
+        dmin,dmax = zeros(0),zeros(0)
+    else
+        nw =  size(mpc.Gw,2)
+        dmin,dmax = -100*ones(nw),100*ones(nw)
+    end
 
     return ParameterRange(xmin,xmax,
                           rmin,rmax,
-                          umin,umax,
-                          dmin,dmax)
+                          dmin,dmax,
+                          umin,umax)
 end

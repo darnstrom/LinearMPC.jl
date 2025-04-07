@@ -2,6 +2,7 @@ mutable struct ExplicitMPC
     nx::Int
     nu::Int
     ny::Int
+    nw::Int
     nth::Int 
     solution::ParametricDAQP.Solution
     mpQP
@@ -44,7 +45,7 @@ function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false)
     sol,info = ParametricDAQP.mpsolve(mpQP, TH)
     # Build binary search tree
     bst = build_tree ? ParametricDAQP.build_tree(sol) : nothing 
-    return ExplicitMPC(mpc.nx,mpc.nu,mpc.ny,length(TH.ub),
+    return ExplicitMPC(mpc.nx,mpc.nu,mpc.ny,mpc.nw,length(TH.ub),
                        sol,mpQP, TH, bst,mpc.settings)
 end
 

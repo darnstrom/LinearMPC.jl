@@ -1,16 +1,20 @@
 function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
     if(s=="inv_pend"||s=="invpend")
         # Inverted pendulum
-        A = [0 1 0 0 0; 0 -10 9.81 0 0 ; 0 0 0 1 0 ; 0 -20 39.24 0 2; 0 0 0 0 0];
-        B = [0;1.0;0;2.0;0];
-        C = [1.0 0 0 0 0 ; 0 0 1.0 0 0];
+        A = [0 1 0 0; 
+             0 -10 9.81 0; 
+             0 0 0 1; 
+             0 -20 39.24 0]; 
+        B = [0;1.0;0;2.0];
+        C = [1.0 0 0 0; 0 0 1.0 0];
         D = [0;0];
         Ts = 0.01;
 
-        F,G = zoh(A,B,Ts);
+        Bw = [0.0;0;0;2]
+        F,G,Gw=zoh(A,B,Ts;Bw);
         G = 100*G; # TODO: Make scaling more systematic...
 
-        mpc = MPC(F,G,C,Np,Nc=Nc);
+        mpc = MPC(F,G,C,Np,Nc=Nc,Gw=Gw);
 
         Q,R,Rr= [1.2^2,1], [0.0], [1.0]
         set_weights!(mpc;Q,R,Rr)
@@ -25,10 +29,12 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         end
 
         range = ParameterRange(mpc);
-        range.xmax[:] .=  20*ones(5)
-        range.xmin[:] .= -20*ones(5)
+        range.xmax[:] .=  20*ones(4)
+        range.xmin[:] .= -20*ones(4)
         range.rmax[:] .= 20*ones(2)
         range.rmin[:] .= -20*ones(2)
+        range.dmax[:] .= 20*ones(1)
+        range.dmin[:] .= -20*ones(1)
 
     elseif(s=="dc_motor"||s=="dcmotor")
         A = [0 1.0 0 0; -51.21 -1 2.56 0; 0 0 0 1; 128 0 -6.401 -10.2];

@@ -1,8 +1,14 @@
-function zoh(A,B,Ts)
+function zoh(A,B,Ts; Bw = nothing)
   dims = size(B);
   nx,nu = length(dims)==1 ? (dims[1],1) : dims
-  M = exp([A*Ts  B*Ts; zeros(nu, nx + nu)])
-  return M[1:nx, 1:nx], M[1:nx, nx+1:nx+nu]
+  if isnothing(Bw)
+      M = exp([A*Ts  B*Ts; zeros(nu, nx + nu)])
+      return M[1:nx, 1:nx], M[1:nx, nx+1:nx+nu]
+  else
+      nw = size(Bw,2);
+      M = exp([A*Ts  [B Bw]*Ts; zeros(nu+nw, nx + nu + nw)])
+      return M[1:nx, 1:nx], M[1:nx, nx+1:nx+nu], M[1:nx, nx+nu+1:nx+nu+nw]
+  end
 end
 
 function solve(mpc::MPC,θ)
@@ -24,8 +30,12 @@ function solve(empc::ExplicitMPC,θ)
     end
 end
 
-function compute_control(mpc::Union{MPC,ExplicitMPC},x;r=zeros(mpc.ny),uprev=zeros(mpc.nu))
-    θ = mpc.settings.reference_tracking ? [x;r;uprev] : x
+function compute_control(mpc::Union{MPC,ExplicitMPC},x;r=zeros(mpc.ny),uprev=zeros(mpc.nu),w=zeros(mpc.nw))
+    # Setup parameter vector
+    θ = x
+    if(mpc.settings.reference_tracking) θ=[θ;r] end
+    θ = [θ;w]
+    θ = [θ;uprev]
     return solve(mpc,θ)
 end
 
@@ -53,7 +63,7 @@ function simulate(dynamics,mpc::Union{MPC,ExplicitMPC},x0,N_steps;r=nothing, cal
 end
 
 function range2region(range)
-    lb = [range.xmin;range.rmin;range.umin]
-    ub = [range.xmax;range.rmax;range.umax]
+    lb = [range.xmin;range.rmin;range.dmin;range.umin]
+    ub = [range.xmax;range.rmax;range.dmax;range.umax]
     return (A = zeros(length(ub), 0), b=zeros(0), lb=lb,ub=ub)
 end
