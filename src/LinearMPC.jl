@@ -1,5 +1,7 @@
 module LinearMPC
 using LinearAlgebra
+using DAQPBase
+const DAQP = DAQPBase
 
 include("types.jl");
 
