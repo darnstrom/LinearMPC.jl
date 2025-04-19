@@ -57,7 +57,7 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         umin,umax = [-0.5],[0.5]
         set_bounds!(mpc;umin,umax)
 
-        add_constraint!(mpc,Ax=C[2:2,:],lb = [-0.5] ,ub = [0.5], ks = 2:mpc.Nc+1, soft=true)
+        add_constraint!(mpc,Ax=C[2:2,:],lb = [-0.5] ,ub = [0.5], ks = 2:mpc.Nc+2, soft=true)
 
         if(isnothing(settings))
             mpc.settings.QP_double_sided = false;
@@ -68,10 +68,10 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         end
 
         range = ParameterRange(mpc);
-        range.xmax[:] .= 100*ones(4)
-        range.xmin[:] .= -100*ones(4)
-        range.rmax[:] .= [100;0.5]
-        range.rmin[:] .=-[100;0.5]
+        range.xmax[:] = [ 4*pi  4*pi/Ts  4*pi*20  4*pi*20/Ts]
+        range.xmin[:] = -[ 4*pi  4*pi/Ts  4*pi*20  4*pi*20/Ts]
+        range.rmax[:] .= [5;0.5]
+        range.rmin[:] .=-[5;0.5]
         range.umax[:] .= [0.5023]
         range.umin[:] .= -[0.5023] 
 
@@ -215,7 +215,7 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         
         range = ParameterRange(mpc);
         range.xmax[:] .= [2;ones(4)]
-        range.xmin[:] .= [-0.5*ones(5)]
+        range.xmin[:] .= -0.5*ones(5)
         range.rmax[:] .= 10*ones(2)
         range.rmin[:] .=  -10*ones(2)
 

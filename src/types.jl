@@ -21,7 +21,7 @@ mutable struct MPCWeights
 end
 
 function MPCWeights(nu,nx,nr)
-    return MPCWeights(Matrix{Float64}(I,nr,nr),Matrix{Float64}(I,nu,nu),zeros(nu,nu),zeros(nx,nu),1e6,zeros(nx,nx))
+    return MPCWeights(Matrix{Float64}(I,nr,nr),Matrix{Float64}(I,nu,nu),zeros(nu,nu),zeros(nx,nu),1e6,zeros(0,0))
 end
 
 Base.@kwdef mutable struct MPCSettings

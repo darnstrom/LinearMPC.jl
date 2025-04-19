@@ -1,6 +1,4 @@
-using DAQP
-
-function codegen(mpc;fname="mpc_workspace", dir="codegen", opt_settings=nothing, src=true)
+function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=nothing, src=true)
     length(dir)==0 && (dir="codegen")
     dir[end] != '/' && (dir*="/") ## Make sure it is a correct directory path
     ## Generate mpQP
@@ -17,6 +15,19 @@ function codegen(mpc;fname="mpc_workspace", dir="codegen", opt_settings=nothing,
     # Append MPC-specific data/functions
     mpLDP = qp2ldp(mpc.mpQP,mpc.nu) 
     render_mpc_workspace(mpLDP,mpc.nu;fname,dir, fmode="a")
+
+    @info "Generated code for MPC controller" dir fname
+end
+
+function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=nothing, src=true)
+    length(dir)==0 && (dir="codegen")
+    dir[end] != '/' && (dir*="/") ## Make sure it is a correct directory path
+    ## Generate mpQP
+    ParametricDAQP.codegen(mpc.solution;dir,fname)
+    # TODO need some code for the MPC also...
+    #mpLDP = qp2ldp(mpc.mpQP,mpc.nu) 
+    #render_mpc_workspace(mpLDP,mpc.nu;fname,dir, fmode="a")
+    @info "Generated code for EMPC controller" dir fname
 end
 
 function render_mpc_workspace(mpLDP,n_control;fname="mpc_workspace",dir="",fmode="w")

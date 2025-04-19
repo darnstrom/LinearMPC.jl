@@ -148,9 +148,15 @@ end
 # MPC problem is formulated as 0.5 U' H U+th'F_theta' U + 0.5 th' H_theta th
 # (where th contains x0, r and u(k-1))
 function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
+
     pos_ids= findall(diag(Q).>0); # Ignore zero indices... (and negative)
     Q = Q[pos_ids,pos_ids];
-    C = C[pos_ids,:];
+    Cp = C[pos_ids,:];
+
+    pos_ids= findall(diag(Q).>0); # Ignore zero indices... (and negative)
+    Qf = Qf[pos_ids,pos_ids];
+    Cf = C[pos_ids,:];
+
 
     f_theta = zeros(Nc*nu,nx)
 
@@ -160,8 +166,8 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
 
 
     # ==== From (Cx)'Q(Cx) ====
-    CQCtot  = kron(I(N),C'*Q*C);
-    CQCtot = cat(CQCtot,Qf,dims=(1,2))
+    CQCtot  = kron(I(N),Cp'*Q*Cp);
+    CQCtot = cat(CQCtot,Cf'*Qf*Cf,dims=(1,2))
 
     H += Γ'*CQCtot*Γ; 
     f_theta += Γ'*CQCtot*Φ; # from x0
@@ -203,7 +209,7 @@ function mpc2mpqp(mpc::MPC)
 
     F,G,C = mpc.F-mpc.G*mpc.K, mpc.G, mpc.C
     Q,R,Rr,S = mpc.weights.Q, mpc.weights.R, mpc.weights.Rr, mpc.weights.S 
-    Qf = mpc.weights.Qf
+    Qf = isempty(mpc.weights.Qf) ? Q : mpc.weights.Qf
 
     nr,nx = size(mpc.C)
     nu = size(mpc.G,2)
@@ -216,7 +222,7 @@ function mpc2mpqp(mpc::MPC)
         G = [G;zeros(nr,nu)]
         C = [C -I(nr)] 
         S = [S;zeros(nr,nu)]
-        Qf = cat(Qf,zeros(nr,nr),dims=(1,2))
+        #Qf = cat(Qf,zeros(nr,nr),dims=(1,2))
         
         n_extra_states+= nr;
     end
@@ -226,7 +232,7 @@ function mpc2mpqp(mpc::MPC)
         F = cat(F,I(nw),dims=(1,2))
         F[1:nx,end-nw+1:end] .= mpc.Gw
         G = [G;zeros(nw,nu)]
-        Qf = cat(Qf,zeros(nw,nw),dims=(1,2))
+        #Qf = cat(Qf,zeros(nw,nw),dims=(1,2))
         S = [S;zeros(nw,nu)]
         C = [C zeros(size(C,1),nw)]
         n_extra_states+= nw;
