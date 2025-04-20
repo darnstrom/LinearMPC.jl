@@ -16,6 +16,34 @@ function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=not
     mpLDP = qp2ldp(mpc.mpQP,mpc.nu) 
     render_mpc_workspace(mpLDP,mpc.nu;fname,dir, fmode="a")
 
+    # Write simple example
+    nth,n_control = size(mpLDP.Xth)
+    fex = open(joinpath(dir,"example.c"), "w")
+    write(fex, """
+#include "$(fname).h"
+#include <stdio.h>
+
+int main(){
+    c_float control[$n_control];
+    c_float parameter[$nth];
+    int i;
+    // Initialize parameter
+    for(i=0; i< $nth; i++)
+        parameter[i] = 0;
+
+    // Get the control at the parameter
+    mpc_compute_control(parameter,control,&daqp_work);
+
+    printf("For the parameter\\n");
+    for(i=0; i< $nth; i++)
+        printf("%f\\n",parameter[i]);
+    printf("the control is\\n");
+    for(i=0; i< $n_control; i++)
+        printf("%f\\n",control[i]);
+}
+          """)
+    close(fex)
+
     @info "Generated code for MPC controller" dir fname
 end
 
@@ -51,6 +79,7 @@ function render_mpc_workspace(mpLDP,n_control;fname="mpc_workspace",dir="",fmode
     @printf(fh, "extern c_float dl[%d];\n\n", m);
 
     @printf(fh, "extern c_float Xth[%d];\n\n", n_control*nth);
+    @printf(fh, "extern c_float uscaling[%d];\n\n", n_control);
 
 
     # SRC 
@@ -58,6 +87,7 @@ function render_mpc_workspace(mpLDP,n_control;fname="mpc_workspace",dir="",fmode
     write_float_array(fsrc,mpLDP.du[:],"du");
     write_float_array(fsrc,mpLDP.dl[:],"dl");
     write_float_array(fsrc,mpLDP.Xth[:],"Xth");
+    write_float_array(fsrc,mpLDP.uscaling[:],"uscaling");
 
     fmpc_h = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_update_qp.h"), "r");
     write(fh, read(fmpc_h))
@@ -96,16 +126,20 @@ function qp2ldp(mpQP,n_control;normalize=true)
     du = mpQP.bu[:]+Δd 
     dl = mpQP.bl[:]+Δd
 
-    #Dth = Dth'[:,:]# Col major...
     if(normalize)
         # Normalize
+        norm_factors = zeros(size(Mext,1))
         for i in 1:size(Mext,1)
             norm_factor = norm(Mext[i,:],2)
+            norm_factors[i] = norm_factor
             Mext[i,:]./=norm_factor
             Dth[i,:]./=norm_factor
             du[i]/= norm_factor
             dl[i]/= norm_factor
         end
+        uscaling = norm_factors[1:n_control]
+    else
+        uscaling = ones(n_control)
     end
     Xth = -mpQP.H\mpQP.f_theta;
     Xth = Xth[1:n_control,:];
@@ -114,5 +148,5 @@ function qp2ldp(mpQP,n_control;normalize=true)
     Dth = Dth'[:,:]
     Xth = Xth'[:,:]
 
-    return (M=Mext[n+1:end,:], Dth=Dth, du=du, dl=dl, Xth=Xth)
+    return (M=Mext[n+1:end,:], Dth=Dth, du=du, dl=dl, Xth=Xth, uscaling=uscaling)
 end
