@@ -37,8 +37,8 @@ end
 # MPC controller
 mutable struct MPC 
     # Plant
-    F::Union{Matrix{Float64},Vector{Matrix{Float64}}}
-    G::Union{Matrix{Float64},Vector{Matrix{Float64}}}
+    F::Matrix{Float64}
+    G::Matrix{Float64}
     Ts::Float64
     Gw::Matrix{Float64}
 
@@ -79,27 +79,22 @@ mutable struct MPC
     K::Matrix{Float64}
 end
 
-function MPC(F::AbstractMatrix{Float64},G::AbstractMatrix{Float64},C=nothing,Np=10; Nc = Np, Nb = Nc, Gw = nothing)
+function MPC(F::AbstractMatrix{Float64},G::AbstractMatrix{Float64};
+        C=nothing,Np=10, Nc = Np, Nb = Nc, Ts = 1.0, Gw = nothing)
     nx,nu = size(G)
-    C = isnothing(C) ? Matrix{Float64}(I,nr,nr) : C
+    C = isnothing(C) ? Matrix{Float64}(I,nx,nx) : C
     Gw = isnothing(Gw) ? zeros(nx,0) : Gw
     ny = size(C,1);
-    MPC(F,G,1,Gw,nx,nu,ny,size(Gw,2),
+    MPC(F,G,Ts,Gw,nx,nu,ny,size(Gw,2),
         Np,Nc,Nc,C,MPCWeights(nu,nx,ny),
         zeros(0),zeros(0),zeros(0),
         Constraint[],MPCSettings(),nothing,nothing,zeros(nu,nx))
-       
 end
-# TODO Also let C be vector of matrices...
-function MPC(F::Vector{AbstractMatrix{Float64}},G::Vector{AbstractMatrix{Float64}},C=nothing,Np=10; Nc = Np, Nb = Nc, Gw = nothing)
-    nx,nu = size(G[1]);
-    C = isnothing(C) ? Matrix{Float64}(I,nr,nr) : C
-    Gw = isnothing(Gw) ? zeros(nx,0) : Gw
-    ny = size(C,1);
-    MPC(F,G,1,Gw,nx,nu,ny,size(Gw,2),
-        Np,Nc,Nc,C,MPCWeights(nu,nx,ny),
-        zeros(0),zeros(0),zeros(0),
-        Constraint[],MPCSettings(),nothing,nothing,zeros(nx,nu))
+
+function MPC(A::AbstractMatrix{Float64},B::AbstractMatrix{Float64}, Ts::Float64;
+        C=nothing,Np=10, Nc = Np, Nb = Nc, Bw = nothing)
+    F,G,Gw=zoh(A,B,Ts;Bw)
+    MPC(F,G;C,Np,Nc,Nb,Ts,Gw)
 end
 
 

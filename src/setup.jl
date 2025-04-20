@@ -16,12 +16,12 @@ function add_constraint!(mpc::MPC; Ax = nothing, Au= nothing, ub = zeros(0), lb 
     end
 
     # Get length of constraint
-    nlb,nub  =length(lb),length(ub) 
+    nlb,nub = length(lb),length(ub) 
     m = max(nlb,nub)
     m == 0 && return
 
     ub = nub == m ? ub : [ub;1e30*ones(m-nub)]
-    lb = nlb == m ? lb : [lb;-1e30*ones(m-nub)]
+    lb = nlb == m ? lb : [lb;-1e30*ones(m-nlb)]
 
     Ax = isnothing(Ax) ? zeros(m,mpc.nx) : Ax
     Au = isnothing(Au) ? zeros(m,mpc.nu) : Au

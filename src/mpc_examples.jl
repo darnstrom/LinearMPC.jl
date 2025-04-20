@@ -5,16 +5,12 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
              0 -10 9.81 0; 
              0 0 0 1; 
              0 -20 39.24 0]; 
-        B = [0;1.0;0;2.0];
+        B = 100*[0;1.0;0;2.0;;];
         C = [1.0 0 0 0; 0 0 1.0 0];
         D = [0;0];
         Ts = 0.01;
 
-        Bw = [0.0;0;0;2]
-        F,G,Gw=zoh(A,B,Ts;Bw);
-        G = 100*G; # TODO: Make scaling more systematic...
-
-        mpc = MPC(F,G,C,Np,Nc=Nc,Gw=Gw);
+        mpc = MPC(A,B,Ts;C,Nc,Np);
 
         Q,R,Rr= [1.2^2,1], [0.0], [1.0]
         set_weights!(mpc;Q,R,Rr)
@@ -38,16 +34,14 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
 
     elseif(s=="dc_motor"||s=="dcmotor")
         A = [0 1.0 0 0; -51.21 -1 2.56 0; 0 0 0 1; 128 0 -6.401 -10.2];
-        B = [0;0;0;1];
+        B = 440*[0;0;0;1.0;;];
         C = [1 0 0 0;1280 0 -64.01 0];
         Ts = 0.1;
         tau = 78.5398;
         C = C./[2*pi;2*tau]; # Scaling 
 
-        F,G= zoh(A,B,Ts);
-        G = 440*G;
 
-        mpc = MPC(F,G,C,Np, Nc = Nc);
+        mpc = MPC(A,B,Ts;C,Np,Nc);
 
         Q = [0.1^2, 0]; 
         R = [0.0]
@@ -88,7 +82,7 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         F,G = zoh(A,B,Ts);
         C = C./[1;200];
 
-        mpc = MPC(F,50*G,C,Np, Nc=Nc);
+        mpc = MPC(F,50*G;C,Np,Nc,Ts);
 
 
         Q = [10,10].^2; 
@@ -115,12 +109,12 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         range.rmin[:] .= -[1;0.05]
     elseif(s=="chained-firstorder" || s=="chained")
         A = -Matrix(I,nx,nx)+diagm(-1=>ones(nx-1));
-        B = [1;zeros(nx-1,1)];
+        B = [1;zeros(nx-1,1);;];
         C = Matrix(I,nx,nx);
         Ts = 1;
         F,G=zoh(A,B,Ts);
 
-        mpc = MPC(F,G,C,Np, Nc=Nc)
+        mpc = MPC(F,G;C,Np,Nc,Ts)
 
         Q = ones(nx);
         R = [0.0]
@@ -161,7 +155,7 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         Ts = 0.5;
         F,G=zoh(A,B,Ts);
 
-        mpc = MPC(F,G,C,Np, Nc=Nc)
+        mpc = MPC(F,G;C,Np,Nc,Ts)
 
         Q = 100*ones(nx);
         R = [1.0]
@@ -198,7 +192,7 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
             ]
         C  = [1.0 0 0 0 0; 0 1 2 0 0]
 
-        mpc = MPC(F,G,C,Np, Nc = Nc)
+        mpc = MPC(F,G;C,Np,Nc,Ts)
 
         Q = [1.0, 1.0]
         R = zeros(3)
@@ -234,27 +228,24 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
              1/(mc*l) -1/(mp*l) 1/(mp*l);]
         B = [B zeros(4,4)] # Add binary constraints...
 
-        C, D = I(4), zeros(4,1);
+        C, D = Matrix{Float64}(I,4,4), zeros(4,1);
         Ts = 0.05;
 
         F,G = zoh(A,B,Ts);
 
 
         # MPC
-        mpc = MPC(F,G,C,Np);
-        mpc.Nc = Nc;
+        mpc = MPC(F,G;C,Np,Nc);
 
-        mpc.weights.Q = [1.0,1,1,1]; 
-        mpc.weights.R = [1.0;1e-4*ones(6)]
-        mpc.weights.Rr = zeros(7)
+        Q = [1.0,1,1,1]; 
+        R = [1.0;1e-4*ones(6)]
+        Rr = zeros(7)
         Qf,~ = ared(mpc.F,mpc.G[:,1],mpc.weights.R[1:1,1:1],mpc.weights.Q)
-        mpc.weights.Qf= Qf 
+        set_weights!(mpc;Q,R,Rr,Qf)
 
         # Control constraints
         set_bounds!(mpc,umin = [-1.0;0;zeros(4)], umax=[1.0;1e30;1e30;ones(4)])
-        mpc.constraints.lb = [-1.0;0;0;zeros(4)];
-        mpc.constraints.ub = [1.0;1e30;1e30;ones(4)];
-        mpc.constraints.binary_controls = collect(4:7);
+        mpc.binary_controls = collect(4:7);
 
         if(isnothing(settings))
             mpc.settings.QP_double_sided= true;
@@ -267,10 +258,9 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         # State constraints 
         uby = [d;pi/10;1;1];
         lby = -uby
-        mpc.constraints.Cy = [C];
-        mpc.constraints.lby = [lby];
-        mpc.constraints.uby = [uby];
-        mpc.constraints.Ncy = [1:mpc.Nc]
+
+        set_output_bounds!(mpc, ymin = lby, ymax=uby,ks = 2:mpc.Nc)
+        #mpc.constraints.Ncy = [1:mpc.Nc]
 
         δ2l, δ2u = -uby[1]+l*lby[2]-d, -lby[1]+l*uby[2]-d
         dotδ2l, dotδ2u = -uby[3]+l*lby[4], -lby[3]+l*uby[4] 
@@ -323,16 +313,14 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
                -u3l-κ*d;
                u3u+κ*d]
 
-        mpc.constraints.Au = [Au2;Au3]
-        mpc.constraints.Ax = [Ax;-Ax]
-        mpc.constraints.bg = [bg2;bg3];
-        mpc.constraints.Ncg = mpc.Nc
+
+        add_constraint!(mpc, Au = [Au2;Au3], Ax = [Ax;-Ax],
+                        ub = [bg2;bg3],
+                        ks = 2:mpc.Nc)
 
         range = ParameterRange(mpc);
-        range.xmax[:] .= 20*ones(5)
-        range.xmin[:] .= -20*ones(5)
-        range.rmax[:] .= 20*ones(2)
-        range.rmin[:] .= -20*ones(2)
+        range.xmax[:] .= 20*ones(4)
+        range.xmin[:] .= -20*ones(4)
     end
     return mpc,range
 end

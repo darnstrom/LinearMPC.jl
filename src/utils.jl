@@ -3,7 +3,7 @@ function zoh(A,B,Ts; Bw = nothing)
   nx,nu = length(dims)==1 ? (dims[1],1) : dims
   if isnothing(Bw)
       M = exp([A*Ts  B*Ts; zeros(nu, nx + nu)])
-      return M[1:nx, 1:nx], M[1:nx, nx+1:nx+nu]
+      return M[1:nx, 1:nx], M[1:nx, nx+1:nx+nu],nothing
   else
       nw = size(Bw,2);
       M = exp([A*Ts  [B Bw]*Ts; zeros(nu+nw, nx + nu + nw)])
