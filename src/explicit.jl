@@ -54,6 +54,7 @@ function plot_regions(mpc::ExplicitMPC;fix_ids=nothing,fix_vals=nothing,opts=Dic
     ParametricDAQP.plot_regions(mpc.solution;fix_ids,fix_vals,opts)
 end
 
-function plot_feedback(mpc::ExplicitMPC;u_id=0,fix_ids=nothing,fix_vals=nothing,opts=Dict{Symbol,Any}())
+function plot_feedback(mpc::ExplicitMPC;u_id=1,fix_ids=nothing,fix_vals=nothing,opts=Dict{Symbol,Any}())
+    push!(opts,:zlabel=>"\\large\$u_{"*string(u_id)*"}\$")
     ParametricDAQP.plot_solution(mpc.solution;z_id=u_id,fix_ids,fix_vals,opts)
 end
