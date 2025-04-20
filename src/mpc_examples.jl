@@ -1,4 +1,4 @@
-function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
+function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
     if(s=="inv_pend"||s=="invpend")
         # Inverted pendulum
         A = [0 1 0 0; 
@@ -108,6 +108,7 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
         range.rmax[:] .= [1;0.05]; 
         range.rmin[:] .= -[1;0.05]
     elseif(s=="chained-firstorder" || s=="chained")
+        nx = haskey(params,:nx) ? params[:nx] : 1
         A = -Matrix(I,nx,nx)+diagm(-1=>ones(nx-1));
         B = [1;zeros(nx-1,1);;];
         C = Matrix(I,nx,nx);
@@ -141,6 +142,7 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
     elseif(s=="mass-spring" || s=="mass" || s=="spring")
         κ=1; # spring
         λ=0; # damping
+        nx = haskey(params,:nx) ? params[:nx] : 1
         nx = iseven(nx) ? nx : nx-1 # position+velocity=>2nm states
         nm = Int64(nx/2); # number of masses
         eye = Matrix(I,nm,nm)
@@ -215,6 +217,9 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
 
     elseif(s=="invpend_contact")
         # Inverted pendulum with contact forces
+        nwalls = haskey(params,:nwalls) ? params[:nwalls] : 2
+        nwalls = min(nwalls,2)
+
         mc,mp,g,l,d=1,1,10,1,0.5;
         κ,ν = 100,10;
 
@@ -313,10 +318,10 @@ function mpc_examples(s, Np, Nc;nx=0,settings=nothing)
                -u3l-κ*d;
                u3u+κ*d]
 
-
-        add_constraint!(mpc, Au = [Au2;Au3], Ax = [Ax;-Ax],
-                        ub = [bg2;bg3],
-                        ks = 2:mpc.Nc)
+        add_constraint!(mpc, Au = Au2, Ax =  Ax, ub = bg2, ks = 2:mpc.Nc)
+        if(nwalls == 2)
+            add_constraint!(mpc, Au = Au3, Ax = -Ax, ub = bg3, ks = 2:mpc.Nc)
+        end
 
         range = ParameterRange(mpc);
         range.xmax[:] .= 20*ones(4)
