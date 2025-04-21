@@ -11,6 +11,7 @@ $$
         &&& {\underline{b} \leq A_x x_k + A_u u_k  \leq \overline{b}}, \quad k=0, \dots, N-1
         \end{align}
 $$
+
 where $\hat{x}$ is the current state and $r$ is the desired reference value of $Cx$.
 
 
