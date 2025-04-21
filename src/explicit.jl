@@ -9,6 +9,7 @@ mutable struct ExplicitMPC
     TH
     bst
     settings::MPCSettings
+    K::Matrix{Float64} # Prestabilizing feedback
 end
 
 function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false)
@@ -40,14 +41,20 @@ function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false)
     mpQP = merge(mpQP,(out_inds=1:mpc.nu,)) # Only compute control at first time step
     # Compute mpQP solution
     sol,info = ParametricDAQP.mpsolve(mpQP, TH)
+    empc = ExplicitMPC(mpc.nx,mpc.nu,mpc.ny,mpc.nw,length(TH.ub),
+                       sol,mpQP, TH, nothing,mpc.settings,mpc.K)
+
     # Build binary search tree
-    bst = build_tree ? ParametricDAQP.build_tree(sol) : nothing 
-    return ExplicitMPC(mpc.nx,mpc.nu,mpc.ny,mpc.nw,length(TH.ub),
-                       sol,mpQP, TH, bst,mpc.settings)
+    build_tree && build_tree!(empc)
+
+    return empc
 end
 
 function build_tree!(mpc::ExplicitMPC)
     mpc.bst  = ParametricDAQP.build_tree(mpc.solution)
+    for i in 1:length(mpc.bst.feedbacks) # Correct for prestabilizing feedback
+        mpc.bst.feedbacks[i][1:mpc.nx,:] -= mpc.K'
+    end
 end
 
 function plot_regions(mpc::ExplicitMPC;fix_ids=nothing,fix_vals=nothing,opts=Dict{Symbol,Any}())

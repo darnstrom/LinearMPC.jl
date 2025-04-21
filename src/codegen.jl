@@ -14,6 +14,7 @@ function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=not
 
     # Append MPC-specific data/functions
     mpLDP = qp2ldp(mpc.mpQP,mpc.nu) 
+    mpLDP.Xth[1:mpc.nx,:] -= mpc.K' #Account for prestabilizing feedback
     render_mpc_workspace(mpLDP,mpc.nu;fname,dir, fmode="a")
 
     @info "Generated code for MPC controller" dir fname

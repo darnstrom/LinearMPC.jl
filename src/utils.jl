@@ -20,7 +20,7 @@ function solve(mpc::MPC,θ)
     DAQP.update(mpc.opt_model,nothing,f,nothing,bu,bl,nothing)
     udaqp,fval,exitflag,info = DAQP.solve(mpc.opt_model)
     @assert(exitflag>=1)
-    return udaqp[1:mpc.nu]
+    return udaqp[1:mpc.nu]-mpc.K*θ[1:mpc.nx]
 end
 
 function solve(empc::ExplicitMPC,θ)
