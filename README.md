@@ -5,12 +5,13 @@ A simplified version (see the documentation for a more complete formulation) of 
 
 $$
 \begin{align}
-        &\underset{\mathbf{u}}{\text{minimize}}&& \frac{1}{2}\sum_{k=0}^{N_p-1} {\left(x_{k}^T Q x_{k} + u_{k}^T R u_{k} + \Delta u_{k}^T R_r \Delta u_k\right)}\\
-        &\text{subject to} &&\textcolor{red}{x_{k+1} = F x_k + G u_k}, \quad k=0,\dots, N_p-1\\
-        &&& x_0 = x \\
-        &&& {\underline{b} \leq A_x x_k + A_u u_k  \overline{b}}, \quad k=0, \dots, N-1
+        &\underset{u_0,\dots,u_{N-1}}{\text{minimize}}&& \frac{1}{2}\sum_{k=0}^{N-1} {\left(C(x_{k}-r)^T Q (C x_{k}-r) + u_{k}^T R u_{k} + \Delta u_{k}^T R_r \Delta u_k\right)}\\
+        &\text{subject to} &&{x_{k+1} = F x_k + G u_k}, \quad k=0,\dots, N-1\\
+        &&& x_0 = \hat{x} \\
+        &&& {\underline{b} \leq A_x x_k + A_u u_k  \leq \overline{b}}, \quad k=0, \dots, N-1
         \end{align}
 $$
+where $\hat{x}$ is the current state and $r$ is the desired reference value of $Cx$.
 
 
 ## Example 
