@@ -2,6 +2,7 @@
 **LinearMPC.jl** is a julia package for Model Predictive Control (MPC) of linear systems. Its aim is to produce _high-performant_ and _lightweight_ C-code that can easily be used on embedded systems. The package both support code generation for the Quadratic Programming solver [DAQP](https://github.com/darnstrom/daqp), and for explicit solution computed by [ParametricDAQP.jl](https://github.com/darnstrom/ParametricDAQP.jl). 
 
 A simplified version (see the documentation for a more complete formulation) of the problem solved is
+
 $$
 \begin{align}
         &\underset{\mathbf{u}}{\text{minimize}}&& \frac{1}{2}\sum_{k=0}^{N_p-1} {\left(x_{k}^T Q x_{k} + u_{k}^T R u_{k} + \Delta u_{k}^T R_r \Delta u_k\right)}\\
@@ -15,6 +16,7 @@ $$
 ## Example 
 The following code show a simple MPC example of controlling an inverted pendulum on a cart, inspired by [this](https://se.mathworks.com/help/mpc/ug/mpc-control-of-an-inverted-pendulum-on-a-cart.html) example in the Model Predictive Toolbox in MATLAB.
 ```julia
+using LinearMPC
 # Continuous time system dx = A x + B u
 A = [0 1 0 0; 0 -10 9.81 0; 0 0 0 1; 0 -20 39.24 0]; 
 B = 100*[0;1.0;0;2.0;;];
@@ -39,7 +41,7 @@ A control state `x` and setpoint `r` can then be computed with
 ```julia
 r = [1;0];
 x = [0;0;0;0]
-u = compute_control(mpc,x;r,uprev)
+u = compute_control(mpc,x;r)
 ```
 
 The following code then generates embeddable C-code for the MPC controller
@@ -48,11 +50,11 @@ LinearMPC.codegen(mpc;dir="codgen_dir")
 ```
 The directory `codegen_dir` then contain C-code for setting up optimization problems and for solving them with the Quadratic Programming solver [DAQP](https://github.com/darnstrom/daqp).
 
-The C-function `mpc_compute_control(control, state, setpoint,disturbances)` populates the floating-point array `control` with the optimal control given values of the current `state`, `setpoint`, and measured `disturbance` (all of which are also floating-point arrays).
+The C-function `mpc_compute_control(control, state, reference, disturbance)` populates the floating-point array `control` with the optimal control given the current `state`, `reference`, and measured `disturbance` (all of which are also floating-point arrays).
 
 
 ## Citation
-If you find the package useful consider citing one of the following papers: 
+If you find the package useful consider citing one of the following papers, which are the backbones of the package: 
 ```
 @article{arnstrom2022daqp,
   author={Arnström, Daniel and Bemporad, Alberto and Axehill, Daniel},
