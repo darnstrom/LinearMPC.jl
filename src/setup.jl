@@ -1,3 +1,14 @@
+function setup!(mpc::MPC)
+    mpc.mpQP = mpc2mpqp(mpc)
+    mpc.opt_model = DAQP.Model()
+    if(mpc.settings.QP_double_sided)
+        bu,bl = mpc.mpQP.bu[:],mpc.mpQP.bl[:]
+    else
+        bu,bl = mpc.mpQP.b[:], -1e30*ones(length(mpc.mpQP.b))
+    end
+    DAQP.setup(mpc.opt_model, mpc.mpQP.H,mpc.mpQP.f[:],mpc.mpQP.A,bu,bl,mpc.mpQP.senses)
+end
+
 function set_bounds!(mpc::MPC; umin=zeros(0), umax=zeros(0))
     nmin,nmax = length(umin),length(umax)
     nb = max(nmin,nmax)
@@ -7,7 +18,6 @@ function set_bounds!(mpc::MPC; umin=zeros(0), umax=zeros(0))
     mpc.umin = [umin;-1e30*ones(nb-nmin)]
     mpc.umax = [umax;+1e30*ones(nb-nmax)]
 end
-
 
 function add_constraint!(mpc::MPC; Ax = nothing, Au= nothing, ub = zeros(0), lb = zeros(0), 
         ks = 2:mpc.Np, soft=false, binary=false, prio = 0)
@@ -85,7 +95,6 @@ end
 
 function update_dynamics!(mpc::MPC,F,G)
     mpc.F,mpc.G = F,G
-    mpc.mpQP = mpc2mpqp(mpc)
+    setup!(mpc)
     return
 end
-

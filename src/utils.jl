@@ -12,7 +12,7 @@ function zoh(A,B,Ts; Bw = nothing)
 end
 
 function solve(mpc::MPC,θ)
-    isnothing(mpc.mpQP) && mpc2mpqp(mpc) # Esnure mpqp computed
+    isnothing(mpc.mpQP) && setup!(mpc) # ensure mpQP is setup 
     bth = mpc.mpQP.W*θ
     bu = mpc.settings.QP_double_sided ? mpc.mpQP.bu + bth : mpc.mpQP.b + bth
     bl = mpc.settings.QP_double_sided ? mpc.mpQP.bl + bth : nothing 

@@ -23,7 +23,6 @@ function state_predictor(F,G,Np,Nc;move_block=:Hold)
         Gtot=F*Gtot
     end
     # Set ui = u_Nc for i>Nc 
-    # TODO add infinite LQR gain alternative
     for i in Nc+1:Np
         Γ[(nx*i+1):nx*(i+1),:] .= F*Γ[(nx*(i-1)+1):nx*i,:];
         if(move_block==:Hold)
@@ -97,7 +96,6 @@ end
 
 # Compute A,b,W such that the constraints for a given MPC structure
 # are on the form A U<=b W th
-
 function create_constraints(mpc,Φ,Γ;n_extra_states=0)
     n = size(Γ,2);
     A = zeros(0,n);
@@ -130,18 +128,6 @@ function create_constraints(mpc,Φ,Γ;n_extra_states=0)
     # TODO remove inf bounds...
 
     return A,bu,bl,W,issoft,isbinary,prios
-end
-
-
-# Return V and W such that
-# Δu = V*u+W u_minus
-# u = inv(V)*Δu - inv(V) W u_minus
-# Δu' D Δu = u'V'*D*Vu+2*(V' D W u_minus)' u + u_minus W' D W u_minus
-# I.e. : Hd = V'DV, f_theta = 2V'DW, Hth = W'DW
-function rate_to_abs(nu,N)
-    V = diagm(0=>ones(nu*N),-nu=>-ones(nu*(N-1)));
-    W = [-I(nu);zeros(nu*(N-1),nu)];
-    return V,W
 end
 
 # Create H, f_theta, H_theta such that the objective function for a given
@@ -185,7 +171,7 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
     end
 
 
-    # Add regularization for binaries (won't change the solution)
+    # Add regularization for binary variables (won't change the solution)
     f = zeros(size(H,1),1); 
     fbin_part = zeros(mpc.nu)
     fbin_part[mpc.binary_controls] .= 1 
@@ -193,7 +179,7 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
     f -= 0.5*fbin
     H += diagm(fbin)
 
-    return H,f,f_theta,H_theta
+    return (H+H')/2,f,f_theta,H_theta
 end
 
 """
@@ -258,9 +244,7 @@ function mpc2mpqp(mpc::MPC)
     H,f,f_theta,H_theta = objective(Φ,Γ,C,
                                     Q,R,S,Qf,
                                     Np,Nc,nue,nxe,mpc)
-    H = (H+H')/2
     # Create Constraints 
-    #Φ,Γ=state_predictor(mpc.F,mpc.G,Np,Nc; move_block = mpc.settings.move_block);
     A, bu, bl, W, issoft, isbinary, prio = create_constraints(mpc,Φ,Γ;n_extra_states)
 
     senses = zeros(Cint,length(bu)); 
@@ -299,12 +283,4 @@ function mpc2mpqp(mpc::MPC)
                 A=Matrix{Float64}(A), b=b, W=W, senses=senses,
                 bounds_table=bounds_table, prio=prio)
     end
-    mpc.mpQP = mpQP
-    mpc.opt_model = DAQP.Model()
-    if(mpc.settings.QP_double_sided)
-        DAQP.setup(mpc.opt_model,H[:,:],f[:],A,bu[:],bl[:],senses[:])
-    else
-        DAQP.setup(mpc.opt_model,H[:,:],f[:],A,mpQP.b[:],-1e30*ones(length(mpQP.b)),senses[:])
-    end
-    return mpQP
 end
