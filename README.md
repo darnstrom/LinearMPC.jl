@@ -27,7 +27,7 @@ C = [1.0 0 0 0; 0 0 1.0 0];
 
 # create an MPC control with sample time 0.01, prediction horizon 10 and control horizon 5 
 Np,Nc = 10,5
-Ts = 0.01;
+Ts = 0.01
 mpc = LinearMPC.MPC(A,B,Ts;C,Nc,Np);
 
 # set the objective functions weights
@@ -39,9 +39,9 @@ umin,umax = [-2.0], [2.0]
 set_bounds!(mpc; umin,umax)
 ```
 
-A control state `x` and setpoint `r` can then be computed with 
+A control given the state `x` and setpoint `r` can then be computed with
 ```julia
-r = [1;0];
+r = [1;0]
 x = [0;0;0;0]
 u = compute_control(mpc,x;r)
 ```
@@ -56,7 +56,7 @@ The C-function `mpc_compute_control(control, state, reference, disturbance)` pop
 
 
 ## Citation
-If you find the package useful consider citing one of the following papers, which are the backbones of the package: 
+If you find the package useful, consider citing one of the following papers, which are the backbones of the package:
 ```
 @article{arnstrom2022daqp,
   author={Arnström, Daniel and Bemporad, Alberto and Axehill, Daniel},
