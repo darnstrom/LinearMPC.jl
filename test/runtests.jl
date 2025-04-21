@@ -36,7 +36,6 @@ global templib
         if(!isnothing(Sys.which("gcc")))
             testlib = "mpctest."* Base.Libc.Libdl.dlext
             run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
-            theta = [5;5;zeros(5)]
             u,x,r,d = zeros(1), [5.0;5;0;0], zeros(2), zeros(0)
             global templib = joinpath(srcdir,testlib)
             ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble},Ptr{Cdouble},Ptr{Cdouble}), u,x,r,d)
@@ -50,6 +49,19 @@ global templib
         LinearMPC.build_tree!(empc)
         control = LinearMPC.compute_control(empc,[5.0;5;0;0])
         @test norm(control.-1.7612519326) < 1e-6
+        # Code generation
+        srcdir = tempname()
+        LinearMPC.codegen(empc;dir=srcdir,float_type="double")
+        src = [f for f in readdir(srcdir) if last(f,1) == "c" && f != "example.c"]
+        @test !isempty(src)
+        if(!isnothing(Sys.which("gcc")))
+            testlib = "mpctest."* Base.Libc.Libdl.dlext
+            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+            u,x,r,d = zeros(1), [5.0;5;0;0], zeros(2), zeros(0)
+            global templib = joinpath(srcdir,testlib)
+            ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble},Ptr{Cdouble},Ptr{Cdouble}), u,x,r,d)
+            @test norm(u.-1.7612519326) < 1e-6
+        end
     end
 
 end
