@@ -46,6 +46,9 @@ function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false)
                        sol,mpQP, TH, bst,mpc.settings)
 end
 
+function build_tree!(mpc::ExplicitMPC)
+    mpc.bst  = ParametricDAQP.build_tree(mpc.solution)
+end
 
 function plot_regions(mpc::ExplicitMPC;fix_ids=nothing,fix_vals=nothing,opts=Dict{Symbol,Any}())
     ParametricDAQP.plot_regions(mpc.solution;fix_ids,fix_vals,opts)

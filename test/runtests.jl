@@ -32,24 +32,24 @@ global templib
         srcdir = tempname()
         LinearMPC.codegen(mpc;dir=srcdir)
         src = [f for f in readdir(srcdir) if last(f,1) == "c" && f != "example.c"]
-        testlib = "mpctest."* Base.Libc.Libdl.dlext
+        @test !isempty(src)
         if(!isnothing(Sys.which("gcc")))
+            testlib = "mpctest."* Base.Libc.Libdl.dlext
             run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+            theta = [5;5;zeros(5)]
+            control = ones(1)
+            global templib = joinpath(srcdir,testlib)
+            ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble}), theta, control)
+            @test norm(control.-1.7612519326) < 1e-6
         end
-        theta = [5;5;zeros(5)]
-        control = ones(1)
-        global templib = joinpath(srcdir,testlib)
-        ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble}), theta, control)
-        @test norm(control.-1.7612519326) < 1e-6
     end
 
     @testset "Explicit MPC" begin
-        mpc,range = LinearMPC.mpc_examples("dcmotor")
-        # Adjust range
-        range.xmin[1:2] = -[0.3;2.0]
-        range.xmax[1:2] = [0.3;2.0]
-        # Compute explicit controller over range
+        mpc,range = LinearMPC.mpc_examples("invpend")
         empc = LinearMPC.ExplicitMPC(mpc;range)
+        LinearMPC.build_tree!(empc)
+        control = LinearMPC.compute_control(empc,[5.0;5;0;0])
+        @test norm(control.-1.7612519326) < 1e-6
     end
 
 end
