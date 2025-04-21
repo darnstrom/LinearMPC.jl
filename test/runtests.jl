@@ -31,7 +31,7 @@ global templib
         mpc,range = LinearMPC.mpc_examples("invpend")
         srcdir = tempname()
         LinearMPC.codegen(mpc;dir=srcdir)
-        src = [f for f in readdir(srcdir) if last(f,1) == "c" && f != "example.c"]
+        src = [f for f in readdir(srcdir) if last(f,1) == "c"]
         @test !isempty(src)
         if(!isnothing(Sys.which("gcc")))
             testlib = "mpctest."* Base.Libc.Libdl.dlext

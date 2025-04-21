@@ -16,34 +16,6 @@ function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=not
     mpLDP = qp2ldp(mpc.mpQP,mpc.nu) 
     render_mpc_workspace(mpLDP,mpc.nu;fname,dir, fmode="a")
 
-    # Write simple example
-    nth,n_control = size(mpLDP.Xth)
-    fex = open(joinpath(dir,"example.c"), "w")
-    write(fex, """
-#include "$(fname).h"
-#include <stdio.h>
-
-int main(){
-    c_float control[$n_control];
-    c_float parameter[$nth];
-    int i;
-    // Initialize parameter
-    for(i=0; i< $nth; i++)
-        parameter[i] = 0;
-
-    // Get the control at the parameter
-    mpc_compute_control(parameter,control);
-
-    printf("For the parameter\\n");
-    for(i=0; i< $nth; i++)
-        printf("%f\\n",parameter[i]);
-    printf("the control is\\n");
-    for(i=0; i< $n_control; i++)
-        printf("%f\\n",control[i]);
-}
-          """)
-    close(fex)
-
     @info "Generated code for MPC controller" dir fname
 end
 
