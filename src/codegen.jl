@@ -18,14 +18,56 @@ function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=not
     @info "Generated code for MPC controller" dir fname
 end
 
-function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=nothing, src=true)
+function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=nothing, src=true,float_type="float")
     length(dir)==0 && (dir="codegen")
     dir[end] != '/' && (dir*="/") ## Make sure it is a correct directory path
-    ## Generate mpQP
-    ParametricDAQP.codegen(mpc.solution;dir,fname)
-    # TODO need some code for the MPC also...
-    #mpLDP = qp2ldp(mpc.mpQP,mpc.nu) 
-    #render_mpc_workspace(mpLDP,mpc.nu;fname,dir, fmode="a")
+    # Generate code for explicit solution
+    ParametricDAQP.codegen(mpc.solution;dir,fname,float_type)
+
+    # Generate code for MPC
+    nth = mpc.nx+mpc.nr+mpc.nw+mpc.nuprev
+
+    # HEADER
+    fh = open(joinpath(dir,"mpc_compute_control.h"), "w")
+    hguard = "MPC_COMPUTE_CONTROL_H"
+    @printf(fh, "#ifndef %s\n",   hguard);
+    @printf(fh, "#define %s\n\n", hguard);
+
+    write(fh, "typedef $float_type c_float;\n")
+    @printf(fh, "#define N_STATE %d\n",mpc.nx);
+    @printf(fh, "#define N_REFERENCE %d\n",mpc.nr);
+    @printf(fh, "#define N_DISTURBANCE %d\n",mpc.nw);
+    @printf(fh, "#define N_CONTROL_PREV %d\n",mpc.nuprev);
+
+    @printf(fh, "extern c_float mpc_parameter[%d];\n", nth);
+
+    @printf(fh, "int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* disturbance); \n");
+    @printf(fh, "#endif // ifndef %s\n", hguard);
+    close(fh)
+
+    # SOURCE
+    fsrc = open(joinpath(dir,"mpc_compute_control.c"), "w")
+    write(fsrc, """
+#include "mpc_compute_control.h"
+#include "$fname.h"
+
+int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* disturbance){
+    int i,j;
+    c_float mpc_parameter[$nth];
+    // update parameter
+    for(i=0,j=0;j<N_STATE;i++, j++) mpc_parameter[i] = state[j];
+    for(j=0;j<N_REFERENCE;i++, j++) mpc_parameter[i] = reference[j];
+    for(j=0;j<N_DISTURBANCE;i++, j++) mpc_parameter[i] = disturbance[j];
+    for(j=0;j<N_CONTROL_PREV;i++, j++) mpc_parameter[i] = control[j];
+
+    // Get the solution at the parameter
+    $(fname)_evaluate(mpc_parameter,control);
+
+    return 1;
+}
+          """)
+    close(fsrc)
+
     @info "Generated code for EMPC controller" dir fname
 end
 
@@ -51,6 +93,8 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w")
     @printf(fh, "#define N_CONTROL_PREV %d\n",mpc.nuprev);
 
     @printf(fh, "#define N_CONTROL %d\n\n",mpc.nu);
+
+    @printf(fh, "extern c_float mpc_parameter[%d];\n", nth);
 
     @printf(fh, "extern c_float Dth[%d];\n", nth*m);
     @printf(fh, "extern c_float du[%d];\n", m);
