@@ -42,8 +42,9 @@ end
 
 function simulate(dynamics,mpc::Union{MPC,ExplicitMPC},x0,N_steps;r=nothing, callback=(x,u,k)->nothing)
     x,u = x0,zeros(mpc.nu)
+
     
-    rs = zeros(mpc.nr,N_steps);
+    rs = zeros(mpc.ny,N_steps);
     xs = zeros(mpc.nx,N_steps+1); xs[:,1] = x0
     us = zeros(mpc.nu,N_steps)
 
