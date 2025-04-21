@@ -190,13 +190,17 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
 end
 
 """
-    mpQP = mpc2mpqp(mpc)
+    mpc2mpqp(mpc)
 
 For a given MPC structure `mpc`, form the multi-parametric QP `mpQP` in the form 
+
+```math
+\begin{aligned}
+\min_{z} &  ~\frac{1}{2}z^{T}Hz+(f+F \theta)^{T}z \\
+\text{s.t.} & ~A z \leq b + B \theta \\
+\end{aligned}
 ```
-min			0.5 U' H U+(f+f_theta*θ)' U + 0.5 th' H_theta θ 
-subject to 	A U <= b + W*θ
-```
+
 """
 function mpc2mpqp(mpc::MPC)
 
