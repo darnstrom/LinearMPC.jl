@@ -26,8 +26,16 @@ void mpc_get_solution(c_float* th, c_float* control, c_float* xstar){
 #include "bnb.h"
 #endif
 
-int mpc_compute_control(c_float* theta, c_float* control){
-    mpc_update_qp(theta,daqp_work.dupper,daqp_work.dlower);
+int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* disturbance){
+    int i,j;
+    // update parameter
+    for(i=0,j=0;j<N_STATE;i++, j++) mpc_parameter[i] = state[j];
+    for(j=0;j<N_REFERENCE;i++, j++) mpc_parameter[i] = reference[j];
+    for(j=0;j<N_DISTURBANCE;i++, j++) mpc_parameter[i] = disturbance[j];
+    for(j=0;j<N_CONTROL_PREV;i++, j++) mpc_parameter[i] = control[j];
+
+    // update problem
+    mpc_update_qp(mpc_parameter,daqp_work.dupper,daqp_work.dlower);
 
 #ifdef DAQP_BNB
     node_cleanup_workspace(0, &daqp_work);
@@ -41,6 +49,6 @@ int mpc_compute_control(c_float* theta, c_float* control){
 #endif
 
     ldp2qp_solution(&daqp_work);
-    mpc_get_solution(theta,control,daqp_work.x);
+    mpc_get_solution(mpc_parameter,control,daqp_work.x);
     return exitflag;
 }

@@ -46,7 +46,10 @@ mutable struct MPC
     nx::Int
     nu::Int
     ny::Int
+
+    nr::Int
     nw::Int
+    nuprev::Int
 
     # Horizons 
     Np::Int # Prediction
@@ -85,7 +88,7 @@ function MPC(F::AbstractMatrix{Float64},G::AbstractMatrix{Float64};
     C = isnothing(C) ? Matrix{Float64}(I,nx,nx) : C
     Gw = isnothing(Gw) ? zeros(nx,0) : Gw
     ny = size(C,1);
-    MPC(F,G,Ts,Gw,nx,nu,ny,size(Gw,2),
+    MPC(F,G,Ts,Gw,nx,nu,ny,0,0,0,
         Np,Nc,Nc,C,MPCWeights(nu,nx,ny),
         zeros(0),zeros(0),zeros(0),
         Constraint[],MPCSettings(),nothing,nothing,zeros(nu,nx))
@@ -130,30 +133,25 @@ end
 
 function ParameterRange(mpc)
 
+    nx,nr,nw,nuprev = get_parameter_dims(mpc);
+
     # states
-    xmin,xmax = -100*ones(mpc.nx), 100*ones(mpc.nx)
+    xmin,xmax = -100*ones(nx), 100*ones(nx)
 
     # references 
-    nr = mpc.settings.reference_tracking ? size(mpc.C,1) : 0
     rmin,rmax = -100*ones(nr),100*ones(nr)
 
+    # constant disturbance (TODO: implement)
+    dmin,dmax = -100*ones(nw),100*ones(nw)
+
     # previous control (for Δu)
-    if(!iszero(mpc.weights.Rr))
+    if(nuprev > 0)
         nmin,nmax = length(mpc.umin),length(mpc.umax)
         nb = max(nmin,nmax)
         umin = [mpc.umin;-100*ones(nb-nmin)]
         umax = [mpc.umax;+100*ones(nb-nmax)]
     else
         umin,umax = zeros(0),zeros(0)
-    end
-
-    # constant disturbance (TODO: implement)
-    nw =  size(mpc.Gw,2)
-    if(iszero(mpc.Gw))
-        dmin,dmax = zeros(0),zeros(0)
-    else
-        nw =  size(mpc.Gw,2)
-        dmin,dmax = -100*ones(nw),100*ones(nw)
     end
 
     return ParameterRange(xmin,xmax,

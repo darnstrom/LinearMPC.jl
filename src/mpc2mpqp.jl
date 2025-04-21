@@ -35,6 +35,13 @@ function state_predictor(F,G,Np,Nc;move_block=:Hold)
     return Φ,Γ
 end
 
+function get_parameter_dims(mpc::MPC)
+    nr,nx = size(mpc.C)
+    nw = iszero(mpc.Gw) ? 0 : size(mpc.Gw,2)
+    nuprev = iszero(mpc.weights.Rr) ? 0 : mpc.nu
+    return nx,nr,nw,nuprev
+end
+
 # Create A u <= b+W*theta 
 # correspoding to  lb<=u_i<=ub for i ∈ {1,2,...,Nc}
 function create_controlbounds(mpc::MPC, Γ, Φ; n_extra_states=0)
@@ -197,23 +204,23 @@ function mpc2mpqp(mpc::MPC)
     Q,R,Rr,S = mpc.weights.Q, mpc.weights.R, mpc.weights.Rr, mpc.weights.S 
     Qf = isempty(mpc.weights.Qf) ? Q : mpc.weights.Qf
 
-    nr,nx = size(mpc.C)
+    nx,nr,nw,nuprev = get_parameter_dims(mpc)
+    mpc.ny, mpc.nr, mpc.nw, mpc.nuprev =  size(C,1),nr,nw,nuprev
     nu = size(mpc.G,2)
-    n_extra_states = 0
 
+    n_extra_states = 0
     Np,Nc = mpc.Np, mpc.Nc
 
-    if(mpc.settings.reference_tracking) # Reference tracking -> add reference to states
+    if(nr > 0) # Reference tracking -> add reference to states
         F = cat(F,I(nr),dims=(1,2))
         G = [G;zeros(nr,nu)]
         C = [C -I(nr)] 
         S = [S;zeros(nr,nu)]
         #Qf = cat(Qf,zeros(nr,nr),dims=(1,2))
-        
         n_extra_states+= nr;
     end
 
-    if(!iszero(mpc.Gw)) # add measureable disturabnce to w
+    if(nw > 0) # add measureable disturabnce to w
         nw = size(mpc.Gw,2)
         F = cat(F,I(nw),dims=(1,2))
         F[1:nx,end-nw+1:end] .= mpc.Gw
@@ -224,7 +231,7 @@ function mpc2mpqp(mpc::MPC)
         n_extra_states+= nw;
     end
 
-    if(!iszero(Rr)) # Penalizing Δu -> add uold to states 
+    if(nuprev > 0) # Penalizing Δu -> add uold to states 
         F = cat(F,zeros(nu,nu),dims=(1,2))
         F[end-nu+1:end,1:nx] .= -mpc.K
         G = [G;I(nu)]
@@ -235,7 +242,6 @@ function mpc2mpqp(mpc::MPC)
         R+=Rr
         n_extra_states+= nu;
     end
-
 
     Φ,Γ=state_predictor(F,G,Np,Nc; move_block = mpc.settings.move_block);
 
