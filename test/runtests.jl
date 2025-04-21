@@ -43,6 +43,13 @@ global templib
         @test norm(control.-1.7612519326) < 1e-6
     end
 
-    # TODO: add codegen EMPC test
+    @testset "Explicit MPC" begin
+        mpc,range = LinearMPC.mpc_examples("dcmotor")
+        # Adjust range
+        range.xmin[1:2] = -[0.3;2.0]
+        range.xmax[1:2] = [0.3;2.0]
+        # Compute explicit controller over range
+        empc = LinearMPC.ExplicitMPC(mpc;range)
+    end
 
 end
