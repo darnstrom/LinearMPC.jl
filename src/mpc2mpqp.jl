@@ -192,14 +192,7 @@ end
 """
     mpc2mpqp(mpc)
 
-For a given MPC structure `mpc`, form the multi-parametric QP `mpQP` in the form 
-
-```math
-\begin{aligned}
-\min_{z} &  ~\frac{1}{2}z^{T}Hz+(f+F \theta)^{T}z \\
-\text{s.t.} & ~A z \leq b + B \theta \\
-\end{aligned}
-```
+For a given MPC structure `mpc`, form the multi-parametric QP `mpQP`. 
 
 """
 function mpc2mpqp(mpc::MPC)
