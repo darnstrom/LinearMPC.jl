@@ -2,8 +2,11 @@ mutable struct ExplicitMPC
     nx::Int
     nu::Int
     ny::Int
+
+    nr::Int
     nw::Int
-    nth::Int 
+    nuprev::Int
+
     solution::ParametricDAQP.Solution
     mpQP
     TH
@@ -41,13 +44,18 @@ function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false)
     mpQP = merge(mpQP,(out_inds=1:mpc.nu,)) # Only compute control at first time step
     # Compute mpQP solution
     sol,info = ParametricDAQP.mpsolve(mpQP, TH)
-    empc = ExplicitMPC(mpc.nx,mpc.nu,mpc.ny,mpc.nw,length(TH.ub),
+    nx,nr,nw,nuprev = get_parameter_dims(mpc)
+    empc = ExplicitMPC(mpc.nx,mpc.nu,mpc.ny,nr,nw,nuprev,
                        sol,mpQP, TH, nothing,mpc.settings,mpc.K)
 
     # Build binary search tree
     build_tree && build_tree!(empc)
 
     return empc
+end
+
+function get_parameter_dims(mpc::ExplicitMPC)
+    return mpc.nx, mpc.nr, mpc.nw, mpc.nuprev
 end
 
 function build_tree!(mpc::ExplicitMPC)

@@ -31,19 +31,19 @@ function solve(empc::ExplicitMPC,θ)
     end
 end
 
-function compute_control(mpc::Union{MPC,ExplicitMPC},x;r=zeros(mpc.ny),uprev=zeros(mpc.nu),w=zeros(mpc.nw))
+function compute_control(mpc::Union{MPC,ExplicitMPC},x;r=nothing,w=nothing,uprev=nothing)
     # Setup parameter vector
-    θ = x
-    if(mpc.settings.reference_tracking) θ=[θ;r] end
-    θ = [θ;w]
-    θ = [θ;uprev]
-    return solve(mpc,θ)
+    nx,nr,nw,nuprev = get_parameter_dims(mpc)
+    r = isnothing(r) ? zeros(nr) : r
+    w = isnothing(w) ? zeros(nw) : w 
+    uprev = isnothing(uprev) ? zeros(nuprev) : uprev
+    return solve(mpc,[x;r;w;uprev])
 end
 
 function simulate(dynamics,mpc::Union{MPC,ExplicitMPC},x0,N_steps;r=nothing, callback=(x,u,k)->nothing)
     x,u = x0,zeros(mpc.nu)
     
-    rs = zeros(mpc.ny,N_steps);
+    rs = zeros(mpc.nr,N_steps);
     xs = zeros(mpc.nx,N_steps+1); xs[:,1] = x0
     us = zeros(mpc.nu,N_steps)
 

@@ -13,9 +13,7 @@ function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=not
     DAQP.codegen(d;fname,dir,src)
 
     # Append MPC-specific data/functions
-    mpLDP = qp2ldp(mpc.mpQP,mpc.nu) 
-    mpLDP.Xth[1:mpc.nx,:] -= mpc.K' #Account for prestabilizing feedback
-    render_mpc_workspace(mpLDP,mpc.nu;fname,dir, fmode="a")
+    render_mpc_workspace(mpc;fname,dir, fmode="a")
 
     @info "Generated code for MPC controller" dir fname
 end
@@ -31,8 +29,9 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
     @info "Generated code for EMPC controller" dir fname
 end
 
-function render_mpc_workspace(mpLDP,n_control;fname="mpc_workspace",dir="",fmode="w")
-
+function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w")
+    mpLDP = qp2ldp(mpc.mpQP,mpc.nu) 
+    mpLDP.Xth[1:mpc.nx,:] -= mpc.K' #Account for prestabilizing feedback
     # Get dimensions
     nth,m = size(mpLDP.Dth)
 
@@ -46,16 +45,23 @@ function render_mpc_workspace(mpLDP,n_control;fname="mpc_workspace",dir="",fmode
     @printf(fh, "#define %s\n\n", hguard);
 
     @printf(fh, "#define N_THETA %d\n",nth);
-    @printf(fh, "#define N_CONTROL %d\n\n",n_control);
+    @printf(fh, "#define N_STATE %d\n",mpc.nx);
+    @printf(fh, "#define N_REFERENCE %d\n",mpc.nr);
+    @printf(fh, "#define N_DISTURBANCE %d\n",mpc.nw);
+    @printf(fh, "#define N_CONTROL_PREV %d\n",mpc.nuprev);
+
+    @printf(fh, "#define N_CONTROL %d\n\n",mpc.nu);
+
     @printf(fh, "extern c_float Dth[%d];\n", nth*m);
     @printf(fh, "extern c_float du[%d];\n", m);
     @printf(fh, "extern c_float dl[%d];\n\n", m);
 
-    @printf(fh, "extern c_float Xth[%d];\n\n", n_control*nth);
-    @printf(fh, "extern c_float uscaling[%d];\n\n", n_control);
+    @printf(fh, "extern c_float Xth[%d];\n\n", mpc.nu*nth);
+    @printf(fh, "extern c_float uscaling[%d];\n\n", mpc.nu);
 
 
     # SRC 
+    write_float_array(fsrc,zeros(nth),"mpc_parameter");
     write_float_array(fsrc,mpLDP.Dth[:],"Dth");
     write_float_array(fsrc,mpLDP.du[:],"du");
     write_float_array(fsrc,mpLDP.dl[:],"dl");

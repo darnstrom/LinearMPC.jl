@@ -37,10 +37,10 @@ global templib
             testlib = "mpctest."* Base.Libc.Libdl.dlext
             run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
             theta = [5;5;zeros(5)]
-            control = ones(1)
+            u,x,r,d = zeros(1), [5.0;5;0;0], zeros(2), zeros(0)
             global templib = joinpath(srcdir,testlib)
-            ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble}), theta, control)
-            @test norm(control.-1.7612519326) < 1e-6
+            ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble},Ptr{Cdouble},Ptr{Cdouble}), u,x,r,d)
+            @test norm(u.-1.7612519326) < 1e-6
         end
     end
 
