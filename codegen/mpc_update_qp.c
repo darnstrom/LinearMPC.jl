@@ -26,21 +26,21 @@ void mpc_get_solution(c_float* th, c_float* control, c_float* xstar){
 #include "bnb.h"
 #endif
 
-int mpc_compute_control(c_float* theta, c_float* control, DAQPWorkspace* work){
-    mpc_update_qp(theta,work->dupper,work->dlower);
+int mpc_compute_control(c_float* theta, c_float* control){
+    mpc_update_qp(theta,daqp_work.dupper,daqp_work.dlower);
 
 #ifdef DAQP_BNB
-    node_cleanup_workspace(0, work);
-    int exitflag = daqp_bnb(work);
+    node_cleanup_workspace(0, &daqp_work);
+    int exitflag = daqp_bnb(&daqp_work);
 #else
 #ifndef DAQP_WARMSTART
-    deactivate_constraints(work);
-    reset_daqp_workspace(work);
+    deactivate_constraints(&daqp_work);
+    reset_daqp_workspace(&daqp_work);
 #endif
-    int exitflag = daqp_ldp(work);
+    int exitflag = daqp_ldp(&daqp_work);
 #endif
 
-    ldp2qp_solution(work);
-    mpc_get_solution(theta,control,work->x);
+    ldp2qp_solution(&daqp_work);
+    mpc_get_solution(theta,control,daqp_work.x);
     return exitflag;
 }

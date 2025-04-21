@@ -32,7 +32,7 @@ int main(){
         parameter[i] = 0;
 
     // Get the control at the parameter
-    mpc_compute_control(parameter,control,&daqp_work);
+    mpc_compute_control(parameter,control);
 
     printf("For the parameter\\n");
     for(i=0; i< $nth; i++)
