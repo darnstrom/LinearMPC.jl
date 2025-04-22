@@ -173,7 +173,7 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
             Stot[Nc*nx+1:N*nx,end-nu+1:end] = repeat(S,N-Nc,1)
         end
         GS = Γ'*Stot
-        H += GS + GS'
+        H += (GS + GS')
         f_theta += Stot'*Φ
     end
 
@@ -232,12 +232,20 @@ function mpc2mpqp(mpc::MPC)
         F = cat(F,zeros(nu,nu),dims=(1,2))
         F[end-nu+1:end,1:nx] .= -mpc.K
         G = [G;I(nu)]
-        C = cat(C,I(nu), dims=(1,2))
+        C = [C zeros(nr,nu); mpc.K zeros(nu,nr+nw) I(nu)]
         Q = cat(Q,Rr,dims=(1,2))
         Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
         S = [S;-Rr];
+        S[1:nx,:] -=mpc.K'*Rr
         R+=Rr
         n_extra_states+= nu;
+    end
+
+    if(!iszero(mpc.weights.R) && !iszero(mpc.K)) # terms from prestabilizing feedback
+        Q = cat(Q,mpc.weights.R,dims=(1,2))
+        Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
+        C = [C; mpc.K zeros(nu,nr+nw+nuprev)]
+        S[1:nx,:] -=mpc.K'*mpc.weights.R
     end
 
     Φ,Γ=state_predictor(F,G,Np,Nc; move_block = mpc.settings.move_block);
