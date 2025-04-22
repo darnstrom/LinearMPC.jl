@@ -15,7 +15,7 @@ function solve(mpc::MPC,θ)
     isnothing(mpc.mpQP) && setup!(mpc) # ensure mpQP is setup 
     bth = mpc.mpQP.W*θ
     bu = mpc.settings.QP_double_sided ? mpc.mpQP.bu + bth : mpc.mpQP.b + bth
-    bl = mpc.settings.QP_double_sided ? mpc.mpQP.bl + bth : nothing 
+    bl = mpc.settings.QP_double_sided ? mpc.mpQP.bl + bth : -1e30*ones(length(bu))
     f = mpc.mpQP.f +mpc.mpQP.f_theta*θ
     DAQP.update(mpc.opt_model,nothing,f,nothing,bu,bl,nothing)
     udaqp,fval,exitflag,info = DAQP.solve(mpc.opt_model)
