@@ -1,14 +1,20 @@
-function zoh(A,B,Ts; Bw = nothing)
-  dims = size(B);
-  nx,nu = length(dims)==1 ? (dims[1],1) : dims
-  if isnothing(Bw)
-      M = exp([A*Ts  B*Ts; zeros(nu, nx + nu)])
-      return M[1:nx, 1:nx], M[1:nx, nx+1:nx+nu],nothing
-  else
-      nw = size(Bw,2);
-      M = exp([A*Ts  [B Bw]*Ts; zeros(nu+nw, nx + nu + nw)])
-      return M[1:nx, 1:nx], M[1:nx, nx+1:nx+nu], M[1:nx, nx+nu+1:nx+nu+nw]
-  end
+"""
+    compute_control(mpc,x;r,w,uprev)
+
+For a given MPC `mpc` and state `x`, compute the optimal control action. 
+Optional arguments: 
+* `r` - reference value
+* `w` - measured disturbance
+* `uprev` - previous control action
+all of them defaults to zero.
+"""
+function compute_control(mpc::Union{MPC,ExplicitMPC},x;r=nothing,w=nothing,uprev=nothing)
+    # Setup parameter vector θ
+    nx,nr,nw,nuprev = get_parameter_dims(mpc)
+    r = isnothing(r) ? zeros(nr) : r
+    w = isnothing(w) ? zeros(nw) : w 
+    uprev = isnothing(uprev) ? zeros(nuprev) : uprev
+    return solve(mpc,[x;r;w;uprev])
 end
 
 function solve(mpc::MPC,θ)
@@ -31,18 +37,9 @@ function solve(empc::ExplicitMPC,θ)
     end
 end
 
-function compute_control(mpc::Union{MPC,ExplicitMPC},x;r=nothing,w=nothing,uprev=nothing)
-    # Setup parameter vector
-    nx,nr,nw,nuprev = get_parameter_dims(mpc)
-    r = isnothing(r) ? zeros(nr) : r
-    w = isnothing(w) ? zeros(nw) : w 
-    uprev = isnothing(uprev) ? zeros(nuprev) : uprev
-    return solve(mpc,[x;r;w;uprev])
-end
 
 function simulate(dynamics,mpc::Union{MPC,ExplicitMPC},x0,N_steps;r=nothing, callback=(x,u,k)->nothing)
     x,u = x0,zeros(mpc.nu)
-
     
     rs = zeros(mpc.ny,N_steps);
     xs = zeros(mpc.nx,N_steps+1); xs[:,1] = x0
@@ -69,3 +66,17 @@ function range2region(range)
     ub = [range.xmax;range.rmax;range.dmax;range.umax]
     return (A = zeros(length(ub), 0), b=zeros(0), lb=lb,ub=ub)
 end
+
+function zoh(A,B,Ts; Bw = nothing)
+  dims = size(B);
+  nx,nu = length(dims)==1 ? (dims[1],1) : dims
+  if isnothing(Bw)
+      M = exp([A*Ts  B*Ts; zeros(nu, nx + nu)])
+      return M[1:nx, 1:nx], M[1:nx, nx+1:nx+nu],nothing
+  else
+      nw = size(Bw,2);
+      M = exp([A*Ts  [B Bw]*Ts; zeros(nu+nw, nx + nu + nw)])
+      return M[1:nx, 1:nx], M[1:nx, nx+1:nx+nu], M[1:nx, nx+nu+1:nx+nu+nw]
+  end
+end
+
