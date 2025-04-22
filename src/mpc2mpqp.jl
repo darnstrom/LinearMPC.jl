@@ -1,6 +1,6 @@
 # Create Φ and Γ such that 
 # X = Φ x0 + Γ U  (where X and U contains xi and ui stacked..)
-function state_predictor(F,G,Np,Nc;move_block=:Hold)
+function state_predictor(F,G,Np,Nc)
     if G isa AbstractMatrix
         nx,nu = size(G);
     else
@@ -25,10 +25,7 @@ function state_predictor(F,G,Np,Nc;move_block=:Hold)
     # Set ui = u_Nc for i>Nc 
     for i in Nc+1:Np
         Γ[(nx*i+1):nx*(i+1),:] .= F*Γ[(nx*(i-1)+1):nx*i,:];
-        if(move_block==:Hold)
-            Γ[(nx*i+1):nx*(i+1),end-nu+1:end] +=G;
-        #else Zero
-        end
+        Γ[(nx*i+1):nx*(i+1),end-nu+1:end] +=G;
 
         Φ[i*nx+1:(i+1)*nx,:] = F*Φ[nx*(i-1)+1:nx*i,:]
     end
@@ -169,9 +166,7 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
     # ==== From x' S u ====
     if(!iszero(S))
         Stot = [kron(I(Nc),S);zeros((N-Nc+1)*nx,Nc*nu)]
-        if(mpc.settings.move_block==:Hold)
-            Stot[Nc*nx+1:N*nx,end-nu+1:end] = repeat(S,N-Nc,1)
-        end
+        Stot[Nc*nx+1:N*nx,end-nu+1:end] = repeat(S,N-Nc,1) # Due to control horizon
         GS = Γ'*Stot
         H += (GS + GS')
         f_theta += Stot'*Φ
@@ -248,7 +243,7 @@ function mpc2mpqp(mpc::MPC)
         S[1:nx,:] -=mpc.K'*mpc.weights.R
     end
 
-    Φ,Γ=state_predictor(F,G,Np,Nc; move_block = mpc.settings.move_block);
+    Φ,Γ=state_predictor(F,G,Np,Nc);
 
     # Create objective function 
     nxe,nue= size(G) 
