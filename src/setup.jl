@@ -86,7 +86,7 @@ end
 
 function set_prestabilizing_feedback!(mpc,type)
     if type =="lqr" || type == "LQR" || type == "riccati"
-        _, _,mpc.K,_ = ared(mpc.F, mpc.G, mpc.weights.R, mpc.C'*mpc.weights.Q*mpc.C) # solve Ricatti
+        _, _,mpc.K,_ = ared(mpc.F, mpc.G, mpc.weights.R+mpc.weights.Rr, mpc.C'*mpc.weights.Q*mpc.C) # solve Ricatti
     end
 end
 function set_prestabilizing_feedback!(mpc)
