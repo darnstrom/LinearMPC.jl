@@ -35,8 +35,9 @@ end
 function get_parameter_dims(mpc::MPC)
     nr,nx = size(mpc.C)
     nw = iszero(mpc.Gw) ? 0 : size(mpc.Gw,2)
+    nd = iszero(mpc.Dd) ? 0 : size(mpc.Dd,2)
     nuprev = iszero(mpc.weights.Rr) ? 0 : mpc.nu
-    return nx,nr,nw,nuprev
+    return nx,nr,nw,nd,nuprev
 end
 
 # Create A u <= b+W*theta 
@@ -196,8 +197,8 @@ function mpc2mpqp(mpc::MPC)
     Q,R,Rr,S = mpc.weights.Q, mpc.weights.R, mpc.weights.Rr, mpc.weights.S 
     Qf = isempty(mpc.weights.Qf) ? Q : mpc.weights.Qf
 
-    nx,nr,nw,nuprev = get_parameter_dims(mpc)
-    mpc.ny, mpc.nr, mpc.nw, mpc.nuprev =  size(C,1),nr,nw,nuprev
+    nx,nr,nw,nd,nuprev = get_parameter_dims(mpc)
+    mpc.ny, mpc.nr, mpc.nw, mpc.nd, mpc.nuprev =  size(C,1),nr,nw,nd,nuprev
     nu = size(mpc.G,2)
 
     n_extra_states = 0
@@ -212,8 +213,7 @@ function mpc2mpqp(mpc::MPC)
         n_extra_states+= nr;
     end
 
-    if(nw > 0) # add measureable disturabnce to w
-        nw = size(mpc.Gw,2)
+    if(nw > 0) # add measureable input disturbance
         F = cat(F,I(nw),dims=(1,2))
         F[1:nx,end-nw+1:end] .= mpc.Gw
         G = [G;zeros(nw,nu)]
@@ -221,6 +221,14 @@ function mpc2mpqp(mpc::MPC)
         S = [S;zeros(nw,nu)]
         C = [C zeros(size(C,1),nw)]
         n_extra_states+= nw;
+    end
+
+    if(nd > 0) # add measureable output disturbnace
+        F = cat(F,zeros(nd,nd),dims=(1,2))
+        G = [G;zeros(nd,nu)]
+        S = [S;zeros(nd,nu)]
+        C = [C mpc.Dd]
+        n_extra_states+= nd;
     end
 
     if(nuprev > 0) # Penalizing Δu -> add uold to states 

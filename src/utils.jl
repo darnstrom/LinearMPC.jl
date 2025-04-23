@@ -8,13 +8,14 @@ Optional arguments:
 * `uprev` - previous control action
 all of them defaults to zero.
 """
-function compute_control(mpc::Union{MPC,ExplicitMPC},x;r=nothing,w=nothing,uprev=nothing)
+function compute_control(mpc::Union{MPC,ExplicitMPC},x;r=nothing,w=nothing,d=nothing,uprev=nothing)
     # Setup parameter vector θ
-    nx,nr,nw,nuprev = get_parameter_dims(mpc)
+    nx,nr,nw,nd,nuprev = get_parameter_dims(mpc)
     r = isnothing(r) ? zeros(nr) : r
     w = isnothing(w) ? zeros(nw) : w 
+    d = isnothing(d) ? zeros(nd) : d 
     uprev = isnothing(uprev) ? zeros(nuprev) : uprev
-    return solve(mpc,[x;r;w;uprev])
+    return solve(mpc,[x;r;w;d;uprev])
 end
 
 function solve(mpc::MPC,θ)

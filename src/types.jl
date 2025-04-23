@@ -39,7 +39,10 @@ mutable struct MPC
     F::Matrix{Float64}
     G::Matrix{Float64}
     Ts::Float64
+
+    # Disturbance model
     Gw::Matrix{Float64}
+    Dd::Matrix{Float64}
 
     # Dims
     nx::Int
@@ -48,6 +51,7 @@ mutable struct MPC
 
     nr::Int
     nw::Int
+    nd::Int
     nuprev::Int
 
     # Horizons 
@@ -85,12 +89,14 @@ mutable struct MPC
 end
 
 function MPC(F::AbstractMatrix{Float64},G::AbstractMatrix{Float64};
-        C=nothing,Np=10, Nc = Np, Nb = Nc, Ts = 1.0, Gw = nothing)
+        C=nothing,Np=10, Nc = Np, Nb = Nc, Ts = 1.0, Gw = nothing, Dd = nothing)
     nx,nu = size(G)
     C = isnothing(C) ? Matrix{Float64}(I,nx,nx) : C
-    Gw = isnothing(Gw) ? zeros(nx,0) : Gw
     ny = size(C,1);
-    MPC(F,G,Ts,Gw,nx,nu,ny,0,0,0,
+    Gw = isnothing(Gw) ? zeros(nx,0) : Gw
+    Dd = isnothing(Dd) ? zeros(ny,0) : Dd 
+    MPC(F,G,Ts,Gw,Dd,
+        nx,nu,ny,0,0,0,0,
         Np,Nc,Nc,C,MPCWeights(nu,nx,ny),
         zeros(0),zeros(0),zeros(0),
         Constraint[],MPCSettings(),nothing,nothing,zeros(nu,nx),Int[])
@@ -126,6 +132,9 @@ struct ParameterRange
     rmin::Vector{Float64}
     rmax::Vector{Float64}
 
+    wmin::Vector{Float64}
+    wmax::Vector{Float64}
+
     dmin::Vector{Float64}
     dmax::Vector{Float64}
 
@@ -135,7 +144,7 @@ end
 
 function ParameterRange(mpc)
 
-    nx,nr,nw,nuprev = get_parameter_dims(mpc);
+    nx,nr,nw,nd,nuprev = get_parameter_dims(mpc);
 
     # states
     xmin,xmax = -100*ones(nx), 100*ones(nx)
@@ -143,7 +152,10 @@ function ParameterRange(mpc)
     # references 
     rmin,rmax = -100*ones(nr),100*ones(nr)
 
-    # constant disturbance (TODO: implement)
+    # constant input disturbance
+    wmin,wmax = -100*ones(nw),100*ones(nw)
+
+    # constant output disturbance
     dmin,dmax = -100*ones(nw),100*ones(nw)
 
     # previous control (for Δu)
@@ -158,6 +170,7 @@ function ParameterRange(mpc)
 
     return ParameterRange(xmin,xmax,
                           rmin,rmax,
+                          wmin,wmax,
                           dmin,dmax,
                           umin,umax)
 end

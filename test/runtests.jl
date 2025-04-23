@@ -36,9 +36,9 @@ global templib
         if(!isnothing(Sys.which("gcc")))
             testlib = "mpctest."* Base.Libc.Libdl.dlext
             run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
-            u,x,r,d = zeros(1), [5.0;5;0;0], zeros(2), zeros(0)
+            u,x,r,w,d = zeros(1), [5.0;5;0;0], zeros(2), zeros(0), zeros(0)
             global templib = joinpath(srcdir,testlib)
-            ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble},Ptr{Cdouble},Ptr{Cdouble}), u,x,r,d)
+            ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble},Ptr{Cdouble},Ptr{Cdouble},Ptr{Cdouble}), u,x,r,w,d)
             @test norm(u.-1.7612519326) < 1e-6
         end
     end
@@ -57,9 +57,9 @@ global templib
         if(!isnothing(Sys.which("gcc")))
             testlib = "mpctest."* Base.Libc.Libdl.dlext
             run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
-            u,x,r,d = zeros(1), [5.0;5;0;0], zeros(2), zeros(0)
+            u,x,r,w,d = zeros(1), [5.0;5;0;0], zeros(2), zeros(0), zeros(0)
             global templib = joinpath(srcdir,testlib)
-            ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble},Ptr{Cdouble},Ptr{Cdouble}), u,x,r,d)
+            ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble},Ptr{Cdouble},Ptr{Cdouble},Ptr{Cdouble}), u,x,r,w,d)
             @test norm(u.-1.7612519326) < 1e-6
         end
     end
