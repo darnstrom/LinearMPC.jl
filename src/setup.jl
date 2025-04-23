@@ -31,18 +31,24 @@ function set_bounds!(mpc::MPC; umin=zeros(0), umax=zeros(0))
 end
 
 """
+    add_constraint!(mpc::MPC;
+        Ax, Au, Ar, Aw, Ad, Aup,
+        ub, lb, ks, soft, binary, prio)
     add_constraint!(mpc;Ax,Au,ub,lb,
                     ks, soft, binary,prio)
 
-Adds the constraints lb ≤ Au xₖ + Au uₖ ≤ ub for the time steps k ∈ ks 
+Adds the constraints lb ≤ Ax xₖ + Au uₖ ≤ ub for the time steps k ∈ ks
+(additional terms Ar rₖ, Aw wₖ, Ad dₖ, Aup u⁻ₖ are possible)
 
 * `soft` marks if the constraint should be softened (default false)
 * `binary` marks if either the upper or lower bounds should be enforced with equality (default false)
 * `prio` marks the relative priority of the constraint (default 0)
 """
-function add_constraint!(mpc::MPC; Ax = nothing, Au= nothing, ub = zeros(0), lb = zeros(0), 
+function add_constraint!(mpc::MPC;
+        Ax = nothing, Au= nothing, Ar = zeros(0,0), Aw = zeros(0,0), Ad = zeros(0,0), Aup = zeros(0,0),
+        ub = zeros(0), lb = zeros(0),
         ks = 2:mpc.Np, soft=false, binary=false, prio = 0)
-    if isnothing(Ax) && isnothing(Bx)
+    if isnothing(Ax) && isnothing(Au)
         return
     end
 
@@ -57,7 +63,7 @@ function add_constraint!(mpc::MPC; Ax = nothing, Au= nothing, ub = zeros(0), lb 
     Ax = isnothing(Ax) ? zeros(m,mpc.nx) : Ax
     Au = isnothing(Au) ? zeros(m,mpc.nu) : Au
 
-    push!(mpc.constraints,Constraint(Au,Ax,ub,lb,ks,soft,binary,prio))
+    push!(mpc.constraints,Constraint(Au,Ax,Ar,Aw,Ad,Aup,ub,lb,ks,soft,binary,prio))
 
 end
 
@@ -72,7 +78,7 @@ Adds the constraints lb ≤ C x  ≤ ub for the time steps k ∈ ks
 * `prio` marks the relative priority of the constraint (default 0)
 """
 function set_output_bounds!(mpc::MPC; ymin=nothing, ymax=nothing, ks = nothing, soft = true, binary=false, prio = 0)
-    add_constraint!(mpc, Ax = mpc.C, lb = ymin, ub = ymax;ks,soft,binary,prio)
+    add_constraint!(mpc, Ax = mpc.C, Ad = mpc.Dd, lb = ymin, ub = ymax;ks,soft,binary,prio)
 end
 
 """

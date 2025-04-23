@@ -1,7 +1,13 @@
-# lb <= Au uk + Ax xk <= ub for k ∈ ks 
+# lb <= Au uk + Ax xk <= ub for k ∈ ks
+# (additional terms Ar rₖ, Aw wₖ, Ad dₖ, Aup u⁻ₖ)
+
 mutable struct Constraint
     Au::Matrix{Float64}
     Ax::Matrix{Float64}
+    Ar::Matrix{Float64}
+    Aw::Matrix{Float64}
+    Ad::Matrix{Float64}
+    Aup::Matrix{Float64}
     ub::Vector{Float64}
     lb::Vector{Float64}
     ks::AbstractVector{Int64}

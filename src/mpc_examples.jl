@@ -103,7 +103,6 @@ function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
         end
 
         range = ParameterRange(mpc);
-        @info range
         range.xmax[:] .= 20*ones(4); 
         range.xmin[:] .= -20*ones(4)
         range.dmax[:] .= 20*ones(2); 
