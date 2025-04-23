@@ -32,7 +32,7 @@ function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false)
         bounds_table=[collect(ncstr+1:2*ncstr);collect(1:ncstr)]
         A = [I(n_bounds) zeros(n_bounds,size(mpQP.A,2)-n_bounds);mpQP.A]
         A = [A;-A]
-        if(mpc.settings.explicit_soft && any(sense.==DAQP.SOFT))# Correct sign for slack
+        if(mpc.settings.explicit_soft && any(senses.==DAQP.SOFT))# Correct sign for slack
             A[:,end].= -abs.(A[:,end])
         end
         b = [mpQP.bu;-mpQP.bl]
