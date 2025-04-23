@@ -156,7 +156,7 @@ function ParameterRange(mpc)
     wmin,wmax = -100*ones(nw),100*ones(nw)
 
     # constant output disturbance
-    dmin,dmax = -100*ones(nw),100*ones(nw)
+    dmin,dmax = -100*ones(nd),100*ones(nd)
 
     # previous control (for Δu)
     if(nuprev > 0)

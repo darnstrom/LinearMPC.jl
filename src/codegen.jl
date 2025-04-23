@@ -25,7 +25,7 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
     ParametricDAQP.codegen(mpc.solution;dir,fname,float_type)
 
     # Generate code for MPC
-    nth = mpc.nx+mpc.nr+mpc.nw+mpc.nuprev
+    nth = mpc.nx+mpc.nr+mpc.nw+mpc.nd+mpc.nuprev
 
     # HEADER
     fh = open(joinpath(dir,"mpc_compute_control.h"), "w")

@@ -70,19 +70,19 @@ function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
         range.umin[:] .= -[0.5023] 
 
     elseif(s=="aircraft")
-        A = [-0.0151 -60.5651  0       -32.174 0 0;
-             -0.0001   -1.3411  0.9929   0     0 0;
-             0.00018  43.2541 -0.86939  0     0 0;
-             0         0       1        0     0 0;
-             zeros(2,6)];
-        B = [-2.516 -13.136;-0.1689 -0.2514;-17.251 -1.5766;0 0; 0 0; 0 0];
-        C = [0 1 0 0 1 0;0 0 0 1 0 200];
+        A = [-0.0151 -60.5651  0       -32.174;
+             -0.0001   -1.3411  0.9929   0    ;
+             0.00018  43.2541 -0.86939  0     ;
+             0         0       1        0     ;]
+        B = [-2.516 -13.136;-0.1689 -0.2514;-17.251 -1.5766;0 0];
+        C = [0 1.0 0 0; 0 0 0 1];
 
         Ts = 0.05;
         F,G = zoh(A,B,Ts);
         C = C./[1;200];
+        Dd = [1.0 0; 0 200]./[1;200]
 
-        mpc = MPC(F,50*G;C,Np,Nc,Ts);
+        mpc = MPC(F,50*G;C,Np,Nc,Ts,Dd);
 
 
         Q = [10,10].^2; 
@@ -103,10 +103,14 @@ function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
         end
 
         range = ParameterRange(mpc);
-        range.xmax[:] .= 20*ones(6); 
-        range.xmin[:] .= -20*ones(6)
+        @info range
+        range.xmax[:] .= 20*ones(4); 
+        range.xmin[:] .= -20*ones(4)
+        range.dmax[:] .= 20*ones(2); 
+        range.dmin[:] .= -20*ones(2)
         range.rmax[:] .= [1;0.05]; 
         range.rmin[:] .= -[1;0.05]
+
     elseif(s=="chained-firstorder" || s=="chained")
         nx = haskey(params,:nx) ? params[:nx] : 1
         A = -Matrix(I,nx,nx)+diagm(-1=>ones(nx-1));

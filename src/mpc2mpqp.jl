@@ -224,7 +224,7 @@ function mpc2mpqp(mpc::MPC)
     end
 
     if(nd > 0) # add measureable output disturbnace
-        F = cat(F,zeros(nd,nd),dims=(1,2))
+        F = cat(F,I(nd),dims=(1,2))
         G = [G;zeros(nd,nu)]
         S = [S;zeros(nd,nu)]
         C = [C mpc.Dd]
@@ -235,7 +235,7 @@ function mpc2mpqp(mpc::MPC)
         F = cat(F,zeros(nu,nu),dims=(1,2))
         F[end-nu+1:end,1:nx] .= -mpc.K
         G = [G;I(nu)]
-        C = [C zeros(nr,nu); mpc.K zeros(nu,nr+nw) I(nu)]
+        C = [C zeros(nr,nu); mpc.K zeros(nu,nr+nd+nw) I(nu)]
         Q = cat(Q,Rr,dims=(1,2))
         Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
         S = [S;-Rr];
@@ -247,7 +247,7 @@ function mpc2mpqp(mpc::MPC)
     if(!iszero(mpc.weights.R) && !iszero(mpc.K)) # terms from prestabilizing feedback
         Q = cat(Q,mpc.weights.R,dims=(1,2))
         Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
-        C = [C; mpc.K zeros(nu,nr+nw+nuprev)]
+        C = [C; mpc.K zeros(nu,nr+nw+nd+nuprev)]
         S[1:nx,:] -=mpc.K'*mpc.weights.R
     end
 
