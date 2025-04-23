@@ -134,3 +134,31 @@ Sets the prestabilizing feedback `K` to the infinte horizon LQR gain`
 function set_prestabilizing_feedback!(mpc)
     _, _,mpc.K,_ = ared(mpc.F, mpc.G, mpc.weights.R+mpc.weights.Rr, mpc.C'*mpc.weights.Q*mpc.C) # solve Ricatti
 end
+
+"""
+    move_block!(mpc,block)
+
+Reduce the number of controls by keeping it constant in blocks.
+For example, `block`=[2,1,3] keeps the control constant for 2 time-steps, 1 time step, and 3 time steps.
+* if sum(block) ≠ mpc.Nc, the resulting block will be padded or clipped
+* if `block` is an Int, a vector with constant block size is created
+"""
+function move_block!(mpc,block::Vector{Int})
+    Nnew = sum(block)
+    if Nnew == mpc.Nc
+        mpc.move_blocks[:] = block
+    elseif(Nnew < mpc.Nc) # pad
+        mpc.move_blocks[:] = block
+        mpc.move_blocks[end] += mpc.Nc-Nnew
+    elseif Nnew > mpc.Nc # clip
+        tot,i = 0,1
+        while((tot+=block[i]) < mpc.Nc) i += 1 end
+        mpc.move_blocks = block[1:i]
+        mpc.move_blocks[end] += mpc.Nc-tot;
+    end
+end
+function move_block!(mpc,block::Int)
+    nb,res  = mpc.Nc ÷ block, mpc.Nc % block
+    mpc.move_blocks = fill(block,nb+1)
+    mpc.move_blocks[end] = res
+end

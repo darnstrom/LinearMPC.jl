@@ -79,6 +79,9 @@ mutable struct MPC
 
     # Prestabilizing feedback
     K::Matrix{Float64}
+
+    # Move blocks
+    move_blocks::Vector{Int}
 end
 
 function MPC(F::AbstractMatrix{Float64},G::AbstractMatrix{Float64};
@@ -90,7 +93,7 @@ function MPC(F::AbstractMatrix{Float64},G::AbstractMatrix{Float64};
     MPC(F,G,Ts,Gw,nx,nu,ny,0,0,0,
         Np,Nc,Nc,C,MPCWeights(nu,nx,ny),
         zeros(0),zeros(0),zeros(0),
-        Constraint[],MPCSettings(),nothing,nothing,zeros(nu,nx))
+        Constraint[],MPCSettings(),nothing,nothing,zeros(nu,nx),Int[])
 end
 
 function MPC(A::AbstractMatrix{Float64},B::AbstractMatrix{Float64}, Ts::Float64;
