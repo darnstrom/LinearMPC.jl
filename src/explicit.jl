@@ -5,6 +5,7 @@ mutable struct ExplicitMPC
 
     nr::Int
     nw::Int
+    nd::Int
     nuprev::Int
 
     solution::ParametricDAQP.Solution
@@ -31,7 +32,7 @@ function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false)
         bounds_table=[collect(ncstr+1:2*ncstr);collect(1:ncstr)]
         A = [I(n_bounds) zeros(n_bounds,size(mpQP.A,2)-n_bounds);mpQP.A]
         A = [A;-A]
-        if(mpc.settings.explicit_soft && any(sense.==DAQP.SOFT))# Correct sign for slack
+        if(mpc.settings.explicit_soft && any(senses.==DAQP.SOFT))# Correct sign for slack
             A[:,end].= -abs.(A[:,end])
         end
         b = [mpQP.bu;-mpQP.bl]
@@ -44,8 +45,8 @@ function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false)
     mpQP = merge(mpQP,(out_inds=1:mpc.nu,)) # Only compute control at first time step
     # Compute mpQP solution
     sol,info = ParametricDAQP.mpsolve(mpQP, TH)
-    nx,nr,nw,nuprev = get_parameter_dims(mpc)
-    empc = ExplicitMPC(mpc.nx,mpc.nu,mpc.ny,nr,nw,nuprev,
+    nx,nr,nw,nd,nuprev = get_parameter_dims(mpc)
+    empc = ExplicitMPC(mpc.nx,mpc.nu,mpc.ny,nr,nw,nd,nuprev,
                        sol,mpQP, TH, nothing,mpc.settings,mpc.K)
 
     # Build binary search tree
@@ -55,7 +56,7 @@ function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false)
 end
 
 function get_parameter_dims(mpc::ExplicitMPC)
-    return mpc.nx, mpc.nr, mpc.nw, mpc.nuprev
+    return mpc.nx, mpc.nr, mpc.nw, mpc.nd, mpc.nuprev
 end
 
 function build_tree!(mpc::ExplicitMPC)
