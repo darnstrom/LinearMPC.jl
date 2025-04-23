@@ -253,8 +253,30 @@ function mpc2mpqp(mpc::MPC)
     # Create Constraints 
     A, bu, bl, W, issoft, isbinary, prio = create_constraints(mpc,Φ,Γ;n_extra_states)
 
+    # Apply move blocking
+    if(!isempty(mpc.move_blocks))
+        T,id = zeros(0,0), 0
+        keep_bounds = Int[] 
+        for mb in mpc.move_blocks
+            T = cat(T,repeat(I(mpc.nu),mb,1),dims=(1,2))
+            keep_bounds = keep_bounds ∪ collect(id+1:id+mpc.nu)
+            id += mb*mpc.nu
+        end
+        A, H, f, f_theta = A*T, T'*H*T, T'*f, T'*f_theta
+
+        # remove superfluous control bounds
+        keep = keep_bounds ∪ collect(mpc.nu*mpc.Nc+1:length(bu))
+        bu,bl,W = bu[keep],bl[keep], W[keep,:]
+        issoft,isbinary,prio = issoft[keep],isbinary[keep],prio[keep]
+        if (!iszero(mpc.K) || !mpc.settings.QP_double_sided) # prestab feedback -> A rows for bounds
+            A = A[keep,:] 
+        end
+    end
+
+    # Setup sense
     senses = zeros(Cint,length(bu)); 
 
+    # Handle soft constrints  
     if(mpc.settings.soft_constraints)
         if(mpc.settings.explicit_soft && any(issoft))
             A = [A zeros(size(A,1))];
@@ -269,7 +291,10 @@ function mpc2mpqp(mpc::MPC)
             senses[issoft[:]].+=DAQP.SOFT
         end
     end
+    # Mark binary constraints
     senses[isbinary[:]].+=DAQP.BINARY
+
+    # Stack constraints in case of QP is assumed to be single sided. 
     if(mpc.settings.QP_double_sided)
         mpQP = (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
                 A=Matrix{Float64}(A), bu=bu, bl=bl, W=W, senses=senses, prio=prio)
@@ -289,4 +314,5 @@ function mpc2mpqp(mpc::MPC)
                 A=Matrix{Float64}(A), b=b, W=W, senses=senses,
                 bounds_table=bounds_table, prio=prio)
     end
+    return mpQP
 end
