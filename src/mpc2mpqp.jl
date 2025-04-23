@@ -276,6 +276,13 @@ function mpc2mpqp(mpc::MPC)
     # Setup sense
     senses = zeros(Cint,length(bu)); 
 
+    # ignore constraints which have inf bounds
+    for i in 1:length(bu)
+        if(bu[i] > 1e20 && bl[i] < -1e20)
+            senses[i] += DAQP.IMMUTABLE
+        end
+    end
+
     # Handle soft constrints  
     if(mpc.settings.soft_constraints)
         if(mpc.settings.explicit_soft && any(issoft))
