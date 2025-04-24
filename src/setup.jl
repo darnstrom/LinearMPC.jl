@@ -77,7 +77,7 @@ Adds the constraints lb ≤ C x  ≤ ub for the time steps k ∈ ks
 * `binary` marks if either the upper or lower bounds should be enforced with equality (default false)
 * `prio` marks the relative priority of the constraint (default 0)
 """
-function set_output_bounds!(mpc::MPC; ymin=nothing, ymax=nothing, ks = nothing, soft = true, binary=false, prio = 0)
+function set_output_bounds!(mpc::MPC; ymin=zeros(0), ymax=zeros(0), ks = 2:mpc.Np, soft = true, binary=false, prio = 0)
     add_constraint!(mpc, Ax = mpc.C, Ad = mpc.Dd, lb = ymin, ub = ymax;ks,soft,binary,prio)
 end
 
