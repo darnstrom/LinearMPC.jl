@@ -1,21 +1,19 @@
 """
-    compute_control(mpc,x;r,w,uprev)
+    compute_control(mpc,x;r,uprev)
 
 For a given MPC `mpc` and state `x`, compute the optimal control action. 
 Optional arguments: 
 * `r` - reference value
-* `w` - measured disturbance
 * `uprev` - previous control action
 all of them defaults to zero.
 """
-function compute_control(mpc::Union{MPC,ExplicitMPC},x;r=nothing,w=nothing,d=nothing,uprev=nothing)
+function compute_control(mpc::Union{MPC,ExplicitMPC},x;r=nothing,d=nothing,uprev=nothing)
     # Setup parameter vector θ
-    nx,nr,nw,nd,nuprev = get_parameter_dims(mpc)
+    nx,nr,nd,nuprev = get_parameter_dims(mpc)
     r = isnothing(r) ? zeros(nr) : r
-    w = isnothing(w) ? zeros(nw) : w 
     d = isnothing(d) ? zeros(nd) : d 
     uprev = isnothing(uprev) ? zeros(nuprev) : uprev
-    return solve(mpc,[x;r;w;d;uprev])
+    return solve(mpc,[x;r;d;uprev])
 end
 
 function solve(mpc::MPC,θ)
@@ -68,16 +66,15 @@ function range2region(range)
     return (A = zeros(length(ub), 0), b=zeros(0), lb=lb,ub=ub)
 end
 
-function zoh(A,B,Ts; Bw = nothing)
+function zoh(A,B,Ts; Bd = nothing)
   dims = size(B);
   nx,nu = length(dims)==1 ? (dims[1],1) : dims
-  if isnothing(Bw)
+  if isnothing(Bd)
       M = exp([A*Ts  B*Ts; zeros(nu, nx + nu)])
       return M[1:nx, 1:nx], M[1:nx, nx+1:nx+nu],nothing
   else
-      nw = size(Bw,2);
-      M = exp([A*Ts  [B Bw]*Ts; zeros(nu+nw, nx + nu + nw)])
-      return M[1:nx, 1:nx], M[1:nx, nx+1:nx+nu], M[1:nx, nx+nu+1:nx+nu+nw]
+      nd = size(Bd,2);
+      M = exp([A*Ts  [B Bd]*Ts; zeros(nu+nd, nx + nu + nd)])
+      return M[1:nx, 1:nx], M[1:nx, nx+1:nx+nu], M[1:nx, nx+nu+1:nx+nu+nd]
   end
 end
-

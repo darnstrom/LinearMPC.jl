@@ -34,17 +34,15 @@ end
 
 function get_parameter_dims(mpc::MPC)
     nr,nx = size(mpc.C)
-    nw = iszero(mpc.Gw) ? 0 : size(mpc.Gw,2)
-    nd = iszero(mpc.Dd) ? 0 : size(mpc.Dd,2)
     nuprev = iszero(mpc.weights.Rr) ? 0 : mpc.nu
-    return nx,nr,nw,nd,nuprev
+    return nx,nr,mpc.nd,nuprev
 end
 
 # Create A u <= b+W*theta 
 # correspoding to  lb<=u_i<=ub for i ∈ {1,2,...,Nc}
 function create_controlbounds(mpc::MPC, Γ, Φ)
     nu,nx,Nb = mpc.nu, mpc.nx, mpc.Nb
-    n_extra_states = mpc.nr + mpc.nw + mpc.nd + mpc.nuprev
+    n_extra_states = mpc.nr + mpc.nd + mpc.nuprev
     # Create bounds
     ub = repeat(mpc.umax,Nb,1)
     lb = repeat(mpc.umin,Nb,1)
@@ -71,7 +69,7 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
     Np, Nc= mpc.Np, mpc.Nc
     m= length(mpc.constraints)
     nu,nx = mpc.nu, mpc.nx 
-    n_extra_states = mpc.nr + mpc.nw + mpc.nd + mpc.nuprev
+    n_extra_states = mpc.nr + mpc.nd + mpc.nuprev
 
     ubtot,lbtot = zeros(0,1),zeros(0,1);
     Axtot,Autot = zeros(0,(nx+n_extra_states)*(Np+1)), zeros(0,nu*Nc);
@@ -86,12 +84,11 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
         Ni = length(c.ks);
 
         Ar = isempty(c.Ar) ? zeros(mi,mpc.nr) : c.Ar
-        Aw = isempty(c.Aw) ? zeros(mi,mpc.nw) : c.Aw
         Ad = isempty(c.Ad) ? zeros(mi,mpc.nd) : c.Ad
         Aup = isempty(c.Aup) ? zeros(mi,mpc.nuprev) : c.Auip
 
         Autot = [Autot; kron(eyeU[c.ks,:],c.Au)]
-        Axtot = [Axtot; kron(eyeX[c.ks,:],[c.Ax-c.Au*mpc.K Ar Aw Ad Aup])]
+        Axtot = [Axtot; kron(eyeX[c.ks,:],[c.Ax-c.Au*mpc.K Ar Ad Aup])]
 
         ubtot = [ubtot;repeat(c.ub,Ni,1)]
         lbtot = [lbtot;repeat(c.lb,Ni,1)]
@@ -204,8 +201,8 @@ function mpc2mpqp(mpc::MPC)
     Q,R,Rr,S = mpc.weights.Q, mpc.weights.R, mpc.weights.Rr, mpc.weights.S 
     Qf = isempty(mpc.weights.Qf) ? Q : mpc.weights.Qf
 
-    nx,nr,nw,nd,nuprev = get_parameter_dims(mpc)
-    mpc.ny, mpc.nr, mpc.nw, mpc.nd, mpc.nuprev =  size(C,1),nr,nw,nd,nuprev
+    nx,nr,nd,nuprev = get_parameter_dims(mpc)
+    mpc.ny, mpc.nr, mpc.nd, mpc.nuprev =  size(C,1),nr,nd,nuprev
     nu = size(mpc.G,2)
 
     Np,Nc = mpc.Np, mpc.Nc
@@ -218,17 +215,9 @@ function mpc2mpqp(mpc::MPC)
         #Qf = cat(Qf,zeros(nr,nr),dims=(1,2))
     end
 
-    if(nw > 0) # add measureable input disturbance
-        F = cat(F,I(nw),dims=(1,2))
-        F[1:nx,end-nw+1:end] .= mpc.Gw
-        G = [G;zeros(nw,nu)]
-        #Qf = cat(Qf,zeros(nw,nw),dims=(1,2))
-        S = [S;zeros(nw,nu)]
-        C = [C zeros(size(C,1),nw)]
-    end
-
-    if(nd > 0) # add measureable output disturbnace
+    if(nd > 0) # add measureable disturbnace
         F = cat(F,I(nd),dims=(1,2))
+        F[1:nx,end-nd+1:end] .= mpc.Gd
         G = [G;zeros(nd,nu)]
         S = [S;zeros(nd,nu)]
         C = [C mpc.Dd]
@@ -238,7 +227,7 @@ function mpc2mpqp(mpc::MPC)
         F = cat(F,zeros(nu,nu),dims=(1,2))
         F[end-nu+1:end,1:nx] .= -mpc.K
         G = [G;I(nu)]
-        C = [C zeros(nr,nu); mpc.K zeros(nu,nr+nd+nw) I(nu)]
+        C = [C zeros(nr,nu); mpc.K zeros(nu,nr+nd) I(nu)]
         Q = cat(Q,Rr,dims=(1,2))
         Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
         S = [S;-Rr];
@@ -249,7 +238,7 @@ function mpc2mpqp(mpc::MPC)
     if(!iszero(mpc.weights.R) && !iszero(mpc.K)) # terms from prestabilizing feedback
         Q = cat(Q,mpc.weights.R,dims=(1,2))
         Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
-        C = [C; mpc.K zeros(nu,nr+nw+nd+nuprev)]
+        C = [C; mpc.K zeros(nu,nr+nd+nuprev)]
         S[1:nx,:] -=mpc.K'*mpc.weights.R
     end
 
