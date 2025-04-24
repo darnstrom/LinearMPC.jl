@@ -108,8 +108,9 @@ end
 function create_constraints(mpc,Φ,Γ)
     n = size(Γ,2);
     A = zeros(0,n);
-    bu,bl,W = zeros(0),zeros(0),zeros(0,mpc.nx);
+    bu,bl,W = zeros(0),zeros(0),zeros(0,mpc.nx+mpc.nr+mpc.nd+mpc.nuprev);
     issoft,isbinary = falses(0),falses(0)
+    prios = zeros(0)
 
     # Control bounds
     if(!isempty(mpc.umax))
