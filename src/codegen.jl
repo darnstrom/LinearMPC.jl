@@ -25,7 +25,7 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
     ParametricDAQP.codegen(mpc.solution;dir,fname,float_type)
 
     # Generate code for MPC
-    nth = mpc.nx+mpc.nr+mpc.nw+mpc.nd+mpc.nuprev
+    nth = mpc.nx+mpc.nr+mpc.nd+mpc.nuprev
 
     # HEADER
     fh = open(joinpath(dir,"mpc_compute_control.h"), "w")
@@ -36,13 +36,12 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
     write(fh, "typedef $float_type c_float;\n")
     @printf(fh, "#define N_STATE %d\n",mpc.nx);
     @printf(fh, "#define N_REFERENCE %d\n",mpc.nr);
-    @printf(fh, "#define N_IN_DISTURBANCE %d\n",mpc.nw);
-    @printf(fh, "#define N_OUT_DISTURBANCE %d\n",mpc.nd);
+    @printf(fh, "#define N_DISTURBANCE %d\n",mpc.nd);
     @printf(fh, "#define N_CONTROL_PREV %d\n",mpc.nuprev);
 
     @printf(fh, "extern c_float mpc_parameter[%d];\n", nth);
 
-    @printf(fh, "int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* in_dist, c_float* out_dist); \n");
+    @printf(fh, "int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* disturbance); \n");
     @printf(fh, "#endif // ifndef %s\n", hguard);
     close(fh)
 
@@ -52,14 +51,13 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
 #include "mpc_compute_control.h"
 #include "$fname.h"
 
-int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* in_dist, c_float* out_dist){
+int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* disturbance){
     int i,j;
     c_float mpc_parameter[$nth];
     // update parameter
     for(i=0,j=0;j<N_STATE;i++, j++) mpc_parameter[i] = state[j];
     for(j=0;j<N_REFERENCE;i++, j++) mpc_parameter[i] = reference[j];
-    for(j=0;j<N_IN_DISTURBANCE;i++, j++) mpc_parameter[i] = in_dist[j];
-    for(j=0;j<N_OUT_DISTURBANCE;i++, j++) mpc_parameter[i] = out_dist[j];
+    for(j=0;j<N_DISTURBANCE;i++, j++) mpc_parameter[i] = disturbance[j];
     for(j=0;j<N_CONTROL_PREV;i++, j++) mpc_parameter[i] = control[j];
 
     // Get the solution at the parameter
@@ -91,8 +89,7 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w")
     @printf(fh, "#define N_THETA %d\n",nth);
     @printf(fh, "#define N_STATE %d\n",mpc.nx);
     @printf(fh, "#define N_REFERENCE %d\n",mpc.nr);
-    @printf(fh, "#define N_IN_DISTURBANCE %d\n",mpc.nw);
-    @printf(fh, "#define N_OUT_DISTURBANCE %d\n",mpc.nd);
+    @printf(fh, "#define N_DISTURBANCE %d\n",mpc.nd);
     @printf(fh, "#define N_CONTROL_PREV %d\n",mpc.nuprev);
 
     @printf(fh, "#define N_CONTROL %d\n\n",mpc.nu);

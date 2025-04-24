@@ -52,7 +52,7 @@ LinearMPC.codegen(mpc;dir="codgen_dir")
 ```
 which produce _allocation-free_ C-code in the directory `codegen_dir` for setting up optimization problems and solving them with the Quadratic Programming solver [DAQP](https://github.com/darnstrom/daqp).
 
-The C-function `mpc_compute_control(control, state, reference, in_dist, out_dist)` computes the optimal control, given the current `state`, `reference`, and measured intput/output disturbances `in_dist`/`out_dist`, which are all floating-point arrays. The optimal control is stored in the floating-point array `control`. 
+The C-function `mpc_compute_control(control, state, reference, disturbance)` computes the optimal control, given the current `state`, `reference`, and measured disturbances `disturbance`, which are all floating-point arrays. The optimal control is stored in the floating-point array `control`. 
 
 
 ## Citation

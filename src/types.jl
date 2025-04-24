@@ -47,7 +47,7 @@ mutable struct MPC
     Ts::Float64
 
     # Disturbance model
-    Gw::Matrix{Float64}
+    Gd::Matrix{Float64}
     Dd::Matrix{Float64}
 
     # Dims
@@ -56,7 +56,6 @@ mutable struct MPC
     ny::Int
 
     nr::Int
-    nw::Int
     nd::Int
     nuprev::Int
 
@@ -95,23 +94,28 @@ mutable struct MPC
 end
 
 function MPC(F::AbstractMatrix{Float64},G::AbstractMatrix{Float64};
-        C=nothing,Np=10, Nc = Np, Nb = Nc, Ts = 1.0, Gw = nothing, Dd = nothing)
+        C=nothing,Np=10, Nc = Np, Nb = Nc, Ts = 1.0, Gd = nothing, Dd = nothing)
     nx,nu = size(G)
     C = isnothing(C) ? Matrix{Float64}(I,nx,nx) : C
     ny = size(C,1);
-    Gw = isnothing(Gw) ? zeros(nx,0) : Gw
+    # disturbance
+    Gd = isnothing(Gd) ? zeros(nx,0) : Gd
     Dd = isnothing(Dd) ? zeros(ny,0) : Dd 
-    MPC(F,G,Ts,Gw,Dd,
-        nx,nu,ny,0,0,0,0,
+    nd = max(size(Gd,2),size(Dd,2))
+    Gd = [Gd zeros(nx,nd-size(Gd,2))]
+    Dd = [Dd zeros(ny,nd-size(Dd,2))]
+
+    MPC(F,G,Ts,Gd,Dd,
+        nx,nu,ny,0,nd,0,
         Np,Nc,Nc,C,MPCWeights(nu,nx,ny),
         zeros(0),zeros(0),zeros(0),
         Constraint[],MPCSettings(),nothing,nothing,zeros(nu,nx),Int[])
 end
 
 function MPC(A::AbstractMatrix{Float64},B::AbstractMatrix{Float64}, Ts::Float64;
-        C=nothing,Np=10, Nc = Np, Nb = Nc, Bw = nothing)
-    F,G,Gw=zoh(A,B,Ts;Bw)
-    MPC(F,G;C,Np,Nc,Nb,Ts,Gw)
+        C=nothing,Np=10, Nc = Np, Nb = Nc, Bd = nothing)
+    F,G,Gd=zoh(A,B,Ts;Bd)
+    MPC(F,G;C,Np,Nc,Nb,Ts,Gd)
 end
 
 
@@ -138,9 +142,6 @@ struct ParameterRange
     rmin::Vector{Float64}
     rmax::Vector{Float64}
 
-    wmin::Vector{Float64}
-    wmax::Vector{Float64}
-
     dmin::Vector{Float64}
     dmax::Vector{Float64}
 
@@ -150,7 +151,7 @@ end
 
 function ParameterRange(mpc)
 
-    nx,nr,nw,nd,nuprev = get_parameter_dims(mpc);
+    nx,nr,nd,nuprev = get_parameter_dims(mpc);
 
     # states
     xmin,xmax = -100*ones(nx), 100*ones(nx)
@@ -158,10 +159,7 @@ function ParameterRange(mpc)
     # references 
     rmin,rmax = -100*ones(nr),100*ones(nr)
 
-    # constant input disturbance
-    wmin,wmax = -100*ones(nw),100*ones(nw)
-
-    # constant output disturbance
+    # constant disturbance
     dmin,dmax = -100*ones(nd),100*ones(nd)
 
     # previous control (for Δu)
@@ -176,7 +174,6 @@ function ParameterRange(mpc)
 
     return ParameterRange(xmin,xmax,
                           rmin,rmax,
-                          wmin,wmax,
                           dmin,dmax,
                           umin,umax)
 end
