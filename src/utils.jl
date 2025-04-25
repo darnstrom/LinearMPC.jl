@@ -78,3 +78,7 @@ function zoh(A,B,Ts; Bd = nothing)
       return M[1:nx, 1:nx], M[1:nx, nx+1:nx+nu], M[1:nx, nx+nu+1:nx+nu+nd]
   end
 end
+
+matrixify(x::Number, n::Int) = diagm(fill(float(x),n))
+matrixify(v::Vector, n::Int) = diagm(float(v))
+matrixify(M::Matrix, n::Int) = float(M)

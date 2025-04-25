@@ -91,22 +91,22 @@ A vector is interpreted as a diagonal matrix.
 """
 function set_weights!(mpc::MPC;Q = nothing,R=nothing,Rr=nothing, S= nothing, rho=nothing, Qf=nothing)
     if !isnothing(Q)
-        mpc.weights.Q = Q isa AbstractMatrix ? Q : diagm(Q) 
+        mpc.weights.Q = matrixify(Q,mpc.ny)
     end
     if !isnothing(R)
-        mpc.weights.R = R isa AbstractMatrix ? R : diagm(R) 
+        mpc.weights.R = matrixify(R,mpc.nu)
     end
     if !isnothing(Rr)
-        mpc.weights.Rr = Rr isa AbstractMatrix ? Rr : diagm(Rr) 
+        mpc.weights.Rr = matrixify(Rr,mpc.nu)
     end
     if !isnothing(S)
-        mpc.weights.S = S
+        mpc.weights.S = float(S)
     end
     if !isnothing(rho)
         mpc.weights.rho = rho
     end
     if !isnothing(Qf)
-        mpc.weights.Qf = Qf isa AbstractMatrix ? Qf : diagm(Qf) 
+        mpc.weights.Qf = matrixify(Qf,mpc.ny)
     end
 end
 

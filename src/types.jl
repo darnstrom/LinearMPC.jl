@@ -93,11 +93,13 @@ mutable struct MPC
     move_blocks::Vector{Int}
 end
 
-function MPC(F::AbstractMatrix{Float64},G::AbstractMatrix{Float64};
+function MPC(F,G;
         C=nothing,Np=10, Nc = Np, Nb = Nc, Ts = 1.0, Gd = nothing, Dd = nothing)
+    G = reshape(G,size(G,1),:) 
     nx,nu = size(G)
-    C = isnothing(C) ? Matrix{Float64}(I,nx,nx) : C
+    C = isnothing(C) ? Matrix{Float64}(I,nx,nx) : float(C)
     ny = size(C,1);
+    (size(C,2)==size(F,1)==nx) || throw(ArgumentError("Dimensions of ss-model incompatible"))
     # disturbance
     Gd = isnothing(Gd) ? zeros(nx,0) : Gd
     Dd = isnothing(Dd) ? zeros(ny,0) : Dd 
@@ -105,15 +107,16 @@ function MPC(F::AbstractMatrix{Float64},G::AbstractMatrix{Float64};
     Gd = [Gd zeros(nx,nd-size(Gd,2))]
     Dd = [Dd zeros(ny,nd-size(Dd,2))]
 
-    MPC(F,G,Ts,Gd,Dd,
+    MPC(float(F),float(G),Ts,Gd,Dd,
         nx,nu,ny,0,nd,0,
         Np,Nc,Nc,C,MPCWeights(nu,nx,ny),
         zeros(0),zeros(0),zeros(0),
         Constraint[],MPCSettings(),nothing,nothing,zeros(nu,nx),Int[])
 end
 
-function MPC(A::AbstractMatrix{Float64},B::AbstractMatrix{Float64}, Ts::Float64;
+function MPC(A,B, Ts::Float64;
         C=nothing,Np=10, Nc = Np, Nb = Nc, Bd = nothing)
+    (size(A,1)==size(B,1)) || throw(ArgumentError("Dimensions of ss-model incompatible"))
     F,G,Gd=zoh(A,B,Ts;Bd)
     MPC(F,G;C,Np,Nc,Nb,Ts,Gd)
 end
