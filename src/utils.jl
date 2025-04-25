@@ -80,5 +80,5 @@ function zoh(A,B,Ts; Bd = nothing)
 end
 
 matrixify(x::Number, n::Int) = diagm(fill(float(x),n))
-matrixify(v::Vector, n::Int) = diagm(float(v))
-matrixify(M::Matrix, n::Int) = float(M)
+matrixify(v::AbstractVector, n::Int) = diagm(float(v))
+matrixify(M::AbstractMatrix, n::Int) = float(M)
