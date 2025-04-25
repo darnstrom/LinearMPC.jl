@@ -1,4 +1,4 @@
-function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=nothing, src=true)
+function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=nothing, src=true, float_type="double")
     length(dir)==0 && (dir="codegen")
     dir[end] != '/' && (dir*="/") ## Make sure it is a correct directory path
     ## Generate mpQP
@@ -9,16 +9,27 @@ function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=not
     if(!isnothing(opt_settings))
         DAQP.settings(d,opt_settings)
     end
-    # TODO: move this to DAQP.jl
     DAQP.codegen(d;fname,dir,src)
 
+    if( float_type == "float" || float_type == "single")
+        # Append #define DAQP_SINGLE_PRECISION at the top of types
+        mv(joinpath(dir,"types.h"),joinpath(dir,"types_old.h"))
+        fold = open(joinpath(dir,"types_old.h"),"r")
+        s = read(fold, String)
+        fnew = open(joinpath(dir,"types.h"),"w")
+        write(fnew, "#ifndef DAQP_SINGLE_PRECISION\n # define DAQP_SINGLE_PRECISION\n#endif \n"*s);
+        close(fold)
+        close(fnew)
+        rm(joinpath(dir,"types_old.h"))
+    end
+
     # Append MPC-specific data/functions
-    render_mpc_workspace(mpc;fname,dir, fmode="a")
+    render_mpc_workspace(mpc;fname,dir,float_type, fmode="a")
 
     @info "Generated code for MPC controller" dir fname
 end
 
-function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=nothing, src=true,float_type="float")
+function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=nothing, src=true,float_type="double")
     length(dir)==0 && (dir="codegen")
     dir[end] != '/' && (dir*="/") ## Make sure it is a correct directory path
     # Generate code for explicit solution
@@ -71,7 +82,7 @@ int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_
     @info "Generated code for EMPC controller" dir fname
 end
 
-function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w")
+function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_type="double")
     mpLDP = qp2ldp(mpc.mpQP,mpc.nu) 
     mpLDP.Xth[1:mpc.nx,:] -= mpc.K' #Account for prestabilizing feedback
     # Get dimensions
