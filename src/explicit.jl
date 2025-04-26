@@ -143,5 +143,5 @@ function fixed_parameters_string(mpc,fix_ids,fix_vals;show_zero = false)
     ls = [xlabels;rlabels;dlabels;ulabels]
     str = [latexify(make_subscript(ls[fix_ids[i]])*"="*string(fix_vals[i]))*", "
            for i in 1:length(fix_ids) if show_zero || fix_vals[i] != 0 ]
-        return "\\tiny "*reduce(*,str)[1:end-2]
+    return isempty(str) ? "" : "\\tiny "*reduce(*,str)[1:end-2]
 end
