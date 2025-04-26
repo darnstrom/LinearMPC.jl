@@ -1,3 +1,18 @@
+struct Labels
+    x::Vector{Symbol}
+    u::Vector{Symbol}
+    y::Vector{Symbol}
+    d::Vector{Symbol}
+end
+
+function Labels(nx::Int,nu::Int,ny::Int,nd::Int)
+    xlabel = [Symbol("x"*string(i)) for i in 1:nx]
+    ulabel = [Symbol("u"*string(i)) for i in 1:nu]
+    ylabel = [Symbol("y"*string(i)) for i in 1:ny]
+    dlabel = [Symbol("d"*string(i)) for i in 1:nd]
+    return Labels(xlabel,ulabel,ylabel,dlabel)
+end
+
 struct Model
     F::Matrix{Float64}
     G::Matrix{Float64}
@@ -12,6 +27,8 @@ struct Model
     nd::Int
 
     Ts::Float64
+
+    labels::Labels
 end
 
 function Model(F,G,Gd,C,Dd;Ts=1.0)
@@ -30,7 +47,7 @@ function Model(F,G;Ts=1.0, C = nothing, Gd = nothing, Dd = nothing)
     nd = max(size(Gd,2),size(Dd,2))
     Gd = [Gd zeros(nx,nd-size(Gd,2))]
     Dd = [Dd zeros(ny,nd-size(Dd,2))]
-    Model(float(F),float(G),float(Gd),float(C),float(Dd),nx,nu,ny,nd,Ts)
+    Model(float(F),float(G),float(Gd),float(C),float(Dd),nx,nu,ny,nd,Ts,Labels(nx,nu,ny,nd))
 end
 
 function Model(A,B,Ts; Bd = nothing, C = nothing, Dd = nothing)

@@ -86,23 +86,28 @@ matrixify(M::AbstractMatrix, n::Int) = float(M)
 # get paramer id of a label
 function label2id(mpc, label::Symbol)
 
-    id = findfirst(x->x==label,mpc.labels.x)
+    id = findfirst(x->x==label,mpc.model.labels.x)
     isnothing(id)  || return id,string(label);
 
     if(mpc.nr > 0 && string(label)[end] == 'r')
         l = Symbol(string(label)[1:end-1])
-        id = findfirst(x->x==l,mpc.labels.y)
+        id = findfirst(x->x==l,mpc.model.labels.y)
         isnothing(id)  || return mpc.model.nx + id,string(l)*"^r";
     end
 
-    id = findfirst(x->x==label,mpc.labels.d)
+    id = findfirst(x->x==label,mpc.model.labels.d)
     isnothing(id)  || return mpc.model.nx+mpc.nr+id,string(label);
 
     if(mpc.nuprev > 0 && string(label)[end] == 'p')
         l = Symbol(string(label)[1:end-1])
-        id = findfirst(x->x==l,mpc.labels.u)
+        id = findfirst(x->x==l,mpc.model.labels.u)
         isnothing(id)  || return mpc.model.nx+mpc.nr+mpc.model.nd+id,string(l)*"^-";
     end
 
     return nothing,string(label)
+end
+
+function make_subscript(label::String)
+    nid = findfirst(isdigit,collect(label))
+    return isnothing(nid) ? label : label[1:nid-1]*"_"*label[nid:end]
 end
