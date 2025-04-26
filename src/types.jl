@@ -38,6 +38,10 @@ Base.@kwdef mutable struct MPCSettings
     solver_opts::Dict{Symbol,Any} = Dict()
 end
 
+#const MultiParametricQP = NamedTuple{(:H,:f,:H_theta,:f_theta,
+#                                      :A,:b,:W,:senses,:bounds_table),
+#                                     Tuple{Matrix{Float64}, Matrix{Float64}, Matrix{Float64},Matrix{Float64},
+#                                           Matrix{Float64},Matrix{Float64},Matrix{Float64},Vector{Cint},Vector{Int}}}
 # MPC controller
 mutable struct MPC 
 
@@ -69,7 +73,7 @@ mutable struct MPC
     mpQP
 
     # DAQP optimization model
-    opt_model 
+    opt_model::DAQPBase.Model
 
     # Prestabilizing feedback
     K::Matrix{Float64}
@@ -82,7 +86,7 @@ function MPC(model::Model;Np=10,Nc=Np)
     MPC(model,0,0,Np,Nc,
         MPCWeights(model.nu,model.nx,model.ny),
         zeros(0),zeros(0),zeros(0),
-        Constraint[],MPCSettings(),nothing,nothing,zeros(model.nu,model.nx),Int[])
+        Constraint[],MPCSettings(),nothing,DAQP.Model(),zeros(model.nu,model.nx),Int[])
 end
 
 function MPC(F,G;Gd=nothing, C=nothing, Dd= nothing, Ts= 1.0, Np=10, Nc = Np)
@@ -91,23 +95,6 @@ end
 
 function MPC(A,B,Ts::Float64; Bd = nothing, C = nothing, Dd = nothing, Np=10, Nc=Np)
     MPC(Model(A,B,Ts;Bd,C,Dd);Np,Nc)
-end
-
-
-mutable struct MPQP
-    H::Matrix{Float64}
-    f::Matrix{Float64}
-    f_theta::Matrix{Float64}
-    H_theta::Matrix{Float64}
-
-    A::Matrix{Float64}
-    b::Matrix{Float64}
-    W::Matrix{Float64}
-
-    bounds_table::Vector{Int64}
-    senses::Vector{Cint}
-    MPQP()=new()
-    MPQP(H,f,f_theta,H_theta,A,b,W,bounds_table,senses) = new(H,f,f_theta,H_theta,A,b,W,bounds_table,senses) 
 end
 
 struct ParameterRange
@@ -145,4 +132,11 @@ function ParameterRange(mpc::MPC)
                           rmin,rmax,
                           dmin,dmax,
                           umin,umax)
+end
+
+struct Polytope
+    A::Matrix{Float64}
+    b::Vector{Float64}
+    ub::Vector{Float64}
+    lb::Vector{Float64}
 end
