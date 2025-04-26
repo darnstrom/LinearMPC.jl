@@ -33,7 +33,7 @@ function Model(F,G;Ts=1.0, C = nothing, Gd = nothing, Dd = nothing)
     Model(float(F),float(G),float(Gd),float(C),float(Dd),nx,nu,ny,nd,Ts)
 end
 
-function Model(A,B,Ts::AbstractFloat; Bd = nothing, C = nothing, Dd = nothing)
+function Model(A,B,Ts; Bd = nothing, C = nothing, Dd = nothing)
     (size(A,1)==size(B,1)) || throw(ArgumentError("Dimensions of ss-model incompatible"))
     F,G,Gd=zoh(A,B,Ts;Bd)
     return Model(F,G;Ts,Gd,C,Dd)

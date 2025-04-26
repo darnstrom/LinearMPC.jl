@@ -33,16 +33,16 @@ function state_predictor(F,G,Np,Nc)
 end
 
 function get_parameter_dims(mpc::MPC)
-    nr,nx = size(mpc.C)
-    nuprev = iszero(mpc.weights.Rr) ? 0 : mpc.nu
-    return nx,nr,mpc.nd,nuprev
+    nr = mpc.settings.reference_tracking ?  mpc.model.ny : 0
+    nuprev = iszero(mpc.weights.Rr) ? 0 : mpc.model.nu
+    return mpc.model.nx,nr,mpc.model.nd,nuprev
 end
 
 # Create A u <= b+W*theta 
 # correspoding to  lb<=u_i<=ub for i ∈ {1,2,...,Nc}
 function create_controlbounds(mpc::MPC, Γ, Φ)
-    nu,nx,Nb = mpc.nu, mpc.nx, mpc.Nb
-    n_extra_states = mpc.nr + mpc.nd + mpc.nuprev
+    nu,nx,Nb = mpc.model.nu, mpc.model.nx, mpc.Nc
+    nth = sum(get_parameter_dims(mpc))
     # Create bounds
     ub = repeat(mpc.umax,Nb,1)
     lb = repeat(mpc.umin,Nb,1)
@@ -50,15 +50,15 @@ function create_controlbounds(mpc::MPC, Γ, Φ)
     #-K*X + V = -K*(Γ V + Φ x0) + V 
     #         = (I-K*Γ)V -K Φ x0
     if(!iszero(mpc.K))
-        K = kron(I(Nb),[mpc.K zeros(nu,n_extra_states)])
-        A = (I-K*Γ[1:Nb*(nx+n_extra_states), 1:Nb*nu])
-        W = K*Φ[1:Nb*(nx+n_extra_states),:]
+        K = kron(I(Nb),[mpc.K zeros(nu,nth-nx)])
+        A = (I-K*Γ[1:Nb*nth, 1:Nb*nu])
+        W = K*Φ[1:Nb*nth,:]
     else
-        A = mpc.settings.QP_double_sided ? nothing : Matrix{Float64}(kron(I(mpc.Nb),I(nu)))
-        W = zeros(length(ub),nx+n_extra_states)
+        A = mpc.settings.QP_double_sided ? nothing : Matrix{Float64}(kron(I(Nb),I(nu)))
+        W = zeros(length(ub),nth)
     end
-    ub = repeat(mpc.umax,mpc.Nb,1)
-    lb = repeat(mpc.umin,mpc.Nb,1)
+    ub = repeat(mpc.umax,Nb,1)
+    lb = repeat(mpc.umin,Nb,1)
     return A,ub,lb, W 
 end
 
@@ -68,11 +68,11 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
     # extract data
     Np, Nc= mpc.Np, mpc.Nc
     m= length(mpc.constraints)
-    nu,nx = mpc.nu, mpc.nx 
-    n_extra_states = mpc.nr + mpc.nd + mpc.nuprev
+    nu,nx = mpc.model.nu, mpc.model.nx 
+    nth = sum(get_parameter_dims(mpc))
 
     ubtot,lbtot = zeros(0,1),zeros(0,1);
-    Axtot,Autot = zeros(0,(nx+n_extra_states)*(Np+1)), zeros(0,nu*Nc);
+    Axtot,Autot = zeros(0,nth*(Np+1)), zeros(0,nu*Nc);
     issoft,isbinary = falses(0),falses(0)
     prios = zeros(Int,0)
 
@@ -84,7 +84,7 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
         Ni = length(c.ks);
 
         Ar = isempty(c.Ar) ? zeros(mi,mpc.nr) : c.Ar
-        Ad = isempty(c.Ad) ? zeros(mi,mpc.nd) : c.Ad
+        Ad = isempty(c.Ad) ? zeros(mi,mpc.model.nd) : c.Ad
         Aup = isempty(c.Aup) ? zeros(mi,mpc.nuprev) : c.Auip
 
         Autot = [Autot; kron(eyeU[c.ks,:],c.Au)]
@@ -108,7 +108,8 @@ end
 function create_constraints(mpc,Φ,Γ)
     n = size(Γ,2);
     A = zeros(0,n);
-    bu,bl,W = zeros(0),zeros(0),zeros(0,mpc.nx+mpc.nr+mpc.nd+mpc.nuprev);
+    nth = sum(get_parameter_dims(mpc))
+    bu,bl,W = zeros(0),zeros(0),zeros(0,nth);
     issoft,isbinary = falses(0),falses(0)
     prios = zeros(0)
 
@@ -118,9 +119,9 @@ function create_constraints(mpc,Φ,Γ)
         if !isnothing(Ac) A = Ac end
         issoft= falses(n);
         prios = zeros(Int,n)
-        isbinary_single = falses(mpc.nu) 
+        isbinary_single = falses(mpc.model.nu) 
         isbinary_single[mpc.binary_controls] .= true;
-        isbinary = repeat(isbinary_single,mpc.Nb)
+        isbinary = repeat(isbinary_single,mpc.Nc)
     end
 
     # General constraints
@@ -181,7 +182,7 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
 
     # Add regularization for binary variables (won't change the solution)
     f = zeros(size(H,1),1); 
-    fbin_part = zeros(mpc.nu)
+    fbin_part = zeros(mpc.model.nu)
     fbin_part[mpc.binary_controls] .= 1 
     fbin = repeat(fbin_part,Nc)
     f -= 0.5*fbin
@@ -198,13 +199,13 @@ For a given MPC structure `mpc`, form the multi-parametric QP `mpQP`.
 """
 function mpc2mpqp(mpc::MPC)
 
-    F,G,C = mpc.F-mpc.G*mpc.K, mpc.G, mpc.C
+    F,G,C = mpc.model.F-mpc.model.G*mpc.K, mpc.model.G, mpc.model.C
     Q,R,Rr,S = mpc.weights.Q, mpc.weights.R, mpc.weights.Rr, mpc.weights.S 
     Qf = isempty(mpc.weights.Qf) ? Q : mpc.weights.Qf
 
     nx,nr,nd,nuprev = get_parameter_dims(mpc)
-    mpc.ny, mpc.nr, mpc.nd, mpc.nuprev =  size(C,1),nr,nd,nuprev
-    nu = size(mpc.G,2)
+    mpc.nr, mpc.nuprev =  nr,nuprev
+    nu = mpc.model.nu 
 
     Np,Nc = mpc.Np, mpc.Nc
 
@@ -218,10 +219,10 @@ function mpc2mpqp(mpc::MPC)
 
     if(nd > 0) # add measureable disturbnace
         F = cat(F,I(nd),dims=(1,2))
-        F[1:nx,end-nd+1:end] .= mpc.Gd
+        F[1:nx,end-nd+1:end] .= mpc.model.Gd
         G = [G;zeros(nd,nu)]
         S = [S;zeros(nd,nu)]
-        C = [C mpc.Dd]
+        C = [C mpc.model.Dd]
     end
 
     if(nuprev > 0) # Penalizing Δu -> add uold to states 
@@ -258,14 +259,14 @@ function mpc2mpqp(mpc::MPC)
         T,id = zeros(0,0), 0
         keep_bounds = Int[] 
         for mb in mpc.move_blocks
-            T = cat(T,repeat(I(mpc.nu),mb,1),dims=(1,2))
-            keep_bounds = keep_bounds ∪ collect(id+1:id+mpc.nu)
-            id += mb*mpc.nu
+            T = cat(T,repeat(I(mpc.model.nu),mb,1),dims=(1,2))
+            keep_bounds = keep_bounds ∪ collect(id+1:id+mpc.model.nu)
+            id += mb*mpc.model.nu
         end
         A, H, f, f_theta = A*T, T'*H*T, T'*f, T'*f_theta
 
         # remove superfluous control bounds
-        keep = keep_bounds ∪ collect(mpc.nu*mpc.Nc+1:length(bu))
+        keep = keep_bounds ∪ collect(mpc.model.nu*mpc.Nc+1:length(bu))
         bu,bl,W = bu[keep],bl[keep], W[keep,:]
         issoft,isbinary,prio = issoft[keep],isbinary[keep],prio[keep]
         if (!iszero(mpc.K) || !mpc.settings.QP_double_sided) # prestab feedback -> A rows for bounds

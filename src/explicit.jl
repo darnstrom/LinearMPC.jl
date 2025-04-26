@@ -1,10 +1,7 @@
 mutable struct ExplicitMPC 
-    nx::Int
-    nu::Int
-    ny::Int
+    model::Model
 
     nr::Int
-    nd::Int
     nuprev::Int
 
     solution::ParametricDAQP.Solution
@@ -42,11 +39,11 @@ function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false)
                 A=Matrix{Float64}(A), b=b, W=W, senses=senses,
                 bounds_table=bounds_table)
     end
-    mpQP = merge(mpQP,(out_inds=1:mpc.nu,)) # Only compute control at first time step
+    mpQP = merge(mpQP,(out_inds=1:mpc.model.nu,)) # Only compute control at first time step
     # Compute mpQP solution
     sol,info = ParametricDAQP.mpsolve(mpQP, TH)
     nx,nr,nd,nuprev = get_parameter_dims(mpc)
-    empc = ExplicitMPC(mpc.nx,mpc.nu,mpc.ny,nr,nd,nuprev,
+    empc = ExplicitMPC(mpc.model,nr,nuprev,
                        sol,mpQP, TH, nothing,mpc.settings,mpc.K, mpc.labels)
 
     # Build binary search tree
@@ -56,13 +53,13 @@ function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false)
 end
 
 function get_parameter_dims(mpc::ExplicitMPC)
-    return mpc.nx, mpc.nr, mpc.nd, mpc.nuprev
+    return mpc.model.nx, mpc.nr, mpc.model.nd, mpc.nuprev
 end
 
 function build_tree!(mpc::ExplicitMPC)
     mpc.bst  = ParametricDAQP.build_tree(mpc.solution)
     for i in 1:length(mpc.bst.feedbacks) # Correct for prestabilizing feedback
-        mpc.bst.feedbacks[i][1:mpc.nx,:] -= mpc.K'
+        mpc.bst.feedbacks[i][1:mpc.model.nx,:] -= mpc.K'
     end
 end
 
@@ -76,7 +73,9 @@ function plot_feedback(mpc::ExplicitMPC;u_id=1,fix_ids=nothing,fix_vals=nothing,
 end
 
 using Latexify
-function plot_regions(mpc::ExplicitMPC,l1,l2; x=zeros(mpc.nx), r=zeros(mpc.nr), d=zeros(mpc.nd), up=zeros(mpc.nuprev))
+function plot_regions(mpc::ExplicitMPC,l1,l2; 
+        x=zeros(mpc.model.nx), r=zeros(mpc.nr), d=zeros(mpc.model.nd), up=zeros(mpc.nuprev))
+
     id1,l1 = label2id(mpc,l1)
     isnothing(id1) && throw(ArgumentError("Unknown label $l1"))  
     id2,l2 = label2id(mpc,l2)
