@@ -88,8 +88,13 @@ function get_parameter_plot(mpc::ExplicitMPC,l1,l2)
 end
 
 function plot_regions(mpc::ExplicitMPC,lth1,lth2; show_fixed=true, show_zero = false,
-        x=zeros(mpc.model.nx), r=zeros(mpc.nr), d=zeros(mpc.model.nd), uprev=zeros(mpc.nuprev))
+        x=nothing, r=nothing, d=nothing, uprev=nothing)
     lth1,lth2 = Symbol(lth1),Symbol(lth2)
+
+    x= isnothing(x) ? zeros(mpc.model.nx) : x
+    r= isnothing(r) ? zeros(mpc.nr) : r
+    d= isnothing(d) ? zeros(mpc.model.nd) : d
+    uprev= isnothing(uprev) ? zeros(mpc.nuprev) : uprev
 
     free_ids,fix_ids,lx,ly= get_parameter_plot(mpc,lth1,lth2)
     fix_vals = [x;r;d;uprev][fix_ids]
@@ -103,13 +108,18 @@ function plot_regions(mpc::ExplicitMPC,lth1,lth2; show_fixed=true, show_zero = f
 end
 
 function plot_regions(mpc::ExplicitMPC,ths; show_fixed=true, show_zero = false,
-        x=zeros(mpc.model.nx), r=zeros(mpc.nr), d=zeros(mpc.model.nd), uprev=zeros(mpc.nuprev))
+        x=nothing, r=nothing, d=nothing, uprev=nothing)
     plot_region(mpc,first(ths),last(ths):x,r,d,uprev,show_fixed,show_zero)
 end
 
 function plot_feedback(mpc::ExplicitMPC,lu1,lth1,lth2; show_fixed=true, show_zero = false,
-        x=zeros(mpc.model.nx), r=zeros(mpc.nr), d=zeros(mpc.model.nd), uprev=zeros(mpc.nuprev))
+        x=nothing, r=nothing, d=nothing, uprev=nothing)
     lu1,lth1,lth2 = Symbol(lu1),Symbol(lth1),Symbol(lth2)
+
+    x= isnothing(x) ? zeros(mpc.model.nx) : x
+    r= isnothing(r) ? zeros(mpc.nr) : r
+    d= isnothing(d) ? zeros(mpc.model.nd) : d
+    uprev= isnothing(uprev) ? zeros(mpc.nuprev) : uprev
 
     u_id = findfirst(x->x==lu1,mpc.model.labels.u)
     isnothing(u_id) && throw(ArgumentError("Unknown control $lu1"))
@@ -131,7 +141,7 @@ function plot_feedback(mpc::ExplicitMPC,lu1,lth1,lth2; show_fixed=true, show_zer
 end
 
 function plot_feedback(mpc::ExplicitMPC,lu1,ths; show_fixed=true, show_zero = false,
-        x=zeros(mpc.model.nx), r=zeros(mpc.nr), d=zeros(mpc.model.nd), uprev=zeros(mpc.nuprev))
+        x=nothing, r=nothing, d=nothing, uprev=nothing)
     plot_feedback(mpc,lu1,first(ths),last(ths);x,r,d,uprev,show_fixed, show_zero)
 end
 
