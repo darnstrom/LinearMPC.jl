@@ -168,3 +168,14 @@ function move_block!(mpc,block::Int)
     mpc.move_blocks = fill(block,nb+1)
     mpc.move_blocks[end] = res
 end
+
+"""
+    set_labels!(mpc;x,u,y,d)
+Sets the name of the states `x`, controls `u`, output `u`, disturbance `d` 
+"""
+function set_labels!(mpc;x=nothing,u=nothing,y=nothing,d=nothing)
+    isnothing(x) || (mpc.labels.x[:] = x)
+    isnothing(u) || (mpc.labels.u[:] = u)
+    isnothing(y) || (mpc.labels.y[:] = y)
+    isnothing(d) || (mpc.labels.d[:] = d)
+end

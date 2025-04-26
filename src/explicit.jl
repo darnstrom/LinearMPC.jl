@@ -13,6 +13,7 @@ mutable struct ExplicitMPC
     bst
     settings::MPCSettings
     K::Matrix{Float64} # Prestabilizing feedback
+    labels::Labels
 end
 
 function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false)
@@ -46,7 +47,7 @@ function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false)
     sol,info = ParametricDAQP.mpsolve(mpQP, TH)
     nx,nr,nd,nuprev = get_parameter_dims(mpc)
     empc = ExplicitMPC(mpc.nx,mpc.nu,mpc.ny,nr,nd,nuprev,
-                       sol,mpQP, TH, nothing,mpc.settings,mpc.K)
+                       sol,mpQP, TH, nothing,mpc.settings,mpc.K, mpc.labels)
 
     # Build binary search tree
     build_tree && build_tree!(empc)
@@ -73,3 +74,33 @@ function plot_feedback(mpc::ExplicitMPC;u_id=1,fix_ids=nothing,fix_vals=nothing,
     push!(opts,:zlabel=>"\\large\$u_{"*string(u_id)*"}\$")
     ParametricDAQP.plot_solution(mpc.solution;z_id=u_id,fix_ids,fix_vals,opts)
 end
+
+using Latexify
+function plot_regions(mpc::ExplicitMPC,l1,l2; x=zeros(mpc.nx), r=zeros(mpc.nr), d=zeros(mpc.nd), up=zeros(mpc.nuprev))
+    id1,l1 = label2id(mpc,l1)
+    isnothing(id1) && throw(ArgumentError("Unknown label $l1"))  
+    id2,l2 = label2id(mpc,l2)
+    isnothing(id2) && throw(ArgumentError("Unknown label $l2"))
+
+    θ = [x;r;d;up]
+    fix_ids = setdiff(1:length(θ),[id1,id2]) 
+    fix_vals = θ[fix_ids]
+    if id1 < id2
+        lx,ly = l1,l2
+    else
+        lx,ly = l2,l1
+    end
+
+    # Add underscore in case of number
+    nid = findfirst(isdigit,collect(lx))
+    lx = isnothing(nid) ? lx : lx[1:nid-1]*"_"*lx[nid:end]
+    nid = findfirst(isdigit,collect(ly))
+    ly = isnothing(nid) ? ly : ly[1:nid-1]*"_"*ly[nid:end]
+
+    opts = Dict{Symbol,Any}()
+    push!(opts,:xlabel=>latexify(lx))
+    push!(opts,:ylabel=>latexify(ly))
+
+    ParametricDAQP.plot_regions(mpc.solution;fix_ids,fix_vals,opts)
+end
+

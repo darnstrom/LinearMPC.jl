@@ -6,6 +6,8 @@ range.xmax[1:2] = [0.3;2.0]
 # Compute explicit controller over range
 empc = LinearMPC.ExplicitMPC(mpc;range)
 
+LinearMPC.plot_regions(empc,:α,:β)
+
 # Plot slice of critical regions + control law
 fix_vals = [0.0,0.0,0.5,0,0]
 fig = LinearMPC.plot_regions(empc;fix_vals)
