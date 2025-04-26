@@ -38,22 +38,6 @@ Base.@kwdef mutable struct MPCSettings
     solver_opts::Dict{Symbol,Any} = Dict()
 end
 
-struct Labels 
-    x::Vector{Symbol}
-    u::Vector{Symbol}
-    y::Vector{Symbol}
-    d::Vector{Symbol}
-end
-
-function Labels(nx::Int,nu::Int,ny::Int,nd::Int)
-    xlabel = [Symbol("x"*string(i)) for i in 1:nx]
-    ulabel = [Symbol("u"*string(i)) for i in 1:nu]
-    ylabel = [Symbol("y"*string(i)) for i in 1:ny]
-    dlabel = [Symbol("d"*string(i)) for i in 1:nd]
-    return Labels(xlabel,ulabel,ylabel,dlabel)
-end
-
-
 # MPC controller
 mutable struct MPC 
 
@@ -92,18 +76,13 @@ mutable struct MPC
 
     # Move blocks
     move_blocks::Vector{Int}
-
-    # Labels
-    labels::Labels
 end
 
 function MPC(model::Model;Np=10,Nc=Np)
-    MPC(model,
-        0,0,
-        Np,Nc,MPCWeights(model.nu,model.nx,model.ny),
+    MPC(model,0,0,Np,Nc,
+        MPCWeights(model.nu,model.nx,model.ny),
         zeros(0),zeros(0),zeros(0),
-        Constraint[],MPCSettings(),nothing,nothing,zeros(model.nu,model.nx),Int[],
-        Labels(model.nx,model.nu,model.ny,model.nd))
+        Constraint[],MPCSettings(),nothing,nothing,zeros(model.nu,model.nx),Int[])
 end
 
 function MPC(F,G;Gd=nothing, C=nothing, Dd= nothing, Ts= 1.0, Np=10, Nc = Np)
@@ -146,20 +125,13 @@ struct ParameterRange
 end
 
 
-function ParameterRange(mpc)
+function ParameterRange(mpc::MPC)
 
     nx,nr,nd,nuprev = get_parameter_dims(mpc);
 
-    # states
-    xmin,xmax = -100*ones(nx), 100*ones(nx)
-
-    # references 
+    xmin,xmax = -100*ones(nx),100*ones(nx)
     rmin,rmax = -100*ones(nr),100*ones(nr)
-
-    # constant disturbance
     dmin,dmax = -100*ones(nd),100*ones(nd)
-
-    # previous control (for Δu)
     if(nuprev > 0)
         nmin,nmax = length(mpc.umin),length(mpc.umax)
         nb = max(nmin,nmax)
