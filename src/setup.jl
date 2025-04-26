@@ -6,7 +6,7 @@ Internally, this means generating an mpQP, and setting up a DAQP workspace.
 """
 function setup!(mpc::MPC)
     mpc.mpQP = mpc2mpqp(mpc)
-    mpc.opt_model = DAQP.Model()
+    #mpc.opt_model = DAQP.Model()
     if(mpc.settings.QP_double_sided)
         bu,bl = mpc.mpQP.bu[:],mpc.mpQP.bl[:]
     else

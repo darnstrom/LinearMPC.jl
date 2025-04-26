@@ -6,8 +6,8 @@ mutable struct ExplicitMPC
 
     solution::ParametricDAQP.Solution
     mpQP
-    TH
-    bst
+    TH::NamedTuple{(:A,:b,:lb,:ub),Tuple{Matrix{Float64},Vector{Float64},Vector{Float64},Vector{Float64}}}
+    bst::Union{Nothing,ParametricDAQP.BinarySearchTree}
     settings::MPCSettings
     K::Matrix{Float64} # Prestabilizing feedback
 end

@@ -1,11 +1,7 @@
 # Create Φ and Γ such that 
 # X = Φ x0 + Γ U  (where X and U contains xi and ui stacked..)
 function state_predictor(F,G,Np,Nc)
-    if G isa AbstractMatrix
-        nx,nu = size(G);
-    else
-        nx,nu = size(G[1]);
-    end
+    nx,nu = size(G);
     Γ = zeros((Np+1)*nx,Nc*nu);
     Φ = zeros((Np+1)*nx,nx);
     Φ[1:nx,:] = I(nx);
@@ -54,7 +50,7 @@ function create_controlbounds(mpc::MPC, Γ, Φ)
         A = (I-K*Γ[1:Nb*nth, 1:Nb*nu])
         W = K*Φ[1:Nb*nth,:]
     else
-        A = mpc.settings.QP_double_sided ? nothing : Matrix{Float64}(kron(I(Nb),I(nu)))
+        A = mpc.settings.QP_double_sided ? zeros(0,mpc.Nc*nu) : Matrix{Float64}(kron(I(Nb),I(nu)))
         W = zeros(length(ub),nth)
     end
     ub = repeat(mpc.umax,Nb,1)
@@ -106,22 +102,22 @@ end
 # Compute A,b,W such that the constraints for a given MPC structure
 # are on the form A U<=b W th
 function create_constraints(mpc,Φ,Γ)
-    n = size(Γ,2);
-    A = zeros(0,n);
-    nth = sum(get_parameter_dims(mpc))
-    bu,bl,W = zeros(0),zeros(0),zeros(0,nth);
-    issoft,isbinary = falses(0),falses(0)
-    prios = zeros(0)
 
+    n = size(Γ,2);
+    nth = sum(get_parameter_dims(mpc))
     # Control bounds
     if(!isempty(mpc.umax))
-        Ac,bu,bl,W = create_controlbounds(mpc,Γ,Φ)
-        if !isnothing(Ac) A = Ac end
+        A,bu,bl,W = create_controlbounds(mpc,Γ,Φ)
         issoft= falses(n);
         prios = zeros(Int,n)
         isbinary_single = falses(mpc.model.nu) 
         isbinary_single[mpc.binary_controls] .= true;
         isbinary = repeat(isbinary_single,mpc.Nc)
+    else
+        A = zeros(0,n);
+        bu,bl,W = zeros(0),zeros(0),zeros(0,nth);
+        issoft,isbinary = falses(0),falses(0)
+        prios = zeros(0)
     end
 
     # General constraints
