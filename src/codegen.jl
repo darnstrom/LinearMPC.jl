@@ -36,7 +36,7 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
     ParametricDAQP.codegen(mpc.solution;dir,fname,float_type)
 
     # Generate code for MPC
-    nth = mpc.nx+mpc.nr+mpc.nd+mpc.nuprev
+    nth = sum(get_parameter_dims(mpc)) 
 
     # HEADER
     fh = open(joinpath(dir,"mpc_compute_control.h"), "w")
@@ -45,9 +45,9 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
     @printf(fh, "#define %s\n\n", hguard);
 
     write(fh, "typedef $float_type c_float;\n")
-    @printf(fh, "#define N_STATE %d\n",mpc.nx);
+    @printf(fh, "#define N_STATE %d\n",mpc.model.nx);
     @printf(fh, "#define N_REFERENCE %d\n",mpc.nr);
-    @printf(fh, "#define N_DISTURBANCE %d\n",mpc.nd);
+    @printf(fh, "#define N_DISTURBANCE %d\n",mpc.model.nd);
     @printf(fh, "#define N_CONTROL_PREV %d\n",mpc.nuprev);
 
     @printf(fh, "extern c_float mpc_parameter[%d];\n", nth);
@@ -83,8 +83,8 @@ int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_
 end
 
 function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_type="double")
-    mpLDP = qp2ldp(mpc.mpQP,mpc.nu) 
-    mpLDP.Xth[1:mpc.nx,:] -= mpc.K' #Account for prestabilizing feedback
+    mpLDP = qp2ldp(mpc.mpQP,mpc.model.nu) 
+    mpLDP.Xth[1:mpc.model.nx,:] -= mpc.K' #Account for prestabilizing feedback
     # Get dimensions
     nth,m = size(mpLDP.Dth)
 
@@ -98,12 +98,12 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
     @printf(fh, "#define %s\n\n", hguard);
 
     @printf(fh, "#define N_THETA %d\n",nth);
-    @printf(fh, "#define N_STATE %d\n",mpc.nx);
+    @printf(fh, "#define N_STATE %d\n",mpc.model.nx);
     @printf(fh, "#define N_REFERENCE %d\n",mpc.nr);
-    @printf(fh, "#define N_DISTURBANCE %d\n",mpc.nd);
+    @printf(fh, "#define N_DISTURBANCE %d\n",mpc.model.nd);
     @printf(fh, "#define N_CONTROL_PREV %d\n",mpc.nuprev);
 
-    @printf(fh, "#define N_CONTROL %d\n\n",mpc.nu);
+    @printf(fh, "#define N_CONTROL %d\n\n",mpc.model.nu);
 
     @printf(fh, "extern c_float mpc_parameter[%d];\n", nth);
 
@@ -111,8 +111,8 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
     @printf(fh, "extern c_float du[%d];\n", m);
     @printf(fh, "extern c_float dl[%d];\n\n", m);
 
-    @printf(fh, "extern c_float Xth[%d];\n\n", mpc.nu*nth);
-    @printf(fh, "extern c_float uscaling[%d];\n\n", mpc.nu);
+    @printf(fh, "extern c_float Xth[%d];\n\n", mpc.model.nu*nth);
+    @printf(fh, "extern c_float uscaling[%d];\n\n", mpc.model.nu);
 
 
     # SRC 

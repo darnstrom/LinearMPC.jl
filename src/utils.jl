@@ -25,7 +25,7 @@ function solve(mpc::MPC,θ)
     DAQP.update(mpc.opt_model,nothing,f,nothing,bu,bl,nothing)
     udaqp,fval,exitflag,info = DAQP.solve(mpc.opt_model)
     @assert(exitflag>=1)
-    return udaqp[1:mpc.nu]-mpc.K*θ[1:mpc.nx]
+    return udaqp[1:mpc.model.nu]-mpc.K*θ[1:mpc.model.nx]
 end
 
 function solve(empc::ExplicitMPC,θ)
@@ -38,11 +38,11 @@ end
 
 
 function simulate(dynamics,mpc::Union{MPC,ExplicitMPC},x0,N_steps;r=nothing, callback=(x,u,k)->nothing)
-    x,u = x0,zeros(mpc.nu)
+    x,u = x0,zeros(mpc.model.nu)
     
-    rs = zeros(mpc.ny,N_steps);
-    xs = zeros(mpc.nx,N_steps+1); xs[:,1] = x0
-    us = zeros(mpc.nu,N_steps)
+    rs = zeros(mpc.model.ny,N_steps);
+    xs = zeros(mpc.model.nx,N_steps+1); xs[:,1] = x0
+    us = zeros(mpc.model.nu,N_steps)
 
     # Setup reference 
     if(!isnothing(r))
@@ -92,16 +92,16 @@ function label2id(mpc, label::Symbol)
     if(mpc.nr > 0 && string(label)[end] == 'r')
         l = Symbol(string(label)[1:end-1])
         id = findfirst(x->x==l,mpc.labels.y)
-        isnothing(id)  || return mpc.nx + id,string(l)*"^r";
+        isnothing(id)  || return mpc.model.nx + id,string(l)*"^r";
     end
 
     id = findfirst(x->x==label,mpc.labels.d)
-    isnothing(id)  || return mpc.nx+mpc.nr+id,string(label);
+    isnothing(id)  || return mpc.model.nx+mpc.nr+id,string(label);
 
     if(mpc.nuprev > 0 && string(label)[end] == 'p')
         l = Symbol(string(label)[1:end-1])
         id = findfirst(x->x==l,mpc.labels.u)
-        isnothing(id)  || return mpc.nx+mpc.nr+mpc.nd+id,string(l)*"^-";
+        isnothing(id)  || return mpc.model.nx+mpc.nr+mpc.model.nd+id,string(l)*"^-";
     end
 
     return nothing,string(label)

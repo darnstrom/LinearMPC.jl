@@ -3,6 +3,7 @@ using LinearAlgebra
 using DAQPBase
 const DAQP = DAQPBase
 
+include("model.jl")
 include("types.jl");
 
 using ParametricDAQP

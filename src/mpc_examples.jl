@@ -248,7 +248,7 @@ function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
         Q = [1.0,1,1,1]; 
         R = [1.0;1e-4*ones(6)]
         Rr = zeros(7)
-        Qf,~ = ared(mpc.F,mpc.G[:,1],mpc.weights.R[1:1,1:1],mpc.weights.Q)
+        Qf,~ = ared(mpc.model.F,mpc.model.G[:,1],mpc.weights.R[1:1,1:1],mpc.weights.Q)
         set_weights!(mpc;Q,R,Rr,Qf)
 
         # Control constraints

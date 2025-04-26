@@ -56,30 +56,16 @@ end
 
 # MPC controller
 mutable struct MPC 
-    # Plant
-    F::Matrix{Float64}
-    G::Matrix{Float64}
-    Ts::Float64
 
-    # Disturbance model
-    Gd::Matrix{Float64}
-    Dd::Matrix{Float64}
+    model::Model
 
-    # Dims
-    nx::Int
-    nu::Int
-    ny::Int
-
+    # parameters 
     nr::Int
-    nd::Int
     nuprev::Int
 
     # Horizons 
     Np::Int # Prediction
     Nc::Int # Control
-    Nb::Int # Bound
-
-    C::Matrix{Float64}
 
     ## 
     weights::MPCWeights
@@ -111,33 +97,21 @@ mutable struct MPC
     labels::Labels
 end
 
-function MPC(F,G;
-        C=nothing,Np=10, Nc = Np, Nb = Nc, Ts = 1.0, Gd = nothing, Dd = nothing)
-    G = reshape(G,size(G,1),:) 
-    nx,nu = size(G)
-    C = isnothing(C) ? Matrix{Float64}(I,nx,nx) : float(C)
-    ny = size(C,1);
-    (size(C,2)==size(F,1)==nx) || throw(ArgumentError("Dimensions of ss-model incompatible"))
-    # disturbance
-    Gd = isnothing(Gd) ? zeros(nx,0) : Gd
-    Dd = isnothing(Dd) ? zeros(ny,0) : Dd 
-    nd = max(size(Gd,2),size(Dd,2))
-    Gd = [Gd zeros(nx,nd-size(Gd,2))]
-    Dd = [Dd zeros(ny,nd-size(Dd,2))]
-
-    MPC(float(F),float(G),Ts,Gd,Dd,
-        nx,nu,ny,0,nd,0,
-        Np,Nc,Nc,C,MPCWeights(nu,nx,ny),
+function MPC(model::Model;Np=10,Nc=Np)
+    MPC(model,
+        0,0,
+        Np,Nc,MPCWeights(model.nu,model.nx,model.ny),
         zeros(0),zeros(0),zeros(0),
-        Constraint[],MPCSettings(),nothing,nothing,zeros(nu,nx),Int[],
-        Labels(nx,nu,ny,nd))
+        Constraint[],MPCSettings(),nothing,nothing,zeros(model.nu,model.nx),Int[],
+        Labels(model.nx,model.nu,model.ny,model.nd))
 end
 
-function MPC(A,B, Ts::Float64;
-        C=nothing,Np=10, Nc = Np, Nb = Nc, Bd = nothing)
-    (size(A,1)==size(B,1)) || throw(ArgumentError("Dimensions of ss-model incompatible"))
-    F,G,Gd=zoh(A,B,Ts;Bd)
-    MPC(F,G;C,Np,Nc,Nb,Ts,Gd)
+function MPC(F,G;Gd=nothing, C=nothing, Dd= nothing, Ts= 1.0, Np=10, Nc = Np)
+    MPC(Model(F,G;Gd,C,Dd,Ts);Np,Nc);
+end
+
+function MPC(A,B,Ts::Float64; Bd = nothing, C = nothing, Dd = nothing, Np=10, Nc=Np)
+    MPC(Model(A,B,Ts;Bd,C,Dd);Np,Nc)
 end
 
 
