@@ -89,6 +89,7 @@ end
 
 function plot_regions(mpc::ExplicitMPC,lth1,lth2; show_fixed=true, show_zero = false,
         x=zeros(mpc.model.nx), r=zeros(mpc.nr), d=zeros(mpc.model.nd), uprev=zeros(mpc.nuprev))
+    lth1,lth2 = Symbol(lth1),Symbol(lth2)
 
     free_ids,fix_ids,lx,ly= get_parameter_plot(mpc,lth1,lth2)
     fix_vals = [x;r;d;uprev][fix_ids]
@@ -108,6 +109,7 @@ end
 
 function plot_feedback(mpc::ExplicitMPC,lu1,lth1,lth2; show_fixed=true, show_zero = false,
         x=zeros(mpc.model.nx), r=zeros(mpc.nr), d=zeros(mpc.model.nd), uprev=zeros(mpc.nuprev))
+    lu1,lth1,lth2 = Symbol(lu1),Symbol(lth1),Symbol(lth2)
 
     u_id = findfirst(x->x==lu1,mpc.model.labels.u)
     isnothing(u_id) && throw(ArgumentError("Unknown control $lu1"))
