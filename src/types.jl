@@ -38,6 +38,21 @@ Base.@kwdef mutable struct MPCSettings
     solver_opts::Dict{Symbol,Any} = Dict()
 end
 
+struct Labels 
+    x::Vector{Symbol}
+    u::Vector{Symbol}
+    y::Vector{Symbol}
+    d::Vector{Symbol}
+end
+
+function Labels(nx::Int,nu::Int,ny::Int,nd::Int)
+    xlabel = [Symbol("x"*string(i)) for i in 1:nx]
+    ulabel = [Symbol("u"*string(i)) for i in 1:nu]
+    ylabel = [Symbol("y"*string(i)) for i in 1:ny]
+    dlabel = [Symbol("d"*string(i)) for i in 1:nd]
+    return Labels(xlabel,ulabel,ylabel,dlabel)
+end
+
 
 # MPC controller
 mutable struct MPC 
@@ -91,6 +106,9 @@ mutable struct MPC
 
     # Move blocks
     move_blocks::Vector{Int}
+
+    # Labels
+    labels::Labels
 end
 
 function MPC(F,G;
@@ -111,7 +129,8 @@ function MPC(F,G;
         nx,nu,ny,0,nd,0,
         Np,Nc,Nc,C,MPCWeights(nu,nx,ny),
         zeros(0),zeros(0),zeros(0),
-        Constraint[],MPCSettings(),nothing,nothing,zeros(nu,nx),Int[])
+        Constraint[],MPCSettings(),nothing,nothing,zeros(nu,nx),Int[],
+        Labels(nx,nu,ny,nd))
 end
 
 function MPC(A,B, Ts::Float64;
@@ -151,6 +170,7 @@ struct ParameterRange
     umin::Vector{Float64}
     umax::Vector{Float64}
 end
+
 
 function ParameterRange(mpc)
 

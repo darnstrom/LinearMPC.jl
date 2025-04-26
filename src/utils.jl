@@ -82,3 +82,27 @@ end
 matrixify(x::Number, n::Int) = diagm(fill(float(x),n))
 matrixify(v::AbstractVector, n::Int) = diagm(float(v))
 matrixify(M::AbstractMatrix, n::Int) = float(M)
+
+# get paramer id of a label
+function label2id(mpc, label::Symbol)
+
+    id = findfirst(x->x==label,mpc.labels.x)
+    isnothing(id)  || return id,string(label);
+
+    if(mpc.nr > 0 && string(label)[end] == 'r')
+        l = Symbol(string(label)[1:end-1])
+        id = findfirst(x->x==l,mpc.labels.y)
+        isnothing(id)  || return mpc.nx + id,string(l)*"^r";
+    end
+
+    id = findfirst(x->x==label,mpc.labels.d)
+    isnothing(id)  || return mpc.nx+mpc.nr+id,string(label);
+
+    if(mpc.nuprev > 0 && string(label)[end] == 'p')
+        l = Symbol(string(label)[1:end-1])
+        id = findfirst(x->x==l,mpc.labels.u)
+        isnothing(id)  || return mpc.nx+mpc.nr+mpc.nd+id,string(l)*"^-";
+    end
+
+    return nothing,string(label)
+end
