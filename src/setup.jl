@@ -119,7 +119,7 @@ using MatrixEquations
 Sets the terminal cost `Qf` to the inifinite horizon LQR cost 
 """
 function set_terminal_cost!(mpc)
-    Qf, _, _ = ared(mpc.model.F, mpc.model.G, mpc.weights.R, mpc.C'*mpc.weights.Q*mpc.C) # solve Riccati
+    Qf, _, _ = ared(mpc.model.F, mpc.model.G, mpc.weights.R, mpc.model.C'*mpc.weights.Q*mpc.model.C) # solve Riccati
     mpc.weights.Qf = Qf
 end
 
@@ -138,7 +138,7 @@ end
 Sets the prestabilizing feedback `K` to the infinte horizon LQR gain`
 """
 function set_prestabilizing_feedback!(mpc)
-    _, _,mpc.K,_ = ared(mpc.model.F, mpc.model.G, mpc.weights.R+mpc.weights.Rr, mpc.C'*mpc.weights.Q*mpc.C) # solve Ricatti
+    _, _,mpc.K,_ = ared(mpc.model.F, mpc.model.G, mpc.weights.R+mpc.weights.Rr, mpc.model.C'*mpc.weights.Q*mpc.model.C) # solve Ricatti
 end
 
 """
