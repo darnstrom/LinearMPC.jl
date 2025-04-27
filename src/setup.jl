@@ -82,32 +82,19 @@ function set_output_bounds!(mpc::MPC; ymin=zeros(0), ymax=zeros(0), ks = 2:mpc.N
 end
 
 """
-    set_weights!(mpc;Q,R,Rr,S,rho,Qf)
+    set_weights!(mpc;Q,R,Rr,S,Qf)
 
 The weights in the objective function `xN' Qf xN^T + ∑ (C xₖ - rₖ)' Q (C xₖ - rₖ)  + uₖ' R uₖ + Δuₖ' Rr Δuₖ + xₖ' S uₖ 
 
 A vector is interpreted as a diagonal matrix.
 * `rho` Is an additional weight for the soft constraints (default value: 1e6)
 """
-function set_weights!(mpc::MPC;Q = nothing,R=nothing,Rr=nothing, S= nothing, rho=nothing, Qf=nothing)
-    if !isnothing(Q)
-        mpc.weights.Q = matrixify(Q,mpc.model.ny)
-    end
-    if !isnothing(R)
-        mpc.weights.R = matrixify(R,mpc.model.nu)
-    end
-    if !isnothing(Rr)
-        mpc.weights.Rr = matrixify(Rr,mpc.model.nu)
-    end
-    if !isnothing(S)
-        mpc.weights.S = float(S)
-    end
-    if !isnothing(rho)
-        mpc.weights.rho = rho
-    end
-    if !isnothing(Qf)
-        mpc.weights.Qf = matrixify(Qf,mpc.model.ny)
-    end
+function set_weights!(mpc::MPC;Q = zeros(0,0), R=zeros(0,0), Rr=zeros(0,0), S= zeros(0,0), Qf=zeros(0,0))
+    isempty(Q)  || (mpc.weights.Q[:,:]  = matrixify(Q,mpc.model.ny))
+    isempty(R)  || (mpc.weights.R[:,:]  = matrixify(R,mpc.model.nu))
+    isempty(Rr) || (mpc.weights.Rr[:,:] = matrixify(Rr,mpc.model.nu))
+    isempty(S)  || (mpc.weights.S[:,:]  = float(S))
+    isempty(Qf) || (mpc.weights.Qf[:,:] = matrixify(Qf,mpc.model.ny))
 end
 
 # Terminal ingredients

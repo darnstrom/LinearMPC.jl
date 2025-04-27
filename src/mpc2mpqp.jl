@@ -197,7 +197,7 @@ function mpc2mpqp(mpc::MPC)
 
     F,G,C = mpc.model.F-mpc.model.G*mpc.K, mpc.model.G, mpc.model.C
     Q,R,Rr,S = mpc.weights.Q, mpc.weights.R, mpc.weights.Rr, mpc.weights.S 
-    Qf = isempty(mpc.weights.Qf) ? Q : mpc.weights.Qf
+    Qf = iszero(mpc.weights.Qf) ? Q : mpc.weights.Qf
 
     nx,nr,nd,nuprev = get_parameter_dims(mpc)
     mpc.nr, mpc.nuprev =  nr,nuprev
@@ -287,7 +287,7 @@ function mpc2mpqp(mpc::MPC)
             ns = length(issoft)-size(A,1)
             A[issoft[ns+1:end],end].=-1;
 
-            H = cat(H,mpc.weights.rho,dims=(1,2));
+            H = cat(H,mpc.settings.soft_weight,dims=(1,2));
             f_theta =[f_theta;zeros(1,size(f_theta,2))];
             f = [f;0];
         end
