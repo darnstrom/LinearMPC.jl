@@ -59,3 +59,29 @@ end
 function Model(A,B,Bd,C,Dd,Ts::AbstractFloat)
     Model(A,B,Ts;Bd,C,Dd)
 end
+
+using ForwardDiff
+
+function linearize(f,h,x,u;d=zeros(0))
+
+    nx,nu,nd = length(x),length(u),length(d)
+    fz = z->f(z[1:nx],z[nx+1:nx+nu],z[nx+nu+1:nx+nu+nd])
+    hz = z->h(z[1:nx],z[nx+1:nx+nu],z[nx+nu+1:nx+nu+nd])
+    F = ForwardDiff.jacobian(fz,[x;u;d])
+    A,B,Bd = F[:,1:nx],F[:,nx+1:nx+nu],F[:,nx+nu+1:end]
+    H = ForwardDiff.jacobian(hz,[x;u;d])
+    C,D,Dd = H[:,1:nx],H[:,nx+1:nx+nu],H[:,nx+nu+1:end]
+    return A,B,Bd,C,D,Dd
+end
+
+function Model(f,h,x::AbstractVector,u::AbstractVector,Ts;d=zeros(0))
+    A,B,Bd,C,D,Dd = linearize(f,h,x,u;d)
+    iszero(D) || throw(ArgumentError("Non-proper system"))
+    return Model(A,B,Ts;Bd,C,Dd)
+end
+
+function Model(f,h,x::AbstractVector,u::AbstractVector;d=zeros(0),Ts=1.0)
+    F,G,Gd,C,D,Dd = linearize(f,h,x,u;d)
+    iszero(D) || throw(ArgumentError("Non-proper system"))
+    return Model(F,G;Gd,C,Dd,Ts)
+end
