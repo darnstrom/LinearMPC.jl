@@ -72,19 +72,19 @@ end
 
 using Latexify
 
-function get_parameter_plot(mpc::ExplicitMPC,l1,l2)
+function get_parameter_plot(mpc,l1,l2)
     id1,l1 = label2id(mpc,l1)
     isnothing(id1) && throw(ArgumentError("Unknown label $l1"))  
     id2,l2 = label2id(mpc,l2)
     isnothing(id2) && throw(ArgumentError("Unknown label $l2"))
     # lower id is always plotted on x-axis
     if id1 < id2
-        lx,ly = l1,l2
+        lx,ly,idx,idy = l1,l2,id1,id2
     else
-        lx,ly = l2,l1
+        lx,ly,idx,idy = l2,l1,id2,id1
     end
     fix_ids = setdiff(1:sum(get_parameter_dims(mpc)),[id1,id2])
-    return [id1,id2],fix_ids,make_subscript(lx),make_subscript(ly)
+    return [idx,idy],fix_ids,make_subscript(lx),make_subscript(ly)
 end
 
 function plot_regions(mpc::ExplicitMPC,lth1,lth2; show_fixed=true, show_zero = false,
