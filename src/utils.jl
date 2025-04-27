@@ -36,30 +36,6 @@ function solve(empc::ExplicitMPC,θ)
     end
 end
 
-
-function simulate(dynamics,mpc::Union{MPC,ExplicitMPC},x0,N_steps;r=nothing, callback=(x,u,k)->nothing)
-    x,u = x0,zeros(mpc.model.nu)
-    
-    rs = zeros(mpc.model.ny,N_steps);
-    xs = zeros(mpc.model.nx,N_steps+1); xs[:,1] = x0
-    us = zeros(mpc.model.nu,N_steps)
-
-    # Setup reference 
-    if(!isnothing(r))
-        rs[:,1:size(r,2)].= r
-        rs[:,size(r,2)+1:end] .= r[:,end] # hold last value of reference
-    end
-
-    # Start the simulation
-    for k = 1:N_steps
-        u = compute_control(mpc,x;r=rs[:,k],uprev=u)
-        x = dynamics(x,u)
-        callback(x,u,k)
-        us[:,k], xs[:,k+1] = u, x
-    end
-    return xs,us,rs
-end
-
 function range2region(range)
     lb = [range.xmin;range.rmin;range.dmin;range.umin]
     ub = [range.xmax;range.rmax;range.dmax;range.umax]
