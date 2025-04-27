@@ -78,5 +78,13 @@ global templib
         end
     end
 
+    @testset "Certification" begin
+        # Load inverted pendulum example and certify the iteration complexity 
+        mpc,range = LinearMPC.mpc_examples("invpend")
+        mpc.settings.QP_double_sided = true
+        result = LinearMPC.certify(mpc;range)
+        @test length(result.partition) > 100
+    end
+
 
 end

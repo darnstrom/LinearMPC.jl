@@ -19,15 +19,21 @@ function certify(mpc::MPC; range=nothing, AS0 = Int[], settings = nothing)
     isnothing(mpc.mpQP) && setup!(mpc) # ensure mpQP is setup 
     settings = isnothing(settings) ? ASCertain.CertSettings() : settings
 
+    if mpc.settings.QP_double_sided
+        mpQP = make_singlesided(mpc.mpQP; explicit_soft = mpc.settings.explicit_soft)
+    else
+        mpQP = mpc.mpQP
+    end
+
     if isnothing(range)
         @warn("No parameter range defined. Using default limits [-100 and 100]."* 
               "If you want a bigger/smaller region, create a ParameterRange")
         range = ParameterRange(mpc)
     end
 
-    TH = range2region(range)
-    part, iter_max = ASCertain.certify(mpc.mpQP,TH,AS0;opts=settings)
-    return CertificationResult(mpc,iter_max,part,TH)
+    region = range2region(range)
+    part, iter_max = ASCertain.certify(mpQP,region,AS0;opts=settings)
+    return CertificationResult(mpc,iter_max,part,region)
 end
 
 function plot(cert::CertificationResult,lth1,lth2; show_fixed=true, show_zero = false, 

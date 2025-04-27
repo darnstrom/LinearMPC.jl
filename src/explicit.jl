@@ -23,21 +23,9 @@ function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false)
 
     # Transform into single-sided QP 
     if(mpc.settings.QP_double_sided) 
-        ncstr = length(mpQP.bu);
-        n_bounds = ncstr-size(mpQP.A,1);
-        bounds_table=[collect(ncstr+1:2*ncstr);collect(1:ncstr)]
-        A = [I(n_bounds) zeros(n_bounds,size(mpQP.A,2)-n_bounds);mpQP.A]
-        A = [A;-A]
-        if(mpc.settings.explicit_soft && any(senses.==DAQP.SOFT))# Correct sign for slack
-            A[:,end].= -abs.(A[:,end])
-        end
-        b = [mpQP.bu;-mpQP.bl]
-        W = [mpQP.W;-mpQP.W]
-        senses = [mpQP.senses;mpQP.senses]
-        mpQP = (H=mpQP.H,f=mpQP.f, H_theta = mpQP.H_theta, f_theta=mpQP.f_theta,
-                A=Matrix{Float64}(A), b=b, W=W, senses=senses,
-                bounds_table=bounds_table)
+        mpQP = make_singlesided(mpQP; explicit_soft = mpc.settings.explicit_soft)
     end
+
     mpQP = merge(mpQP,(out_inds=1:mpc.model.nu,)) # Only compute control at first time step
     # Compute mpQP solution
     sol,info = ParametricDAQP.mpsolve(mpQP, TH)

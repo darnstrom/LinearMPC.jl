@@ -111,3 +111,19 @@ function make_subscript(label::String)
     nid = findfirst(isdigit,collect(label))
     return isnothing(nid) ? label : label[1:nid-1]*"_"*label[nid:end]
 end
+function make_singlesided(mpQP;explicit_soft=true)
+    ncstr = length(mpQP.bu);
+    n_bounds = ncstr-size(mpQP.A,1);
+    bounds_table=[collect(ncstr+1:2*ncstr);collect(1:ncstr)]
+    A = [I(n_bounds) zeros(n_bounds,size(mpQP.A,2)-n_bounds);mpQP.A]
+    A = [A;-A]
+    if(explicit_soft && any(senses.==DAQP.SOFT))# Correct sign for slack
+        A[:,end].= -abs.(A[:,end])
+    end
+    b = [mpQP.bu;-mpQP.bl]
+    W = [mpQP.W;-mpQP.W]
+    senses = [mpQP.senses;mpQP.senses]
+    return (H=mpQP.H,f=mpQP.f, H_theta = mpQP.H_theta, f_theta=mpQP.f_theta,
+            A=Matrix{Float64}(A), b=b, W=W, senses=senses,
+            bounds_table=bounds_table)
+end
