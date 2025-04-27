@@ -10,9 +10,9 @@ all of them defaults to zero.
 function compute_control(mpc::Union{MPC,ExplicitMPC},x;r=nothing,d=nothing,uprev=nothing)
     # Setup parameter vector θ
     nx,nr,nd,nuprev = get_parameter_dims(mpc)
-    r = isnothing(r) ? zeros(nr) : r
+    r = isnothing(r) || !mpc.settings.reference_tracking ? zeros(nr) : r
     d = isnothing(d) ? zeros(nd) : d 
-    uprev = isnothing(uprev) ? zeros(nuprev) : uprev
+    uprev = isnothing(uprev) || mpc.nuprev == 0 ? zeros(nuprev) : uprev
     return solve(mpc,[x;r;d;uprev])
 end
 
