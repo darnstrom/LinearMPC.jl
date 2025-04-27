@@ -48,7 +48,6 @@ function plot(cert::CertificationResult,lth1,lth2; show_fixed=true, show_zero = 
     free_ids,fix_ids,lx,ly= get_parameter_plot(cert.mpc,lth1,lth2)
     fix_vals = [x;r;d;uprev][fix_ids]
 
-    @info "" free_ids, cert.region.lb, cert.region.ub
     opts = Dict{Symbol,Any}()
     push!(opts,:xlabel=>latexify(lx))
     push!(opts,:ylabel=>latexify(ly))
