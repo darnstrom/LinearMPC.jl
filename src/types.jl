@@ -1,7 +1,7 @@
 # lb <= Au uk + Ax xk <= ub for k ∈ ks
 # (additional terms Ar rₖ, Aw wₖ, Ad dₖ, Aup u⁻ₖ)
 
-mutable struct Constraint
+struct Constraint
     Au::Matrix{Float64}
     Ax::Matrix{Float64}
     Ar::Matrix{Float64}
@@ -17,17 +17,16 @@ mutable struct Constraint
 end
 
 # Weights used to define the objective function of the OCP
-mutable struct MPCWeights
+struct MPCWeights
     Q::Matrix{Float64}
     R::Matrix{Float64}
     Rr::Matrix{Float64}
     S::Matrix{Float64}
-    rho::Float64
     Qf::Matrix{Float64}
 end
 
 function MPCWeights(nu,nx,nr)
-    return MPCWeights(Matrix{Float64}(I,nr,nr),Matrix{Float64}(I,nu,nu),zeros(nu,nu),zeros(nx,nu),1e6,zeros(0,0))
+    return MPCWeights(Matrix{Float64}(I,nr,nr),Matrix{Float64}(I,nu,nu),zeros(nu,nu),zeros(nx,nu),zeros(nr,nr))
 end
 
 Base.@kwdef mutable struct MPCSettings
@@ -35,6 +34,7 @@ Base.@kwdef mutable struct MPCSettings
     reference_tracking::Bool= true
     soft_constraints::Bool= true
     explicit_soft::Bool= false
+    soft_weight::Float64= 1e6
     solver_opts::Dict{Symbol,Any} = Dict()
 end
 
