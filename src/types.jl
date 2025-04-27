@@ -89,12 +89,16 @@ function MPC(model::Model;Np=10,Nc=Np)
         Constraint[],MPCSettings(),nothing,DAQP.Model(),zeros(model.nu,model.nx),Int[])
 end
 
-function MPC(F,G;Gd=nothing, C=nothing, Dd= nothing, Ts= 1.0, Np=10, Nc = Np)
+function MPC(F,G;Gd=zeros(0,0), C=zeros(0,0), Dd= zeros(0,0), Ts= 1.0, Np=10, Nc = Np)
     MPC(Model(F,G;Gd,C,Dd,Ts);Np,Nc);
 end
 
-function MPC(A,B,Ts::Float64; Bd = nothing, C = nothing, Dd = nothing, Np=10, Nc=Np)
+function MPC(A,B,Ts::Float64; Bd = zeros(0,0), C = zeros(0,0), Dd = zeros(0,0), Np=10, Nc=Np)
     MPC(Model(A,B,Ts;Bd,C,Dd);Np,Nc)
+end
+
+function MPC(sys; Ts=1.0, Np=10, Nc=Np)
+    MPC(Model(sys;Ts);Np,Nc)
 end
 
 struct ParameterRange
@@ -132,11 +136,4 @@ function ParameterRange(mpc::MPC)
                           rmin,rmax,
                           dmin,dmax,
                           umin,umax)
-end
-
-struct Polytope
-    A::Matrix{Float64}
-    b::Vector{Float64}
-    ub::Vector{Float64}
-    lb::Vector{Float64}
 end

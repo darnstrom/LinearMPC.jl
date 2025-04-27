@@ -4,6 +4,7 @@ authors = ["Daniel Arnström <daniel.arnstrom@gmail.com>"]
 version = "0.3.0"
 
 [deps]
+ControlSystemsBase = "aaaaaaaa-a6ca-5380-bf3e-84a91bcd477e"
 DAQPBase = "833476c3-a8c0-4073-9b64-6473509843fe"
 Latexify = "23fbe1c1-3f47-55db-b15f-69d7ec21a316"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
@@ -11,15 +12,22 @@ MatrixEquations = "99c1a7ee-ab34-5fd5-8076-27c950a045f4"
 ParametricDAQP = "19f72acb-e2a9-45c8-96b9-4d5487c8db2e"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 
+[weakdeps]
+ControlSystemsBase = "aaaaaaaa-a6ca-5380-bf3e-84a91bcd477e"
+
 [compat]
+ControlSystemsBase="1.10"
 DAQPBase = "0.1.0"
-Latexify= "0.16.7"
+Latexify = "0.16"
 MatrixEquations = "2.4.5"
 ParametricDAQP = "0.2.3"
 julia = "1.6"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[extensions]
+ControlSystemsExt= "ControlSystemsBase"
 
 [targets]
 test = ["Test"]
