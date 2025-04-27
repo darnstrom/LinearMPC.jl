@@ -20,6 +20,7 @@ export move_block!,set_labels!
 include("mpc2mpqp.jl");
 include("mpc_examples.jl");
 
+include("simulation.jl");
 
 using Printf
 include("codegen.jl");
