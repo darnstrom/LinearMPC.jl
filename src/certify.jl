@@ -15,8 +15,9 @@ Provide certificates on the iteration complexity of DAQP for solving the resulti
 * `AS0` is the starting working set in DAQP (defaults to empty)
 * `settings` the settings used in the certification (see ASCertain.CertSettings()) 
 """
-function certify(mpc::MPC; range=nothing, AS0 = Int[], settings = ASCertain.CertSettings())
+function certify(mpc::MPC; range=nothing, AS0 = Int[], settings = nothing)
     isnothing(mpc.mpQP) && setup!(mpc) # ensure mpQP is setup 
+    settings = isnothing(settings) ? ASCertain.CertSettings() : settings
 
     if isnothing(range)
         @warn("No parameter range defined. Using default limits [-100 and 100]."* 
