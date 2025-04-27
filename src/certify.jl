@@ -32,7 +32,7 @@ function certify(mpc::MPC; range=nothing, AS0 = Int[], settings = nothing)
     end
 
     region = range2region(range)
-    part, iter_max = ASCertain.certify(mpQP,region,AS0;opts=settings)
+    part, iter_max = ASCertain.certify(mpQP,region,convert(Vector{Int},AS0);opts=settings)
     return CertificationResult(mpc,iter_max,part,region)
 end
 
