@@ -66,12 +66,12 @@ function range2region(range)
     return (A = zeros(length(ub), 0), b=zeros(0), lb=lb,ub=ub)
 end
 
-function zoh(A,B,Ts; Bd = nothing)
+function zoh(A,B,Ts; Bd = zeros(0,0))
   dims = size(B);
   nx,nu = length(dims)==1 ? (dims[1],1) : dims
-  if isnothing(Bd)
+  if isempty(Bd)
       M = exp([A*Ts  B*Ts; zeros(nu, nx + nu)])
-      return M[1:nx, 1:nx], M[1:nx, nx+1:nx+nu],nothing
+      return M[1:nx, 1:nx], M[1:nx, nx+1:nx+nu],zeros(0,0)
   else
       nd = size(Bd,2);
       M = exp([A*Ts  [B Bd]*Ts; zeros(nu+nd, nx + nu + nd)])
