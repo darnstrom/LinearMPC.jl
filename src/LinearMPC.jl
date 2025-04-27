@@ -24,4 +24,7 @@ include("mpc_examples.jl");
 using Printf
 include("codegen.jl");
 
+using ASCertain
+include("certify.jl");
+
 end
