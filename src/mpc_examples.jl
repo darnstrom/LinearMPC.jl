@@ -13,7 +13,7 @@ function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
         mpc = MPC(A,B,Ts;C,Nc,Np);
 
         Q,R,Rr= [1.2^2,1], [0.0], [1.0]
-        set_weights!(mpc;Q,R,Rr)
+        set_objective!(mpc;Q,R,Rr)
 
         umin,umax = [-2.0], [2.0]
         set_bounds!(mpc; umin,umax)
@@ -46,7 +46,7 @@ function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
         Q = [0.1^2, 0]; 
         R = [0.0]
         Rr = [0.1^2]
-        set_weights!(mpc;Q,R,Rr)
+        set_objective!(mpc;Q,R,Rr)
 
         umin,umax = [-0.5],[0.5]
         set_bounds!(mpc;umin,umax)
@@ -88,7 +88,7 @@ function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
         Q = [10,10].^2; 
         R = [0.0, 0.0]
         Rr = [0.1, 0.1].^2
-        set_weights!(mpc;Q,R,Rr)
+        set_objective!(mpc;Q,R,Rr)
 
         set_bounds!(mpc,umin=[-0.5;-0.5],umax=[0.5;0.5])
 
@@ -123,7 +123,7 @@ function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
         Q = ones(nx);
         R = [0.0]
         Rr = [1.0]
-        set_weights!(mpc;Q,R,Rr)
+        set_objective!(mpc;Q,R,Rr)
 
         set_bounds!(mpc,umin = [-1.0], umax=[1.0])
         set_output_bounds!(mpc,ymin = -10*ones(nx), ymax=10*ones(nx), ks = 2:mpc.Nc)
@@ -165,7 +165,7 @@ function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
         Q = 100*ones(nx);
         R = [1.0]
         Rr = [0.0]
-        set_weights!(mpc;Q,R,Rr)
+        set_objective!(mpc;Q,R,Rr)
         set_bounds!(mpc,umin=[-0.5],umax=[0.5])
         add_constraint!(mpc, Ax = Matrix(I,nm,2*nm), 
                         lb = -4*ones(nm), ub = 4*ones(nm),
@@ -202,7 +202,7 @@ function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
         Q = [1.0, 1.0]
         R = zeros(3)
         Rr = (1e-1*[1, 1, 1]).^2
-        set_weights!(mpc;Q,R,Rr)
+        set_objective!(mpc;Q,R,Rr)
         set_bounds!(mpc, umin = [-3.0,2,2], umax = [3.0,2,2])
 
         if(isnothing(settings))
@@ -249,7 +249,7 @@ function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
         R = [1.0;1e-4*ones(6)]
         Rr = zeros(7)
         Qf,~ = ared(mpc.model.F,mpc.model.G[:,1],mpc.weights.R[1:1,1:1],mpc.weights.Q)
-        set_weights!(mpc;Q,R,Rr,Qf)
+        set_objective!(mpc;Q,R,Rr,Qf)
 
         # Control constraints
         set_bounds!(mpc,umin = [-1.0;0;zeros(4)], umax=[1.0;1e30;1e30;ones(4)])

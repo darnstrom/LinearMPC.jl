@@ -33,7 +33,7 @@ Ts = 0.01
 mpc = LinearMPC.MPC(A,B,Ts;C,Np=50,Nc=5);
 
 # set the objective functions weights
-set_weights!(mpc;Q=[1.2^2,1], R=[0.0], Rr=[1.0])
+set_objective!(mpc;Q=[1.2^2,1], R=[0.0], Rr=[1.0])
 
 # set actuator limits
 set_bounds!(mpc; umin=[-2.0],umax=[2.0])
