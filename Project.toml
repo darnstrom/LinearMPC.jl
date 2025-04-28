@@ -1,7 +1,7 @@
 name = "LinearMPC"
 uuid = "82e1c212-e1a2-49d2-b26a-a31d6968e3bd"
 authors = ["Daniel Arnström <daniel.arnstrom@gmail.com>"]
-version = "0.3.0"
+version = "0.4.0"
 
 [deps]
 ASCertain = "3c289fd8-0ede-4eb4-bc21-a9cdb942ddf8"
