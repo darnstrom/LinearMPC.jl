@@ -94,14 +94,13 @@ function set_bounds!(mpc::MPC; umin=zeros(0), umax=zeros(0), ymin = zeros(0), ym
 end
 
 """
-    set_weights!(mpc;Q,R,Rr,S,Qf)
+    set_objective!(mpc;Q,R,Rr,S,Qf)
 
-The weights in the objective function `xN' Qf xN^T + ∑ (C xₖ - rₖ)' Q (C xₖ - rₖ)  + uₖ' R uₖ + Δuₖ' Rr Δuₖ + xₖ' S uₖ 
+Set the weights in the objective function `xN' C' Qf C xN^T + ∑ (C xₖ - rₖ)' Q (C xₖ - rₖ)  + uₖ' R uₖ + Δuₖ' Rr Δuₖ + xₖ' S uₖ 
 
 A vector is interpreted as a diagonal matrix.
-* `rho` Is an additional weight for the soft constraints (default value: 1e6)
 """
-function set_weights!(mpc::MPC;Q = zeros(0,0), R=zeros(0,0), Rr=zeros(0,0), S= zeros(0,0), Qf=zeros(0,0))
+function set_objective!(mpc::MPC;Q = zeros(0,0), R=zeros(0,0), Rr=zeros(0,0), S= zeros(0,0), Qf=zeros(0,0))
     isempty(Q)  || (mpc.weights.Q[:,:]  = matrixify(Q,mpc.model.ny))
     isempty(R)  || (mpc.weights.R[:,:]  = matrixify(R,mpc.model.nu))
     isempty(Rr) || (mpc.weights.Rr[:,:] = matrixify(Rr,mpc.model.nu))
@@ -109,6 +108,7 @@ function set_weights!(mpc::MPC;Q = zeros(0,0), R=zeros(0,0), Rr=zeros(0,0), S= z
     isempty(Qf) || (mpc.weights.Qf[:,:] = matrixify(Qf,mpc.model.ny))
     mpc.mpqp_issetup = false
 end
+set_weights! = set_objective! # backwards compatibility
 
 # Terminal ingredients
 using MatrixEquations 
