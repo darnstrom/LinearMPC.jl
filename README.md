@@ -1,4 +1,7 @@
 # **LinearMPC.jl**
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![](https://img.shields.io/badge/docs-online-brightgreen)](https://darnstrom.github.io/LinearMPC.jl)
+
 **LinearMPC.jl** is a Julia package for Model Predictive Control (MPC) of linear systems. It aims to produce _high-performant_ and _lightweight_ C-code that can easily be used on embedded systems, while at the same time give a user-friendly and expressive development environment for MPC. The package supports code generation for the Quadratic Programming solver [DAQP](https://github.com/darnstrom/daqp), and for explicit solutions computed by [ParametricDAQP.jl](https://github.com/darnstrom/ParametricDAQP.jl). 
 
 A simplified version (see the documentation for a more complete formulation) of the solved problem is
@@ -39,8 +42,8 @@ set_bounds!(mpc; umin=[-2.0],umax=[2.0])
 
 A control, given the state `x` and reference value `r`, is computed with
 ```julia
-# compute control u at state x and reference r. 
-u = compute_control(mpc,x =[0,0,0,0], r = [1, 0])
+# compute control u at state x = [0,0,0,0] and reference r. 
+u = compute_control(mpc,[0,0,0,0], r = [1, 0])
 ```
 
 Embeddable C-code for the MPC controller is generated with the command
