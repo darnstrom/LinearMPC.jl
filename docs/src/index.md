@@ -18,13 +18,13 @@ In MPC, an optimal control decision is computed at every sampling instance by so
 ```
 where an $\textcolor{purple}{\text{objective}}$ is minimized , subject to a $\textcolor{blue}{\text{dynamical system}}$ that is simulated over a horizon $N$, $\textcolor{red}{\text{starting from}}$ an estimate $\hat{x}$ of the current state. Additionally, $\textcolor{green}{\text{constraints}}$ like actuator limits and state constraints are accounted for. The objective is comprised by the deviation of an output $y= Cx$ from a reference value $r$, the control effort ($u^T R u$) , and the change of the control action $\Delta u^T R_r \Delta u$. 
 
-LinearMPC.jl generates a _condensed_ problem by eliminating the equality constraint from the dynamics. The resuliting optimization problem is a dense Quadratic Program (QP). *LinearMPC.jl* uses the QP sovler [DAQP](https://github.com/darnstrom/daqp), a dual active-set solver that has been specialized to solved such problems.
+LinearMPC.jl generates a _condensed_ problem by eliminating the equality constraint. The resuliting optimization problem is a dense _Quadratic Program_ (QP). **LinearMPC.jl** uses the QP sovler [DAQP](https://github.com/darnstrom/daqp), a dual active-set solver that has been specialized to solved such problems.
 
-One can also explicitly express the solution map problem as a piecewise affine function over polyhedral regions. *LinearMPC.jl* supports the computation of such explicit solutions by interfacing the multi-parameteric QP solver [ParametricDAQP.jl](https://github.com/darnstrom/ParametricDAQP.jl.)
+The solution map for the optimization problem is a piecewise affine function over polyhedral regions. **LinearMPC.jl** supports the computation of such explicit solutions by interfacing the multi-parameteric QP solver [ParametricDAQP.jl](https://github.com/darnstrom/ParametricDAQP.jl.)
 
 ## Why LinearMPC.jl? 
 * Code generation of **high-performant**, **allocation-free**, **library-free**, and **lightweight** C-code that can be embedded on _any_ micro controller. 
-* State-of-the computation of explicit solutions (**~100x** faster than other software packages)  
+* State-of-the-art computation of explicit solutions (**~100x** faster than other software packages)  
 * Tools to determine **real-time certificates** of the complexity of the solver, allowing for MPC in with guarantees on the memory and computationala requirements before deploying the solver.
 
 ## Why not LinearMPC.jl? 

@@ -28,7 +28,7 @@ B = 100*[0;1.0;0;2.0;;];
 C = [1.0 0 0 0; 0 0 1.0 0];
 
 
-# create an MPC control with sample time 0.01, prediction horizon 10 and control horizon 5 
+# create an MPC control with sample time 0.01, prediction/control horizon 50/5
 Ts = 0.01
 mpc = LinearMPC.MPC(A,B,Ts;C,Np=50,Nc=5);
 
