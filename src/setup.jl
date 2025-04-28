@@ -17,11 +17,11 @@ function setup!(mpc::MPC)
 end
 
 """
-    set_bounds!(mpc;umin,umax)
+    set_input_bounds!(mpc;umin,umax)
 
-Sets the bounds umin ≤ u ≤ umax 
+Sets the input bounds umin ≤ u ≤ umax 
 """
-function set_bounds!(mpc::MPC; umin=zeros(0), umax=zeros(0))
+function set_input_bounds!(mpc::MPC; umin=zeros(0), umax=zeros(0))
     nmin,nmax = length(umin),length(umax)
     nb = max(nmin,nmax)
     nb == 0 && return
@@ -81,6 +81,16 @@ Adds the constraints lb ≤ C x  ≤ ub for the time steps k ∈ ks
 """
 function set_output_bounds!(mpc::MPC; ymin=zeros(0), ymax=zeros(0), ks = 2:mpc.Np, soft = true, binary=false, prio = 0)
     add_constraint!(mpc, Ax = mpc.model.C, Ad = mpc.model.Dd, lb = ymin, ub = ymax;ks,soft,binary,prio)
+end
+
+"""
+    set_bounds!(mpc;umin,umax,ymin,umax)
+
+Sets the bounds umin ≤ u ≤ umax and ymin ≤ y ≤ umax
+"""
+function set_bounds!(mpc::MPC; umin=zeros(0), umax=zeros(0), ymin = zeros(0), ymax = zeros(0))
+    (!isempty(umin) ||  !isempty(umax)) && set_input_bounds!(mpc;umin,umax)
+    (!isempty(ymin) ||  !isempty(ymax)) && set_output_bounds!(mpc;ymin,ymax)
 end
 
 """
