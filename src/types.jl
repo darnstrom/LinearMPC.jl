@@ -38,10 +38,6 @@ Base.@kwdef mutable struct MPCSettings
     solver_opts::Dict{Symbol,Any} = Dict()
 end
 
-#const MultiParametricQP = NamedTuple{(:H,:f,:H_theta,:f_theta,
-#                                      :A,:b,:W,:senses,:bounds_table),
-#                                     Tuple{Matrix{Float64}, Matrix{Float64}, Matrix{Float64},Matrix{Float64},
-#                                           Matrix{Float64},Matrix{Float64},Matrix{Float64},Vector{Cint},Vector{Int}}}
 # MPC controller
 mutable struct MPC 
 
