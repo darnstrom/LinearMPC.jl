@@ -25,7 +25,7 @@ The solution map for the optimization problem is a piecewise affine function ove
 ## Why LinearMPC.jl? 
 * Code generation of **high-performant**, **allocation-free**, **library-free**, and **lightweight** C-code that can be embedded on _any_ micro controller. 
 * State-of-the-art computation of explicit solutions (**~100x** faster than other software packages)  
-* Tools to determine **real-time certificates** of the complexity of the solver, allowing for MPC in with guarantees on the memory and computationala requirements before deploying the solver.
+* Tools to determine **real-time certificates** of the complexity of the solver, allowing for MPC in with guarantees on the memory and computational requirements before deploying the solver.
 
 ## Why not LinearMPC.jl? 
 As its name suggests, the package is specialized for MPC for _linear_ systems. If a linear (or linearized) model does not suffices for your use case, consider the following packages.
