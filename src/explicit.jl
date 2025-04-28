@@ -13,7 +13,7 @@ mutable struct ExplicitMPC
 end
 
 function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false)
-    mpQP = isnothing(mpc.mpQP) ? mpc2mpqp(mpc) : mpc.mpQP
+    mpQP = mpc.mpqp_issetup ? mpc.mpQP : mpc2mpqp(mpc)
     if(range==nothing)
         @warn("No parameter range defined. Using default limits [-100 and 100]. If you want a bigger/smaller region, create a ParameterRange")
         range = ParameterRange(mpc)

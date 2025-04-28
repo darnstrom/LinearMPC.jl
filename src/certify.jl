@@ -16,7 +16,7 @@ Provide certificates on the iteration complexity of DAQP for solving the resulti
 * `settings` the settings used in the certification (see ASCertain.CertSettings()) 
 """
 function certify(mpc::MPC; range=nothing, AS0 = Int[], settings = nothing)
-    isnothing(mpc.mpQP) && setup!(mpc) # ensure mpQP is setup 
+    mpc.mpqp_issetup || setup!(mpc) # ensure mpQP is setup
     settings = isnothing(settings) ? ASCertain.CertSettings() : settings
 
     if mpc.settings.QP_double_sided

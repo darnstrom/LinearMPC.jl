@@ -13,6 +13,7 @@ function setup!(mpc::MPC)
         bu,bl = mpc.mpQP.b[:], -1e30*ones(length(mpc.mpQP.b))
     end
     DAQP.setup(mpc.opt_model, mpc.mpQP.H,mpc.mpQP.f[:],mpc.mpQP.A,bu,bl,mpc.mpQP.senses)
+    mpc.mpqp_issetup = true
 end
 
 """
@@ -28,6 +29,7 @@ function set_bounds!(mpc::MPC; umin=zeros(0), umax=zeros(0))
 
     mpc.umin = [umin;-1e30*ones(nb-nmin)]
     mpc.umax = [umax;+1e30*ones(nb-nmax)]
+    mpc.mpqp_issetup = false
 end
 
 """
@@ -64,7 +66,7 @@ function add_constraint!(mpc::MPC;
     Au = isnothing(Au) ? zeros(m,mpc.model.nu) : Au
 
     push!(mpc.constraints,Constraint(Au,Ax,Ar,Aw,Ad,Aup,ub,lb,ks,soft,binary,prio))
-
+    mpc.mpqp_issetup = false
 end
 
 """
@@ -95,6 +97,7 @@ function set_weights!(mpc::MPC;Q = zeros(0,0), R=zeros(0,0), Rr=zeros(0,0), S= z
     isempty(Rr) || (mpc.weights.Rr[:,:] = matrixify(Rr,mpc.model.nu))
     isempty(S)  || (mpc.weights.S[:,:]  = float(S))
     isempty(Qf) || (mpc.weights.Qf[:,:] = matrixify(Qf,mpc.model.ny))
+    mpc.mpqp_issetup = false
 end
 
 # Terminal ingredients
@@ -108,6 +111,7 @@ Sets the terminal cost `Qf` to the inifinite horizon LQR cost
 function set_terminal_cost!(mpc)
     Qf, _, _ = ared(mpc.model.F, mpc.model.G, mpc.weights.R, mpc.model.C'*mpc.weights.Q*mpc.model.C) # solve Riccati
     mpc.weights.Qf = Qf
+    mpc.mpqp_issetup = false
 end
 
 """
@@ -117,6 +121,7 @@ Sets the prestabilizing feedback `K`
 """
 function set_prestabilizing_feedback!(mpc,K::AbstractMatrix)
     mpc.K = K
+    mpc.mpqp_issetup = false
 end
 
 """
@@ -126,6 +131,7 @@ Sets the prestabilizing feedback `K` to the infinte horizon LQR gain`
 """
 function set_prestabilizing_feedback!(mpc)
     _, _,mpc.K,_ = ared(mpc.model.F, mpc.model.G, mpc.weights.R+mpc.weights.Rr, mpc.model.C'*mpc.weights.Q*mpc.model.C) # solve Ricatti
+    mpc.mpqp_issetup = false
 end
 
 """
@@ -149,11 +155,13 @@ function move_block!(mpc,block::Vector{Int})
         mpc.move_blocks = block[1:i]
         mpc.move_blocks[end] += mpc.Nc-tot;
     end
+    mpc.mpqp_issetup = false
 end
 function move_block!(mpc,block::Int)
     nb,res  = mpc.Nc ÷ block, mpc.Nc % block
     mpc.move_blocks = fill(block,nb+1)
     mpc.move_blocks[end] = res
+    mpc.mpqp_issetup = false
 end
 
 """
