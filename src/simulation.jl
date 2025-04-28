@@ -38,7 +38,8 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
         callback(x,u,ds[:,k],k)
         us[:,k] = u
     end
-    return Simulation(collect(mpc.model.Ts*(0:1:N-1)),ys,us,xs,rs,ds,mpc)
+    Ts = mpc.model.Ts < 0.0 ? 1.0 : mpc.model.Ts
+    return Simulation(collect(Ts*(0:1:N-1)),ys,us,xs,rs,ds,mpc)
 end
 
 function Simulation(mpc::Union{MPC,ExplicitMPC}; kwargs...)
@@ -77,7 +78,9 @@ using RecipesBase
             linewidth --> 0.5
             label     --> "reference"
             primary   --> false
-            i == ny && (xguide --> "Time [s]")
+            if i == ny 
+                xguide --> (sim.mpc.model.Ts < 0 ? "Time step" : "Time [s]")
+            end
             sim.ts, sim.rs[i, :]
         end
 
@@ -115,7 +118,9 @@ using RecipesBase
                 linestyle --> :dash
                 linewidth --> 1 
                 primary   --> false
-                i == nu && (xguide --> "Time [s]")
+                if i == nu 
+                    xguide --> (sim.mpc.model.Ts < 0 ? "Time step" : "Time [s]") 
+                end
                 sim.ts, fill(sim.mpc.umax[i],length(sim.ts)) 
             end
         end
@@ -129,7 +134,9 @@ using RecipesBase
             color  --> 1
             subplot--> id
             legend --> true
-            i == nx && (xguide --> "Time [s]")
+            if i == nx
+                xguide --> (sim.mpc.model.Ts < 0 ? "Time step" : "Time [s]")
+            end
             sim.ts, sim.xs[i, :]
         end
         id+=1

@@ -85,7 +85,7 @@ function MPC(model::Model;Np=10,Nc=Np)
         Constraint[],MPCSettings(),nothing,DAQP.Model(),zeros(model.nu,model.nx),Int[])
 end
 
-function MPC(F,G;Gd=zeros(0,0), C=zeros(0,0), Dd= zeros(0,0), Ts= 1.0, Np=10, Nc = Np)
+function MPC(F,G;Gd=zeros(0,0), C=zeros(0,0), Dd= zeros(0,0), Ts= -1.0, Np=10, Nc = Np)
     MPC(Model(F,G;Gd,C,Dd,Ts);Np,Nc);
 end
 

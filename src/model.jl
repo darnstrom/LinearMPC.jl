@@ -31,11 +31,11 @@ struct Model
     labels::Labels
 end
 
-function Model(F,G,Gd,C,Dd;Ts=1.0)
+function Model(F,G,Gd,C,Dd;Ts=-1.0)
     Model(F,G;Gd,C,Dd,Ts)
 end
 
-function Model(F,G;Ts=1.0, C = zeros(0,0), Gd = zeros(0,0), Dd = zeros(0,0))
+function Model(F,G;Ts=-1.0, C = zeros(0,0), Gd = zeros(0,0), Dd = zeros(0,0))
     G = reshape(G,size(G,1),:) 
     nx,nu = size(G)
     C = isempty(C) ? Matrix{Float64}(I,nx,nx) : float(C)
@@ -80,7 +80,7 @@ function Model(f,h,x::AbstractVector,u::AbstractVector,Ts;d=zeros(0))
     return Model(A,B,Ts;Bd,C,Dd)
 end
 
-function Model(f,h,x::AbstractVector,u::AbstractVector;d=zeros(0),Ts=1.0)
+function Model(f,h,x::AbstractVector,u::AbstractVector;d=zeros(0),Ts=-1.0)
     F,G,Gd,C,D,Dd = linearize(f,h,x,u;d)
     iszero(D) || throw(ArgumentError("Non-proper system"))
     return Model(F,G;Gd,C,Dd,Ts)
