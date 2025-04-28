@@ -174,3 +174,13 @@ function set_labels!(mpc;x=nothing,u=nothing,y=nothing,d=nothing)
     isnothing(y) || (mpc.model.labels.y[:] = y)
     isnothing(d) || (mpc.model.labels.d[:] = d)
 end
+
+"""
+    set_horizon!(mpc;Np,Nc)
+Sets the prediction horizon `Np` and control horizon `Nc`
+"""
+function set_horizon!(mpc;Np=mpc.Np,Nc=mpc.Nc)
+    mpc.Np = mpc.Np
+    mpc.Nc = mpc.Nc
+    mpc.mpqp_issetup = false
+end

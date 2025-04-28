@@ -15,6 +15,7 @@ include("setup.jl");
 export setup!
 export set_bounds!,add_constraints!,set_output_bounds!,set_weights!
 export set_terminal_cost!,set_prestabilizing_feedback!
+export set_horizon!
 export move_block!,set_labels!
 
 include("mpc2mpqp.jl");
