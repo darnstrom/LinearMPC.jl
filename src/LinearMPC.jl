@@ -13,8 +13,8 @@ include("utils.jl");
 export compute_control
 include("setup.jl");
 export setup!
-export set_bounds!,add_constraints!,set_input_bounds!, set_output_bounds!
-export set_weights!, set_horizon!
+export set_bounds!,add_constraint!,set_input_bounds!, set_output_bounds!
+export set_objective!, set_weights!, set_horizon!
 export set_terminal_cost!,set_prestabilizing_feedback!
 export move_block!,set_labels!
 

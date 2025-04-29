@@ -96,7 +96,7 @@ end
 """
     set_objective!(mpc;Q,R,Rr,S,Qf)
 
-Set the weights in the objective function `xN' C' Qf C xN^T + ∑ (C xₖ - rₖ)' Q (C xₖ - rₖ)  + uₖ' R uₖ + Δuₖ' Rr Δuₖ + xₖ' S uₖ 
+Set the weights in the objective function `xN' C' Qf C xN^T + ∑ (C xₖ - rₖ)' Q (C xₖ - rₖ)  + uₖ' R uₖ + Δuₖ' Rr Δuₖ + xₖ' S uₖ
 
 A vector is interpreted as a diagonal matrix.
 """
@@ -191,6 +191,6 @@ Sets the prediction horizon `Np` and control horizon `Nc`
 """
 function set_horizon!(mpc;Np=mpc.Np,Nc=mpc.Nc)
     mpc.Np = mpc.Np
-    mpc.Nc = mpc.Nc
+    mpc.Nc = min(mpc.Nc,mpc.Np) # ensure Nc <= Np
     mpc.mpqp_issetup = false
 end
