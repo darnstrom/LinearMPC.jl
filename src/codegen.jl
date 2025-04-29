@@ -166,10 +166,12 @@ function qp2ldp(mpQP,n_control;normalize=true)
         for i in 1:size(Mext,1)
             norm_factor = norm(Mext[i,:],2)
             norm_factors[i] = norm_factor
-            Mext[i,:]./=norm_factor
-            Dth[i,:]./=norm_factor
-            du[i]/= norm_factor
-            dl[i]/= norm_factor
+            if(norm_factor>0)
+                Mext[i,:]./=norm_factor
+                Dth[i,:]./=norm_factor
+                du[i]/= norm_factor
+                dl[i]/= norm_factor
+            end
         end
         uscaling = norm_factors[1:n_control]
     else
