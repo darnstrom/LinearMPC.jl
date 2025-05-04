@@ -5,9 +5,9 @@ using Documenter
 makedocs(sitename = "LinearMPC.jl",
          modules  = [LinearMPC],
          pages=["Home" => "index.md"
-                "Manual" => ["Getting started" => ["Simple Example" => "manual/simple.md",
+                "Manual" => ["Getting started" => ["Simple example" => "manual/simple.md",
                                                    "Models" => "manual/model.md",
-                                                   "Objective Functions" => "manual/objective.md",
+                                                   "Objective function" => "manual/objective.md",
                                                    "Constraints" =>  "manual/constraints.md",
                                                    "Code generation" =>  "manual/codegen.md",
                                            ],
