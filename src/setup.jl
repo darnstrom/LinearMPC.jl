@@ -12,7 +12,8 @@ function setup!(mpc::MPC)
     else
         bu,bl = mpc.mpQP.b[:], -1e30*ones(length(mpc.mpQP.b))
     end
-    DAQP.setup(mpc.opt_model, mpc.mpQP.H,mpc.mpQP.f[:],mpc.mpQP.A,bu,bl,mpc.mpQP.senses)
+    DAQP.setup(mpc.opt_model, mpc.mpQP.H,mpc.mpQP.f[:],mpc.mpQP.A,bu,bl,mpc.mpQP.senses;
+               break_points=mpc.mpQP.break_points)
     mpc.mpqp_issetup = true
 end
 

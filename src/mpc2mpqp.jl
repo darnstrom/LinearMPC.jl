@@ -288,6 +288,7 @@ function mpc2mpqp(mpc::MPC)
     bu,bl,W = bu[prio_order], bl[prio_order], W[prio_order,:]
     issoft,isbinary,prio = issoft[prio_order],isbinary[prio_order], prio[prio_order]
     break_points = unique(i->prio[i], eachindex(prio))[2:end].-1;
+    break_points = Cint.(break_points)
     isempty(break_points) || push!(break_points,length(prio))
 
     # Handle soft constrints  
