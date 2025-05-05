@@ -280,6 +280,16 @@ function mpc2mpqp(mpc::MPC)
         end
     end
 
+    # Resort based on priorities
+    ns = length(prio)-size(A,1)
+    prio_order = sortperm(prio[ns+1:end])
+    A = A[prio_order,:]
+    prio_order = [1:ns; prio_order .+ ns] # Offset correctly
+    bu,bl,W = bu[prio_order], bl[prio_order], W[prio_order,:]
+    issoft,isbinary,prio = issoft[prio_order],isbinary[prio_order], prio[prio_order]
+    break_points = unique(i->prio[i], eachindex(prio))[2:end].-1;
+    isempty(break_points) || push!(break_points,length(prio))
+
     # Handle soft constrints  
     if(mpc.settings.soft_constraints)
         if(mpc.settings.explicit_soft && any(issoft))
@@ -301,7 +311,7 @@ function mpc2mpqp(mpc::MPC)
     # Stack constraints in case of QP is assumed to be single sided. 
     if(mpc.settings.QP_double_sided)
         mpQP = (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
-                A=Matrix{Float64}(A), bu=bu, bl=bl, W=W, senses=senses, prio=prio)
+                A=Matrix{Float64}(A), bu=bu, bl=bl, W=W, senses=senses, prio=prio, break_points=break_points)
     else # Transform bl + W θ ≤ A U ≤ bu + W θ → A U ≤ b + W
         ncstr = length(bu);
         n_bounds = ncstr-size(A,1);
@@ -316,7 +326,7 @@ function mpc2mpqp(mpc::MPC)
         prio = [prio;prio]
         mpQP = (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
                 A=Matrix{Float64}(A), b=b, W=W, senses=senses,
-                bounds_table=bounds_table, prio=prio)
+                bounds_table=bounds_table, prio=prio, break_points=break_points)
     end
     return mpQP
 end
