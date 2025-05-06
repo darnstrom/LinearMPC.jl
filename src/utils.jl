@@ -66,7 +66,7 @@ function label2id(mpc, label::Symbol)
     isnothing(id)  || return id,string(label);
 
     if(mpc.nr > 0 && string(label)[end] == 'r')
-        l = Symbol(string(label)[1:end-1])
+        l = Symbol(split(string(label),'r')[1])
         id = findfirst(x->x==l,mpc.model.labels.y)
         isnothing(id)  || return mpc.model.nx + id,string(l)*"^r";
     end
@@ -75,7 +75,7 @@ function label2id(mpc, label::Symbol)
     isnothing(id)  || return mpc.model.nx+mpc.nr+id,string(label);
 
     if(mpc.nuprev > 0 && string(label)[end] == 'p')
-        l = Symbol(string(label)[1:end-1])
+        l = Symbol(split(string(label),'p')[1])
         id = findfirst(x->x==l,mpc.model.labels.u)
         isnothing(id)  || return mpc.model.nx+mpc.nr+mpc.model.nd+id,string(l)*"^-";
     end
