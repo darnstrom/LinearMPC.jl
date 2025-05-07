@@ -34,6 +34,15 @@ function get_parameter_dims(mpc::MPC)
     return mpc.model.nx,nr,mpc.model.nd,nuprev
 end
 
+function get_parameter_names(mpc::MPC)
+    nx,nr,nd,nuprev = get_parameter_dims(mpc)
+    names = copy(mpc.model.labels.x)
+    nr>0 && push!(names,Symbol.(string.(mpc.model.labels.y).*"r")...)
+    nd>0 && push!(names,mpc.model.labels.d...)
+    nuprev>0 && push!(names,Symbol.(string.(mpc.model.labels.u).*"p")...)
+    return names
+end
+
 # Create A u <= b+W*theta 
 # correspoding to  lb<=u_i<=ub for i ∈ {1,2,...,Nc}
 function create_controlbounds(mpc::MPC, Γ, Φ)
