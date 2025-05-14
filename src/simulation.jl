@@ -89,17 +89,8 @@ using RecipesBase
 
     # Plot u 
     for i in 1:nu
-        @series begin
-            yguide     --> sim.mpc.model.labels.u[i]
-            color      --> 1
-            subplot    --> id
-            seriestype --> :steppost
-            label--> latexify(make_subscript(string(sim.mpc.model.labels.u[i])))
-            legend     --> true
-            sim.ts, sim.us[i, :]
-        end
         # lower bound
-        if(sim.mpc.umin[i] > -1e12)
+        if(length(sim.mpc.umin) > i && sim.mpc.umin[i] > -1e12)
             @series begin
                 color     --> 3 
                 subplot   --> id
@@ -111,18 +102,26 @@ using RecipesBase
         end
 
         # upper bound
-        if(sim.mpc.umax[i] < 1e12)
+        if(length(sim.mpc.umax) > i &&sim.mpc.umax[i] < 1e12)
             @series begin
                 color     --> 3 
                 subplot   --> id
                 linestyle --> :dash
                 linewidth --> 1 
                 primary   --> false
-                if i == nu 
-                    xguide --> (sim.mpc.model.Ts < 0 ? "Time step" : "Time [s]") 
-                end
                 sim.ts, fill(sim.mpc.umax[i],length(sim.ts)) 
             end
+        end
+        @series begin
+            #yguide     --> sim.mpc.model.labels.u[i]
+            color      --> 1
+            subplot    --> id
+            seriestype --> :steppost
+            label--> latexify(make_subscript(string(sim.mpc.model.labels.u[i])))
+            if i == nu
+                xguide --> (sim.mpc.model.Ts < 0 ? "Time step" : "Time [s]")
+            end
+            sim.ts, sim.us[i, :]
         end
         id+=1
     end
