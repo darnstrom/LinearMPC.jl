@@ -59,6 +59,29 @@ global templib
         end
     end
 
+    @testset "Prestabilizing feedback" begin
+        A,B = [0 1; 10 0], [0;1]
+        mpc = LinearMPC.MPC(A,B,0.1;Np = 30)
+        set_bounds!(mpc;umin = -1, umax = 1);
+        unom = compute_control(mpc,zeros(2);r = [1,0])
+        mpqp = LinearMPC.mpc2mpqp(mpc)
+
+        cond_nom = cond(mpqp.H)
+
+        set_prestabilizing_feedback!(mpc)
+
+        uprestab = compute_control(mpc,zeros(2);r = [1,0])
+        mpqp = LinearMPC.mpc2mpqp(mpc)
+        cond_prestab = cond(mpqp.H)
+
+        @test(norm(unom-uprestab) < 1e-10)
+        @test(cond_prestab < cond_nom)
+    end
+
+    @testset "Move blocking" begin 
+
+    end
+
     @testset "Explicit MPC" begin
         mpc,range = LinearMPC.mpc_examples("invpend")
         empc = LinearMPC.ExplicitMPC(mpc;range)
