@@ -12,8 +12,12 @@ function setup!(mpc::MPC)
     else
         bu,bl = mpc.mpQP.b[:], -1e30*ones(length(mpc.mpQP.b))
     end
-    DAQP.setup(mpc.opt_model, mpc.mpQP.H,mpc.mpQP.f[:],mpc.mpQP.A,bu,bl,mpc.mpQP.senses)
-    mpc.mpqp_issetup = true
+    setup_flag,_ = DAQP.setup(mpc.opt_model, mpc.mpQP.H,mpc.mpQP.f[:],mpc.mpQP.A,bu,bl,mpc.mpQP.senses)
+    if(setup_flag < 0)
+        @warn " Cannot setup optimization problem " setup_flag
+    else
+        mpc.mpqp_issetup = true
+    end
 end
 
 """

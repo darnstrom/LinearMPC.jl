@@ -18,6 +18,7 @@ end
 
 function solve(mpc::MPC,θ)
     mpc.mpqp_issetup || setup!(mpc) # ensure mpQP is setup
+    mpc.mpqp_issetup || throw("Could not setup optimization problem")
     bth = mpc.mpQP.W*θ
     bu = mpc.settings.QP_double_sided ? mpc.mpQP.bu + bth : mpc.mpQP.b + bth
     bl = mpc.settings.QP_double_sided ? mpc.mpQP.bl + bth : -1e30*ones(length(bu))
