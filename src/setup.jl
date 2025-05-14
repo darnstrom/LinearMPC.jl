@@ -159,9 +159,9 @@ For example, `block`=[2,1,3] keeps the control constant for 2 time-steps, 1 time
 function move_block!(mpc,block::Vector{Int})
     Nnew = sum(block)
     if Nnew == mpc.Nc
-        mpc.move_blocks[:] = block
+        mpc.move_blocks = copy(block)
     elseif(Nnew < mpc.Nc) # pad
-        mpc.move_blocks[:] = block
+        mpc.move_blocks = copy(block)
         mpc.move_blocks[end] += mpc.Nc-Nnew
     elseif Nnew > mpc.Nc # clip
         tot,i = 0,1
@@ -173,8 +173,12 @@ function move_block!(mpc,block::Vector{Int})
 end
 function move_block!(mpc,block::Int)
     nb,res  = mpc.Nc ÷ block, mpc.Nc % block
-    mpc.move_blocks = fill(block,nb+1)
-    mpc.move_blocks[end] = res
+    if(res==0)
+        mpc.move_blocks = fill(block,nb) 
+    else
+        mpc.move_blocks = fill(block,nb+1)
+        mpc.move_blocks[end] = res
+    end
     mpc.mpqp_issetup = false
 end
 
@@ -195,6 +199,6 @@ Sets the prediction horizon `Np` and control horizon `Nc`
 """
 function set_horizon!(mpc;Np=mpc.Np,Nc=mpc.Nc)
     mpc.Np = mpc.Np
-    mpc.Nc = min(mpc.Nc,mpc.Np) # ensure Nc <= Np
+    mpc.Nc = min(Nc,mpc.Np) # ensure Nc <= Np
     mpc.mpqp_issetup = false
 end
