@@ -12,7 +12,7 @@ mutable struct ExplicitMPC
     K::Matrix{Float64} # Prestabilizing feedback
 end
 
-function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false)
+function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false, opts=ParametricDAQP.Settings())
     mpQP = mpc.mpqp_issetup ? mpc.mpQP : mpc2mpqp(mpc)
     if(range==nothing)
         @warn("No parameter range defined. Using default limits [-100 and 100]. If you want a bigger/smaller region, create a ParameterRange")
@@ -28,7 +28,8 @@ function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false)
 
     mpQP = merge(mpQP,(out_inds=1:mpc.model.nu,)) # Only compute control at first time step
     # Compute mpQP solution
-    sol,info = ParametricDAQP.mpsolve(mpQP, TH)
+    opts.daqp_settings = merge(Dict(:sing_tol => 1e-11),opts.daqp_settings)
+    sol,info = ParametricDAQP.mpsolve(mpQP, TH;opts)
     nx,nr,nd,nuprev = get_parameter_dims(mpc)
     empc = ExplicitMPC(mpc.model,nr,nuprev, sol,mpQP, TH, nothing,mpc.settings,mpc.K,)
 
@@ -42,8 +43,8 @@ function get_parameter_dims(mpc::ExplicitMPC)
     return mpc.model.nx, mpc.nr, mpc.model.nd, mpc.nuprev
 end
 
-function build_tree!(mpc::ExplicitMPC)
-    mpc.bst  = ParametricDAQP.build_tree(mpc.solution)
+function build_tree!(mpc::ExplicitMPC; daqp_settings=nothing)
+    mpc.bst  = ParametricDAQP.build_tree(mpc.solution;daqp_settings)
     for i in 1:length(mpc.bst.feedbacks) # Correct for prestabilizing feedback
         mpc.bst.feedbacks[i][1:mpc.model.nx,:] -= mpc.K'
     end
