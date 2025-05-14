@@ -1,4 +1,4 @@
-function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
+function mpc_examples(s, Np, Nc=Np;params = Dict(),settings=nothing)
     if(s=="inv_pend"||s=="invpend")
         # Inverted pendulum
         A = [0 1 0 0; 
