@@ -51,7 +51,7 @@ function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
         umin,umax = [-0.5],[0.5]
         set_bounds!(mpc;umin,umax)
 
-        add_constraint!(mpc,Ax=C[2:2,:],lb = [-0.5] ,ub = [0.5], ks = 2:mpc.Nc+2, soft=true)
+        add_constraint!(mpc,Ax=C[2:2,:],lb = [-0.5] ,ub = [0.5], ks = 2:min(mpc.Nc+2,mpc.Np), soft=true)
 
         if(isnothing(settings))
             mpc.settings.QP_double_sided = false;
