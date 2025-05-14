@@ -16,7 +16,7 @@ global templib
         set_prestabilizing_feedback!(mpc)
         set_output_bounds!(mpc,ymin=[0.0;0.0], ymax=[5.0;1.0])
         setup!(mpc)
-        set_horizon!(mpc;Np=5,Nc=3)
+        set_horizon!(mpc,5)
         setup!(mpc)
     end
     @testset "MPC examples " begin

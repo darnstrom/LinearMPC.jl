@@ -66,9 +66,9 @@ set_bounds!(mpc,umin=[-3],umax=[3], ymin= [0, 0],ymax = [1,2])
 add_constraint!(mpc,Ax = [2 -1], lb = [-1], ub = [2])
 
 # the prediction/control horizons
-set_horizon!(mpc, Np=10)
+set_horizon!(mpc,10)
 ```
-where the last command `set_horizon!(Np=10)` sets the prediction horizon of the controller to 10 time steps.
+where the last command `set_horizon!(mpc,10)` sets the prediction horizon of the controller to 10 time steps.
 
 That is it! Let's try our MPC controller.
 

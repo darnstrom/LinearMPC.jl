@@ -86,14 +86,15 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
 
     for c in mpc.constraints 
         mi = size(c.Au,1);
-        Ni = length(c.ks);
+        ks = [k for k in c.ks if k<= Np]
+        Ni = length(ks);
 
         Ar = isempty(c.Ar) ? zeros(mi,mpc.nr) : c.Ar
         Ad = isempty(c.Ad) ? zeros(mi,mpc.model.nd) : c.Ad
         Aup = isempty(c.Aup) ? zeros(mi,mpc.nuprev) : c.Auip
 
-        Autot = [Autot; kron(eyeU[c.ks,:],c.Au)]
-        Axtot = [Axtot; kron(eyeX[c.ks,:],[c.Ax-c.Au*mpc.K Ar Ad Aup])]
+        Autot = [Autot; kron(eyeU[ks,:],c.Au)]
+        Axtot = [Axtot; kron(eyeX[ks,:],[c.Ax-c.Au*mpc.K Ar Ad Aup])]
 
         ubtot = [ubtot;repeat(c.ub,Ni,1)]
         lbtot = [lbtot;repeat(c.lb,Ni,1)]
@@ -263,7 +264,7 @@ function mpc2mpqp(mpc::MPC)
     if(!isempty(mpc.move_blocks))
         T,id = zeros(0,0), 0
         keep_bounds = Int[] 
-        for mb in mpc.move_blocks
+        for mb in [mpc.move_blocks[1:end-1];1]
             T = cat(T,repeat(I(mpc.model.nu),mb,1),dims=(1,2))
             keep_bounds = keep_bounds ∪ collect(id+1:id+mpc.model.nu)
             id += mb*mpc.model.nu
