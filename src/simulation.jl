@@ -48,77 +48,74 @@ end
 
 using RecipesBase
 
-@recipe function f(sim::Simulation; show_y=true,show_u=true,show_x=false)
+@recipe function f(sim::Simulation; yids=1:sim.mpc.model.ny,uids=sim.mpc.model.nu,xids=[])
 
-    ny = show_y ?  sim.mpc.model.ny : 0 
-    nu = show_u ?  sim.mpc.model.nu : 0
-    nx = show_x ?  sim.mpc.model.nx : 0
 
     layout = Tuple{Int,Int}[]
-    ny == 0 || push!(layout,(ny, 1))
-    nu == 0 || push!(layout,(nu, 1))
-    nx == 0 || push!(layout,(nx, 1))
+    length(yids) == 0 || push!(layout,(length(yids), 1))
+    length(uids) == 0 || push!(layout,(length(uids), 1))
+    length(xids) == 0 || push!(layout,(length(xids), 1))
     layout := reshape(layout,1,length(layout))
 
     # Plot y
     id = 1 
-    for i in 1:ny
+    for i in yids 
         @series begin
-            yguide  --> sim.mpc.model.labels.y[i]
-            color   --> 1
-            subplot --> id 
-            label--> latexify(make_subscript(string(sim.mpc.model.labels.y[i])))
-            legend  --> true
-            sim.ts, sim.ys[i, :]
-        end
-        @series begin
-            color     --> 2
+            linecolor := :black 
             subplot   --> id
-            linestyle --> :dash
+            linestyle := :dash
             linewidth --> 0.5
             label     --> "reference"
             primary   --> false
-            if i == ny 
+            sim.ts[[1,end]], sim.rs[i, 1:2]
+        end
+        @series begin
+            yguide  --> latexify(make_subscript(string(sim.mpc.model.labels.y[i])))
+            color   --> 1
+            subplot --> id 
+            #label--> latexify(make_subscript(string(sim.mpc.model.labels.y[i])))
+            legend  --> true
+            if i == length(yids) 
                 xguide --> (sim.mpc.model.Ts < 0 ? "Time step" : "Time [s]")
             end
-            sim.ts, sim.rs[i, :]
+            sim.ts, sim.ys[i, :]
         end
 
         id+=1
     end
 
     # Plot u 
-    for i in 1:nu
+    for i in uids 
         # lower bound
         if(length(sim.mpc.umin) > i && sim.mpc.umin[i] > -1e12)
             @series begin
-                color     --> 3 
+                color     := :black 
                 subplot   --> id
                 linestyle --> :dash
                 linewidth --> 1.0 
                 primary   --> false
-                sim.ts, fill(sim.mpc.umin[i],length(sim.ts)) 
+                sim.ts[[1,end]], fill(sim.mpc.umin[i],2) 
             end
         end
 
         # upper bound
         if(length(sim.mpc.umax) > i &&sim.mpc.umax[i] < 1e12)
             @series begin
-                color     --> 3 
+                color     := :black 
                 subplot   --> id
                 linestyle --> :dash
                 linewidth --> 1 
                 primary   --> false
-                sim.ts, fill(sim.mpc.umax[i],length(sim.ts)) 
+                sim.ts[[1,end]], fill(sim.mpc.umax[i],2) 
             end
         end
         @series begin
-            #yguide     --> sim.mpc.model.labels.u[i]
+            yguide--> latexify(make_subscript(string(sim.mpc.model.labels.u[i])))
             color      --> 1
             subplot    --> id
             seriestype --> :steppost
-            label--> latexify(make_subscript(string(sim.mpc.model.labels.u[i])))
-            if i == nu
+            #label--> latexify(make_subscript(string(sim.mpc.model.labels.u[i])))
+            if i == length(uids) 
                 xguide --> (sim.mpc.model.Ts < 0 ? "Time step" : "Time [s]")
             end
             sim.ts, sim.us[i, :]
@@ -127,13 +124,13 @@ using RecipesBase
     end
 
     ## Plot x 
-    for i in 1:nx
+    for i in xids 
         @series begin
-            label  --> latexify(make_subscript(string(sim.mpc.model.labels.x[i])))
+            yguide  --> latexify(make_subscript(string(sim.mpc.model.labels.x[i])))
             color  --> 1
             subplot--> id
             legend --> true
-            if i == nx
+            if i == length(xids)
                 xguide --> (sim.mpc.model.Ts < 0 ? "Time step" : "Time [s]")
             end
             sim.ts, sim.xs[i, :]
