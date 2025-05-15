@@ -161,6 +161,7 @@ function move_block!(mpc,block::Vector{Int})
         mpc.move_blocks = Int[]
         mpc.Nc = mpc.Np
         mpc.mpqp_issetup = false
+        return
     end
     Nnew = sum(block)
     if Nnew == mpc.Np
@@ -175,7 +176,7 @@ function move_block!(mpc,block::Vector{Int})
         mpc.move_blocks[end] += mpc.Np-tot;
     end
 
-    mpc.Nc = length(mpc.move_blocks);
+    mpc.Nc = sum(mpc.move_blocks[1:end-1])+1;
     mpc.mpqp_issetup = false
 end
 function move_block!(mpc,block::Int)
