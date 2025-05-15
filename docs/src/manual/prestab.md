@@ -44,7 +44,7 @@ sim = LinearMPC.Simulation(mpc;r=[1],N=100)
 ```
 we get an error telling us "Could not setup optimization problem". The reason for this error is that the resulting optimization problem is very ill-conditioned, and cannot handled by the optimization solver. 
 
-To see this more closley, we can check the condition number for the Hessian of the resulting optimization problem: 
+To see this more closely, we can check the condition number for the Hessian of the resulting optimization problem: 
 
 ```julia
 using LinearAlgebra
@@ -64,7 +64,7 @@ optimization_problem = LinearMPC.mpc2mpqp(mpc)
 display(cond(optimization_problem.H))
 
 ```
-we get that it is $\approx$ `8e2`, which is a striking improvement! Now, if we simulate the system again, but with our updated controller, we get that the output sucessfully tracks the reference $r=1$. 
+we get that it is $\approx$ `8e2`, which is a striking improvement! Now, if we simulate the system again, but with our updated controller, we get that the output successfully tracks the reference $r=1$. 
 
 ```julia
 sim = LinearMPC.Simulation(mpc;r=[1],N=100)

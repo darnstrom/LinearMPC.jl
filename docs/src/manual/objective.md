@@ -26,7 +26,7 @@ The third term $\Delta u_k^T R \Delta u_k$ penalizes changes to the control acti
 A term of the form $(Cx_N-r)^T Q_f (C x_N -r)^T$ can also be added to the objective. This adds an additional terminal cost, which can be useful to ensure stability[^Mayne00]. The terminal weight $Q_f$ is set with `set_objective!`, and is by default the same as $Q$. 
 
 
-[^Mayne00]: Mayne, David Q., et al. "Constrained model predictive control: Stability and optimality." Automatica 36.6 (2000): 789-814.
+[^Mayne00]: Mayne, David Q., et al. "Constrained model predictive control: Stability and optimality." _Automatica_ 36.6 (2000): 789-814.
 
 ## Cross term 
 It is also possible to include a cross term $x_k^T S u_k$ in the objective. This term can also be set with the `set_objective!` function. By default, $S=0$.
