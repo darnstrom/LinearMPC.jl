@@ -79,7 +79,36 @@ global templib
     end
 
     @testset "Move blocking" begin 
+        using LinearMPC
+        Np = 10
+        mpc,_= LinearMPC.mpc_examples("aircraft",Np)
+        mpc.settings.explicit_soft=false
 
+        move_block!(mpc,Int[]) # Set empty
+        mpqp = LinearMPC.mpc2mpqp(mpc)
+        @test length(mpqp.f) == Np*mpc.model.nu
+
+        move_block!(mpc,[1,1,2,3,3])
+        mpqp = LinearMPC.mpc2mpqp(mpc)
+        @test length(mpqp.f) == 5*mpc.model.nu
+
+        # Pad
+        move_block!(mpc,[1,1])
+        mpqp = LinearMPC.mpc2mpqp(mpc)
+        @test mpc.move_blocks == [1,9]
+
+        # Clip
+        move_block!(mpc,[2,3,3,6,8,9])
+        mpqp = LinearMPC.mpc2mpqp(mpc)
+        @test mpc.move_blocks == [2,3,3,2]
+
+        move_block!(mpc,2)
+        mpqp = LinearMPC.mpc2mpqp(mpc)
+        @test mpc.move_blocks == [2,2,2,2,2]
+
+        move_block!(mpc,3)
+        mpqp = LinearMPC.mpc2mpqp(mpc)
+        @test mpc.move_blocks == [3,3,3,1]
     end
 
     @testset "Explicit MPC" begin

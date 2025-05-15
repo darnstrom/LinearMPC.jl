@@ -1,6 +1,6 @@
 # [Move Blocking](@id man_moveblock)
 
-A distinguishing characteristic of MPC compared with more classical controllers such as PID and LQR is that it can be computationally demanding. For real-time applications, this can be a limiting factor.
+A distinguishing characteristic of MPC compared with more classical control strategies such as PID or LQR is that it can be computationally demanding. For real-time applications, this can be a limiting factor.
 
 One way of reducing the computational complexity is to reduce the number of decision variable in the MPC. This can be done by reducing the prediction horizon, but this can reduce the performance of the controller significantly (as is shown in the example below.) 
 

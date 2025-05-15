@@ -180,14 +180,8 @@ function move_block!(mpc,block::Vector{Int})
     mpc.mpqp_issetup = false
 end
 function move_block!(mpc,block::Int)
-    nb,res  = mpc.Np ÷ block, mpc.Np % block
-    if(res==0)
-        mpc.move_blocks = fill(block,nb) 
-    else
-        mpc.move_blocks = fill(block,nb+1)
-        mpc.move_blocks[end] = res
-    end
-    mpc.mpqp_issetup = false
+    block <= 0  && return move_block!(mpc,Int[])
+    return move_block!(mpc,fill(block,mpc.Np ÷ block +1))
 end
 
 """
