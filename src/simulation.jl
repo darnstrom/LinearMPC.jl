@@ -33,7 +33,7 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
     # Start the simulation
     for k = 1:N
         xs[:,k], ys[:,k] = x, mpc.model.C*x+mpc.model.Dd*ds[:,k]
-        u = compute_control(mpc,x;r=rs[:,k],d=ds[:,k],uprev=u)
+        u = compute_control(mpc,x;r=rs[:,k],d=ds[:,k])
         x = dynamics(x,u,ds[:,k])
         callback(x,u,ds[:,k],k)
         us[:,k] = u
@@ -64,10 +64,10 @@ using RecipesBase
             linecolor := :black 
             subplot   --> id
             linestyle := :dash
-            linewidth --> 0.5
+            linewidth --> 0.4
             label     --> "reference"
             primary   --> false
-            sim.ts[[1,end]], sim.rs[i, 1:2]
+            sim.ts, sim.rs[i,:]
         end
         @series begin
             yguide  --> latexify(make_subscript(string(sim.mpc.model.labels.y[i])))
