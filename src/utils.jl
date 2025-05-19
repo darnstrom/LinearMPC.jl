@@ -12,8 +12,9 @@ function compute_control(mpc::Union{MPC,ExplicitMPC},x;r=nothing,d=nothing,uprev
     nx,nr,nd,nuprev = get_parameter_dims(mpc)
     r = isnothing(r) || !mpc.settings.reference_tracking ? zeros(nr) : r
     d = isnothing(d) ? zeros(nd) : d 
-    uprev = isnothing(uprev) || mpc.nuprev == 0 ? zeros(nuprev) : uprev
-    return solve(mpc,[x;r;d;uprev])
+    uprev = isnothing(uprev) ? mpc.uprev[1:nuprev] : uprev[1:nuprev]
+    mpc.uprev = solve(mpc,[x;r;d;uprev])
+    return mpc.uprev
 end
 
 function solve(mpc::MPC,θ)

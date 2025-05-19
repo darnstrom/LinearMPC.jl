@@ -78,13 +78,16 @@ mutable struct MPC
     move_blocks::Vector{Int}
 
     mpqp_issetup::Bool
+
+    uprev::Vector{Float64}
 end
 
 function MPC(model::Model;Np=10,Nc=Np)
     MPC(model,0,0,Np,Nc,
         MPCWeights(model.nu,model.nx,model.ny),
         zeros(0),zeros(0),zeros(0),
-        Constraint[],MPCSettings(),nothing,DAQP.Model(),zeros(model.nu,model.nx),Int[],false)
+        Constraint[],MPCSettings(),nothing,
+        DAQP.Model(),zeros(model.nu,model.nx),Int[],false, zeros(model.nu))
 end
 
 function MPC(F,G;Gd=zeros(0,0), C=zeros(0,0), Dd= zeros(0,0), Ts= -1.0, Np=10, Nc = Np)

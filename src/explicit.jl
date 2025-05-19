@@ -10,6 +10,7 @@ mutable struct ExplicitMPC
     bst::Union{Nothing,ParametricDAQP.BinarySearchTree}
     settings::MPCSettings
     K::Matrix{Float64} # Prestabilizing feedback
+    uprev::Vector{Float64}
 end
 
 function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false, opts=ParametricDAQP.Settings())
@@ -31,7 +32,8 @@ function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false, opts=ParametricD
     opts.daqp_settings = merge(Dict(:sing_tol => 1e-11),opts.daqp_settings)
     sol,info = ParametricDAQP.mpsolve(mpQP, TH;opts)
     nx,nr,nd,nuprev = get_parameter_dims(mpc)
-    empc = ExplicitMPC(mpc.model,nr,nuprev, sol,mpQP, TH, nothing,mpc.settings,mpc.K,)
+    empc = ExplicitMPC(mpc.model,nr,nuprev, sol,mpQP, TH, 
+                       nothing,mpc.settings,mpc.K,zeros(mpc.model.nu))
 
     # Build binary search tree
     build_tree && build_tree!(empc)
