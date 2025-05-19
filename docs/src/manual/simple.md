@@ -121,6 +121,9 @@ where `fname` determines some of the naming of the generated code.
 
 The main function of interest (located in `{fname}.h`) is `mpc_compute_control(control, state, reference, disturbance)`. This function computes the optimal control given the current `state`, `reference`, and measured disturbances `disturbance`, which are all floating-point arrays. The optimal control is stored in the floating-point array `control`.
 
+!!! note "Previous control action"
+    If there is a penalty on the change in of control actions $\Delta u$, the function `mpc_compute_control` uses the value that is in `control` as the previous control action `uprev`. 
+
 To run a quick test of the generated code, let's test to compute a control for `x=[0,0]` and `r=[1,0]`. We do this with the following C-code, which we put in a file called `test.c`:
 
 ```c
