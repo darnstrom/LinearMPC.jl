@@ -45,11 +45,12 @@ function get_parameter_dims(mpc::ExplicitMPC)
     return mpc.model.nx, mpc.nr, mpc.model.nd, mpc.nuprev
 end
 
-function build_tree!(mpc::ExplicitMPC; daqp_settings=nothing)
-    mpc.bst  = ParametricDAQP.build_tree(mpc.solution;daqp_settings)
+function build_tree!(mpc::ExplicitMPC; daqp_settings=nothing, clipping=true)
+    mpc.bst  = ParametricDAQP.build_tree(mpc.solution;daqp_settings, clipping)
     for i in 1:length(mpc.bst.feedbacks) # Correct for prestabilizing feedback
         mpc.bst.feedbacks[i][1:mpc.model.nx,:] -= mpc.K'
     end
+    return mpc.bst
 end
 
 function plot_regions(mpc::ExplicitMPC;fix_ids=nothing,fix_vals=nothing,opts=Dict{Symbol,Any}())
