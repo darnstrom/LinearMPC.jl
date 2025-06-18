@@ -329,6 +329,25 @@ function mpc_examples(s, Np, Nc=Np;params = Dict(),settings=nothing)
         range = ParameterRange(mpc);
         range.xmax[:] .= 20*ones(4)
         range.xmin[:] .= -20*ones(4)
+    elseif(s=="ball" || s =="ballplate")
+        A = [0 1.0 0 0;
+             0 0 700 0;
+             0 0 0 1;
+             0 0 0 -34.69]
+        B = [0;0;0;3.1119]
+        Ts = 0.03
+        C = [1.0 0 0 0]
+
+        F,G = zoh(A,B,Ts);
+
+        mpc = MPC(F,G;Ts=0.03,Np,Nc,C)
+        set_bounds!(mpc,umin=[-10.0],umax=[10.0])
+        xbounds = [30;15;15*pi/180;1]
+        add_constraint!(mpc; Ax = I(4),lb = -xbounds,ub=xbounds,soft=false)
+        set_objective!(mpc;Q=[100.0],R=[0.1],Rr=[0.0],Qf=[1.0])
+        range = ParameterRange(mpc)
+        range.xmax[:] =xbounds
+        range.xmin[:] =-xbounds
     end
     return mpc,range
 end
@@ -342,5 +361,7 @@ function mpc_examples(s;settings=nothing)
         mpc_examples(s,10,2;settings)
     elseif(s=="nonlinear" || s=="nonlin")
         mpc_examples(s,5,2;settings)
+    elseif(s=="ball" || s=="ballplate")
+        mpc_examples(s,10,2;settings)
     end
 end
