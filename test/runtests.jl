@@ -140,5 +140,23 @@ global templib
         @test length(result.partition) > 100
     end
 
+    @testset "Invariant sets" begin
+        # BBM17 - Example 10.12
+        F = [0.5 0 ; 1 -0.5]
+        xmin, xmax = -10*ones(2), 10*ones(2)
+        wmin,wmax = -ones(2),ones(2)
+        H,h = invariant_set(F,xmin,xmax;wmin,wmax,eps_shrink=0.0)
+        @test norm(h-[10.0;10.0;10.0;10.0;8.05;8.05]) < 1e-1
+
+        # BBM17 - Example 10.13
+        F = [1.5 0 ; 1 -1.5]
+        G = [1.0; 0;;]
+        xmin, xmax = -10*ones(2), 10*ones(2)
+        wmin,wmax = -0.1*ones(2),0.1*ones(2)
+        umin,umax = -[5.0],[5.0]
+        H,h = invariant_set(F,xmin,xmax;G,umin,umax,wmin,wmax,eps_shrink=0.0)
+        @test norm(h-[3.72;3.72;2.008;2.008]) < 1e-2
+    end
+
 
 end

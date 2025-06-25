@@ -29,4 +29,8 @@ include("codegen.jl");
 using ASCertain
 include("certify.jl");
 
+using PolyDAQP
+include("invariant.jl");
+export invariant_set
+
 end
