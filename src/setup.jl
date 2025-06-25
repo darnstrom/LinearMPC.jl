@@ -124,7 +124,7 @@ Sets the terminal cost `Qf` to the inifinite horizon LQR cost
 """
 function set_terminal_cost!(mpc)
     Qf, _, _ = ared(mpc.model.F, mpc.model.G, mpc.weights.R, mpc.model.C'*mpc.weights.Q*mpc.model.C) # solve Riccati
-    mpc.weights.Qf = Qf
+    mpc.weights.Qf[:,:] = Qf
     mpc.mpqp_issetup = false
 end
 
