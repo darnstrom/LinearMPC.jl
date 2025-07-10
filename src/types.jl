@@ -32,6 +32,7 @@ end
 Base.@kwdef mutable struct MPCSettings
     QP_double_sided::Bool = true 
     reference_tracking::Bool= true
+    reference_preview::Bool = false
     soft_constraints::Bool= true
     explicit_soft::Bool= false
     soft_weight::Float64= 1e6
