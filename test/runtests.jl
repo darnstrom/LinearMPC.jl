@@ -216,7 +216,7 @@ global templib
         B = [0; 1]
         C = [1.0 0; 0 1.0]
         mpc = LinearMPC.MPC(A, B; C, Np=5, Nc=3)
-        set_bounds!(mpc; umin=[-2.0], umax=[2.0])
+        set_bounds!(mpc; umin=[-2.0], umax=[2.0], ymin=[-1.0;-0.5],  ymax=[1.0;0.5])
         set_objective!(mpc; Q=[1.0, 1.0], R=[0.1])
         
         # Create reference trajectory
