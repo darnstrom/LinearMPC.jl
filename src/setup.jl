@@ -105,11 +105,11 @@ Set the weights in the objective function `xN' C' Qf C xN^T + ∑ (C xₖ - rₖ
 A vector is interpreted as a diagonal matrix.
 """
 function set_objective!(mpc::MPC;Q = zeros(0,0), R=zeros(0,0), Rr=zeros(0,0), S= zeros(0,0), Qf=zeros(0,0))
-    isempty(Q)  || (mpc.weights.Q[:,:]  = matrixify(Q,mpc.model.ny))
-    isempty(R)  || (mpc.weights.R[:,:]  = matrixify(R,mpc.model.nu))
-    isempty(Rr) || (mpc.weights.Rr[:,:] = matrixify(Rr,mpc.model.nu))
-    isempty(S)  || (mpc.weights.S[:,:]  = float(S))
-    isempty(Qf) || (mpc.weights.Qf[:,:] = matrixify(Qf,mpc.model.ny))
+    isempty(Q)  || (mpc.weights.Q .= matrixify(Q,mpc.model.ny))
+    isempty(R)  || (mpc.weights.R .= matrixify(R,mpc.model.nu))
+    isempty(Rr) || (mpc.weights.Rr .= matrixify(Rr,mpc.model.nu))
+    isempty(S)  || (mpc.weights.S .= float(S))
+    isempty(Qf) || (mpc.weights.Qf .= matrixify(Qf,mpc.model.ny))
     mpc.mpqp_issetup = false
 end
 set_weights! = set_objective! # backwards compatibility
@@ -123,8 +123,8 @@ using MatrixEquations
 Sets the terminal cost `Qf` to the inifinite horizon LQR cost 
 """
 function set_terminal_cost!(mpc)
-    Qf, _, _ = ared(mpc.model.F, mpc.model.G, mpc.weights.R, mpc.model.C'*mpc.weights.Q*mpc.model.C) # solve Riccati
-    mpc.weights.Qf[:,:] = Qf
+    Qfx, _, _ = ared(mpc.model.F, mpc.model.G, mpc.weights.R, mpc.model.C'*mpc.weights.Q*mpc.model.C) # solve Riccati
+    mpc.weights.Qfx .= Qfx
     mpc.mpqp_issetup = false
 end
 
