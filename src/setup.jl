@@ -104,12 +104,13 @@ Set the weights in the objective function `xN' C' Qf C xN^T + ∑ (C xₖ - rₖ
 
 A vector is interpreted as a diagonal matrix.
 """
-function set_objective!(mpc::MPC;Q = zeros(0,0), R=zeros(0,0), Rr=zeros(0,0), S= zeros(0,0), Qf=zeros(0,0))
+function set_objective!(mpc::MPC;Q = zeros(0,0), R=zeros(0,0), Rr=zeros(0,0), S= zeros(0,0), Qf=zeros(0,0), Qfx=zeros(0,0))
     isempty(Q)  || (mpc.weights.Q .= matrixify(Q,mpc.model.ny))
     isempty(R)  || (mpc.weights.R .= matrixify(R,mpc.model.nu))
     isempty(Rr) || (mpc.weights.Rr .= matrixify(Rr,mpc.model.nu))
     isempty(S)  || (mpc.weights.S .= float(S))
     isempty(Qf) || (mpc.weights.Qf .= matrixify(Qf,mpc.model.ny))
+    isempty(Qfx) || (mpc.weights.Qfx .= matrixify(Qfx,mpc.model.nx))
     mpc.mpqp_issetup = false
 end
 set_weights! = set_objective! # backwards compatibility
