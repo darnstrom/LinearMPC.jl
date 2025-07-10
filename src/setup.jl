@@ -123,6 +123,10 @@ using MatrixEquations
 Sets the terminal cost `Qf` to the inifinite horizon LQR cost 
 """
 function set_terminal_cost!(mpc)
+    if mpc.settings.reference_tracking
+        @warn "LQR cost not valid for reference tracking problems. Instead, use set_objective! to set Qf"
+        return false
+    end
     Qfx, _, _ = ared(mpc.model.F, mpc.model.G, mpc.weights.R, mpc.model.C'*mpc.weights.Q*mpc.model.C) # solve Riccati
     mpc.weights.Qfx .= Qfx
     mpc.mpqp_issetup = false
