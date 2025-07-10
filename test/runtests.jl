@@ -158,5 +158,162 @@ global templib
         @test norm(h-[3.72;3.72;2.008;2.008]) < 1e-2
     end
 
+    @testset "Reference Preview" begin
+        # Test basic reference preview functionality
+        A = [0 1; 10 0] 
+        B = [0; 1]
+        C = [1.0 0; 0 1.0]
+        mpc = LinearMPC.MPC(A, B, 0.1; C, Np=5, Nc=3)
+        set_bounds!(mpc; umin=[-20.0], umax=[20.0])
+        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1])
+        
+        # Test with reference preview disabled (default)
+        @test mpc.settings.reference_preview == false
+        control_standard = compute_control(mpc, [1.0, 0.0]; r=[0.0, 0.0])
+        @test length(control_standard) == 1
+        
+        # Enable reference preview
+        mpc.settings.reference_preview = true
+        setup!(mpc)  # Need to rebuild after changing settings
+        
+        # Test with single reference (should be broadcast)
+        control_single = compute_control(mpc, [1.0, 0.0]; r=[0.0, 0.0])
+        @test length(control_single) == 1
+        
+        # Test with reference trajectory matrix
+        r_traj = [0.0 0.5 1.0 1.0 1.0;  # Output 1 trajectory
+                  0.0 0.0 0.0 0.0 0.0]  # Output 2 trajectory
+        control_preview = compute_control(mpc, [1.0, 0.0]; r=r_traj)
+        @test length(control_preview) == 1
+        
+        # Test parameter dimensions
+        nx, nr, nd, nuprev = LinearMPC.get_parameter_dims(mpc)
+        @test nx == 2  # State dimension
+        @test nr == 2 * 5  # 2 outputs × 5 prediction horizon
+        @test nd == 0  # No disturbance
+        @test nuprev == 0  # No control rate penalty
+        
+        # Test that reference preview gives different result than standard
+        # Use a more dynamic reference trajectory that shows clear benefit
+        r_dynamic = [0.0 1.0 2.0 1.0 0.0;   # Changing reference for output 1
+                     0.0 0.0 0.5 1.0 0.5]   # Changing reference for output 2
+        
+        mpc.settings.reference_preview = false
+        setup!(mpc)
+        control_no_preview = compute_control(mpc, [1.0, 0.0]; r=[0.0, 0.0])  # Use only current reference
+        
+        mpc.settings.reference_preview = true
+        setup!(mpc)
+        control_with_preview = compute_control(mpc, [1.0, 0.0]; r=r_dynamic)  # Use future knowledge
+        
+        # They should be different when reference trajectory is changing
+        @test norm(control_no_preview - control_with_preview) > 1e-1
+    end
+
+    @testset "Reference Preview Simulation" begin
+        # Test simulation with reference preview
+        A = [1 1; 0 1] 
+        B = [0; 1]
+        C = [1.0 0; 0 1.0]
+        mpc = LinearMPC.MPC(A, B; C, Np=5, Nc=3)
+        set_bounds!(mpc; umin=[-2.0], umax=[2.0], ymin=[-1.0;-0.5],  ymax=[1.0;0.5])
+        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1])
+        
+        # Create reference trajectory
+        N_sim = 20
+        r_traj = zeros(2, N_sim)
+        r_traj[1, :] = [zeros(10); ones(10)]  # Step reference for output 1
+        r_traj[2, :] = zeros(N_sim)           # Zero reference for output 2
+        
+        # Test with reference preview enabled
+        mpc.settings.reference_preview = true
+        setup!(mpc)
+        
+        sim_preview = LinearMPC.Simulation(mpc; x0=[1.0, 0.0], N=N_sim, r=r_traj)
+        @test size(sim_preview.xs) == (2, N_sim)
+        @test size(sim_preview.us) == (1, N_sim)
+        @test size(sim_preview.rs) == (2, N_sim)
+        
+        # Test with reference preview disabled for comparison
+        mpc.settings.reference_preview = false
+        setup!(mpc)
+        
+        sim_no_preview = LinearMPC.Simulation(mpc; x0=[1.0, 0.0], N=N_sim, r=r_traj)
+        @test size(sim_no_preview.xs) == (2, N_sim)
+        @test size(sim_no_preview.us) == (1, N_sim)
+        
+        # Control sequences should be different
+        @test norm(sim_preview.us - sim_no_preview.us) > 1e-1
+        
+        # Error should be lower with reference preview
+        e_preview = sim_preview.ys - sim_preview.rs
+        e_no_preview = sim_no_preview.ys - sim_no_preview.rs
+        @test norm(e_preview) / norm(e_no_preview) < 0.9
+        @test norm(e_preview[:, end])    < 1e-3 # Test that the reference is approximately met in the end
+        @test norm(e_no_preview[:, end]) < 1e-3
+    end
+
+    @testset "Reference Preview Error Handling" begin
+        # Test error handling for reference preview
+        A = [0 1; 10 0] 
+        B = [0; 1]
+        C = [1.0 0; 0 1.0]
+        mpc = LinearMPC.MPC(A, B, 0.1; C, Np=5, Nc=3)
+        set_bounds!(mpc; umin=[-2.0], umax=[2.0])
+        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1])
+        mpc.settings.reference_preview = true
+        setup!(mpc)
+        
+        # Test with wrong reference dimensions
+        @test_throws ErrorException compute_control(mpc, [1.0, 0.0]; r=[0.0])  # Wrong vector length
+        @test_throws ErrorException compute_control(mpc, [1.0, 0.0]; r=[0.0 0.0 0.0])  # Wrong matrix dimensions
+        
+        # Test with correct dimensions
+        @test_nowarn compute_control(mpc, [1.0, 0.0]; r=[0.0, 0.0])  # Correct vector
+        @test_nowarn compute_control(mpc, [1.0, 0.0]; r=[0.0 0.0; 0.0 0.0])  # Correct matrix
+    end
+
+    @testset "Codegen Reference Preview" begin
+        # Test code generation with reference preview enabled
+        A = [1 1; 0 1] 
+        B = [0; 1]
+        C = [1.0 0; 0 1.0]
+        mpc = LinearMPC.MPC(A, B; C, Np=5, Nc=5)
+        set_bounds!(mpc; umin=[-2.0], umax=[2.0])
+        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1])
+        
+        # Enable reference preview
+        mpc.settings.reference_preview = true
+        setup!(mpc)
+
+        r_traj = [0.0 0.5 1.0 1.0 1.0;  # Output 1 trajectory
+                  0.0 0.0 0.0 0.0 0.0]  # Output 2 trajectory
+
+        x = [0.0, 0.0]
+        
+        u_julia = compute_control(mpc, x; r=r_traj)
+        
+        # Generate C code
+        srcdir = tempname()
+        LinearMPC.codegen(mpc; dir=srcdir)
+        src = [f for f in readdir(srcdir) if last(f,1) == "c"]
+        @test !isempty(src)
+        
+        if(!isnothing(Sys.which("gcc")))
+            testlib = "mpctest."* Base.Libc.Libdl.dlext
+            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+            
+            # Test with reference preview (2 outputs × 5 prediction steps = 10 reference values)
+            u = zeros(1)
+            d = zeros(0)
+            
+            global templib = joinpath(srcdir, testlib)
+            ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), u, x, r_traj, d)
+                      
+            # Test that Julia and C implementations give same result
+            @test norm(u - u_julia) < 1e-10
+        end
+    end
+
 
 end

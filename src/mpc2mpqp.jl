@@ -30,6 +30,9 @@ end
 
 function get_parameter_dims(mpc::MPC)
     nr = mpc.settings.reference_tracking ?  mpc.model.ny : 0
+    if mpc.settings.reference_preview && nr > 0
+        nr = nr * mpc.Np  # Reference preview uses Np time steps
+    end
     nuprev = iszero(mpc.weights.Rr) ? 0 : mpc.model.nu
     return mpc.model.nx,nr,mpc.model.nd,nuprev
 end
@@ -37,7 +40,16 @@ end
 function get_parameter_names(mpc::MPC)
     nx,nr,nd,nuprev = get_parameter_dims(mpc)
     names = copy(mpc.model.labels.x)
-    nr>0 && push!(names,Symbol.(string.(mpc.model.labels.y).*"r")...)
+    if nr > 0
+        if mpc.settings.reference_preview
+            # For reference preview, create names for each time step
+            for k in 0:mpc.Np-1
+                push!(names, Symbol.(string.(mpc.model.labels.y).*"r_$k")...)
+            end
+        else
+            push!(names,Symbol.(string.(mpc.model.labels.y).*"r")...)
+        end
+    end
     nd>0 && push!(names,mpc.model.labels.d...)
     nuprev>0 && push!(names,Symbol.(string.(mpc.model.labels.u).*"p")...)
     return names
@@ -74,10 +86,17 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
     Np, Nc= mpc.Np, mpc.Nc
     m= length(mpc.constraints)
     nu,nx = mpc.model.nu, mpc.model.nx 
-    nth = sum(get_parameter_dims(mpc))
+
+    if mpc.settings.reference_preview
+        nxe = sum(get_parameter_dims(mpc))-mpc.nr
+        nrx = 0
+    else
+        nxe = sum(get_parameter_dims(mpc))
+        nrx = mpc.nr
+    end
 
     ubtot,lbtot = zeros(0,1),zeros(0,1);
-    Axtot,Autot = zeros(0,nth*(Np+1)), zeros(0,nu*Nc);
+    Axtot,Autot = zeros(0,nxe*(Np+1)), zeros(0,nu*Nc);
     issoft,isbinary = falses(0),falses(0)
     prios = zeros(Int,0)
 
@@ -89,7 +108,7 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
         ks = [k for k in c.ks if k<= Np]
         Ni = length(ks);
 
-        Ar = isempty(c.Ar) ? zeros(mi,mpc.nr) : c.Ar
+        Ar = isempty(c.Ar) ? zeros(mi,nrx) : c.Ar
         Ad = isempty(c.Ad) ? zeros(mi,mpc.model.nd) : c.Ad
         Aup = isempty(c.Aup) ? zeros(mi,mpc.nuprev) : c.Auip
 
@@ -105,6 +124,11 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
     end
     A=Axtot*Γ+Autot;
     W = -Axtot*Φ;
+
+    # Correct for r not being state when using reference preview
+    if mpc.settings.reference_preview
+        W = [W[:,1:nx] zeros(size(W,1),mpc.nr) W[:,nx+1:end]]
+    end
 
     return A,ubtot,lbtot,W,issoft,isbinary,prios
 end
@@ -152,29 +176,60 @@ end
 # (where th contains x0, r and u(k-1))
 function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
 
-    pos_ids= findall(diag(Q).>0); # Ignore zero indices... (and negative)
-    Q = Q[pos_ids,pos_ids];
-    Cp = C[pos_ids,:];
+    pos_ids_Q = findall(diag(Q).>0); # Ignore zero indices... (and negative)
+    Q = Q[pos_ids_Q,pos_ids_Q];
+    Cp = C[pos_ids_Q,:];
 
-    pos_ids= findall(diag(Q).>0); # Ignore zero indices... (and negative)
-    Qf = Qf[pos_ids,pos_ids];
-    Cf = C[pos_ids,:];
+    pos_ids_Qf = findall(diag(Qf).>0); # Ignore zero indices... (and negative)
+    Qf = Qf[pos_ids_Qf,pos_ids_Qf];
+    Cf = C[pos_ids_Qf,:];
 
+    # Get parameter dimensions
+    nx_param, nr_param, nd_param, nuprev_param = get_parameter_dims(mpc)
+    nth_param = nx_param + nr_param + nd_param + nuprev_param
 
-    f_theta = zeros(Nc*nu,nx)
+    f_theta = zeros(Nc*nu, nth_param)
 
     # ==== From u' R u ====
     H = kron(I(Nc),R);
     H[end-nu+1:end,end-nu+1:end] .+= (N-Nc)*R # To accound for Nc < N...
-
 
     # ==== From (Cx)'Q(Cx) ====
     CQCtot  = kron(I(N),Cp'*Q*Cp);
     CQCtot = cat(CQCtot,Cf'*Qf*Cf,dims=(1,2))
 
     H += Γ'*CQCtot*Γ; 
-    f_theta += Γ'*CQCtot*Φ; # from x0
-    H_theta = Φ'*CQCtot*Φ
+    # f_theta for state parameters - ensure dimensions match
+    phi_state_cols = size(Φ, 2)
+    f_theta[:, 1:phi_state_cols] += Γ'*CQCtot*Φ; # from x0
+    H_theta = zeros(nth_param, nth_param)
+    H_theta[1:phi_state_cols, 1:phi_state_cols] = Φ'*CQCtot*Φ
+
+    # ==== Reference tracking terms ====
+    if mpc.settings.reference_tracking && nr_param > 0
+        if mpc.settings.reference_preview
+            # Reference preview mode: handle time-varying references
+            ny = mpc.model.ny
+            
+            # Build reference tracking matrix
+            R_tot = kron(I(N),I(ny))
+            R_f = [zeros(ny,ny*(N-1)) I(ny)]
+            
+            # Add reference tracking terms to f_theta
+            if nr_param > 0 && (phi_state_cols + nr_param) <= size(f_theta, 2)
+                f_theta[:, (phi_state_cols+1):(phi_state_cols+nr_param)] -= Γ'*CQCtot*[R_tot; R_f]
+                
+                # Add reference tracking terms to H_theta
+                if (phi_state_cols + nr_param) <= size(H_theta, 1)
+                    H_theta[(phi_state_cols+1):(phi_state_cols+nr_param), (phi_state_cols+1):(phi_state_cols+nr_param)] = 
+                        [R_tot; R_f]'*CQCtot*[R_tot; R_f]
+                end
+            end
+        else
+            # Standard mode: references are handled as augmented states
+            # No additional terms needed here since references are in the state vector
+        end
+    end
 
     # ==== From x' S u ====
     if(!iszero(S))
@@ -182,9 +237,8 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
         Stot[Nc*nx+1:N*nx,end-nu+1:end] = repeat(S,N-Nc,1) # Due to control horizon
         GS = Γ'*Stot
         H += (GS + GS')
-        f_theta += Stot'*Φ
+        f_theta[:, 1:phi_state_cols] += Stot'*Φ
     end
-
 
     # Add regularization for binary variables (won't change the solution)
     f = zeros(size(H,1),1); 
@@ -216,11 +270,17 @@ function mpc2mpqp(mpc::MPC)
     Np,Nc = mpc.Np, mpc.Nc
 
     if(nr > 0) # Reference tracking -> add reference to states
-        F = cat(F,I(nr),dims=(1,2))
-        G = [G;zeros(nr,nu)]
-        C = [C -I(nr)] 
-        S = [S;zeros(nr,nu)]
-        #Qf = cat(Qf,zeros(nr,nr),dims=(1,2))
+        if mpc.settings.reference_preview
+            # Reference preview mode: references are part of parameter vector
+            # No need to add reference states to F, G matrices
+            # References will be handled directly in the objective function
+        else
+            # Standard mode: add reference as constant states
+            F = cat(F,I(mpc.model.ny),dims=(1,2))
+            G = [G;zeros(mpc.model.ny,nu)]
+            C = [C -I(mpc.model.ny)] 
+            S = [S;zeros(mpc.model.ny,nu)]
+        end
     end
 
     if(nd > 0) # add measureable disturbnace

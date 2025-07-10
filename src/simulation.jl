@@ -33,13 +33,44 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
     # Start the simulation
     for k = 1:N
         xs[:,k], ys[:,k] = x, mpc.model.C*x+mpc.model.Dd*ds[:,k]
-        u = compute_control(mpc,x;r=rs[:,k],d=ds[:,k])
+        
+        # Prepare reference for controller
+        if mpc.settings.reference_preview && !isnothing(r)
+            # Reference preview mode: provide future references
+            r_preview = get_reference_preview(rs, k, mpc.Np)
+            u = compute_control(mpc,x;r=r_preview,d=ds[:,k])
+        else
+            # Standard mode: provide current reference
+            u = compute_control(mpc,x;r=rs[:,k],d=ds[:,k])
+        end
+        
         x = dynamics(x,u,ds[:,k])
         callback(x,u,ds[:,k],k)
         us[:,k] = u
     end
     Ts = mpc.model.Ts < 0.0 ? 1.0 : mpc.model.Ts
     return Simulation(collect(Ts*(0:1:N-1)),ys,us,xs,rs,ds,mpc)
+end
+
+"""
+    get_reference_preview(rs, k, Np)
+
+Extract reference preview from reference trajectory starting at time step k.
+"""
+function get_reference_preview(rs, k, Np)
+    ny, N = size(rs)
+    r_preview = zeros(ny, Np)
+    
+    @views for i in 1:Np
+        if k + i - 1 <= N
+            r_preview[:, i] .= rs[:, k + i - 1]
+        else
+            # Use last available reference
+            r_preview[:, i] .= rs[:, end]
+        end
+    end
+    
+    return r_preview
 end
 
 function Simulation(mpc::Union{MPC,ExplicitMPC}; kwargs...)

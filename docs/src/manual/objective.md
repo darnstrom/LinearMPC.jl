@@ -31,3 +31,24 @@ A term of the form $(Cx_N-r)^T Q_f (C x_N -r)^T$ can also be added to the object
 ## Cross term 
 It is also possible to include a cross term $x_k^T S u_k$ in the objective. This term can also be set with the `set_objective!` function. By default, $S=0$.
 
+## Reference Preview
+By default, the reference tracking term uses a constant reference $r$ across the prediction horizon: $(Cx_{k}-r)^T Q (C x_{k}-r)$ for all $k$. 
+
+Reference preview allows time-varying references $r_k$ in the objective:
+```math
+\sum_{k=0}^{N-1} (Cx_{k}-r_k)^T Q (C x_{k}-r_k)
+```
+
+Enable reference preview with:
+```julia
+mpc.settings.reference_preview = true
+setup!(mpc)
+```
+
+Then provide a reference trajectory matrix of size `(ny, Np)` to `compute_control`:
+```julia
+r_trajectory = [1.0 1.5 2.0 2.0 2.0;   # Reference for output 1
+                0.0 0.0 0.5 1.0 1.0]   # Reference for output 2  
+u = compute_control(mpc, x; r=r_trajectory)
+```
+

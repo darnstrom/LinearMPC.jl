@@ -2,19 +2,99 @@
     compute_control(mpc,x;r,uprev)
 
 For a given MPC `mpc` and state `x`, compute the optimal control action. 
+
 Optional arguments: 
-* `r` - reference value
+* `r` - reference value. Can be:
+  - Vector of length `ny` for constant reference
+  - Matrix of size `(ny, Np)` for reference preview (when `mpc.settings.reference_preview = true`)
 * `uprev` - previous control action
-all of them defaults to zero.
+
+All arguments default to zero.
+
+# Examples
+```julia
+# Standard reference tracking
+u = compute_control(mpc, x; r=[1.0, 0.0])
+
+# Reference preview (requires mpc.settings.reference_preview = true)
+r_trajectory = [1.0 1.5 2.0 2.0 2.0;   # ny × Np matrix
+                0.0 0.0 0.5 1.0 1.0]
+u = compute_control(mpc, x; r=r_trajectory)
+```
 """
 function compute_control(mpc::Union{MPC,ExplicitMPC},x;r=nothing,d=nothing,uprev=nothing)
     # Setup parameter vector θ
     nx,nr,nd,nuprev = get_parameter_dims(mpc)
-    r = isnothing(r) || !mpc.settings.reference_tracking ? zeros(nr) : r
+    
+    r = format_reference(mpc, r)
     d = isnothing(d) ? zeros(nd) : d 
     uprev = isnothing(uprev) ? mpc.uprev[1:nuprev] : uprev[1:nuprev]
+
     mpc.uprev = solve(mpc,[x;r;d;uprev])
     return mpc.uprev
+end
+
+"""
+    format_reference(mpc, r)
+
+Format reference input for MPC controller. Handles both single reference 
+and reference preview scenarios.
+"""
+function format_reference(mpc::Union{MPC,ExplicitMPC}, r)
+    if isnothing(r)
+        r = mpc.settings.reference_tracking ?  zeros(mpc.model.ny) : zeros(0)
+    end
+    isempty(r) && return r
+    
+    if mpc.settings.reference_preview
+        # Reference preview mode
+        ny = mpc.model.ny
+        
+        if r isa AbstractVector
+            # Single reference - broadcast across prediction horizon
+            if length(r) == ny
+                return repeat(r, mpc.Np)
+            else
+                error("Reference vector length ($(length(r))) must match number of outputs ($(ny))")
+            end
+        elseif r isa AbstractMatrix
+            # Reference trajectory matrix
+            if size(r, 1) != ny
+                error("Reference matrix must have $(ny) rows (number of outputs)")
+            end
+            
+            # Flatten and pad/truncate to prediction horizon
+            if size(r, 2) >= mpc.Np
+                return vec(r[:, 1:mpc.Np])
+            else
+                # Pad with last column if trajectory is shorter than prediction horizon
+                r_extended = zeros(ny, mpc.Np)
+                r_extended[:, 1:size(r, 2)] = r
+                r_extended[:, (size(r, 2)+1):end] .= repeat(r[:, end], 1, mpc.Np - size(r, 2))
+                return vec(r_extended)
+            end
+        else
+            error("Reference must be a vector or matrix for reference preview")
+        end
+    else
+        # Standard mode - single reference
+        if r isa AbstractVector
+            if length(r) == mpc.model.ny
+                return r
+            else
+                error("Reference vector length ($(length(r))) must match number of outputs ($(mpc.model.ny))")
+            end
+        elseif r isa AbstractMatrix
+            # Use first column if matrix provided in non-preview mode
+            if size(r, 1) == mpc.model.ny
+                return r[:, 1]
+            else
+                error("Reference matrix must have $(mpc.model.ny) rows (number of outputs)")
+            end
+        else
+            error("Reference must be a vector or matrix")
+        end
+    end
 end
 
 function solve(mpc::MPC,θ)
