@@ -286,6 +286,11 @@ global templib
         mpc.settings.reference_preview = true
         setup!(mpc)
 
+        r_traj = [0.0 0.5 1.0 1.0 1.0;  # Output 1 trajectory
+                  0.0 0.0 0.0 0.0 0.0]  # Output 2 trajectory
+
+        x = [0.0, 0.0]
+        
         u_julia = compute_control(mpc, x; r=r_traj)
         
         # Generate C code
@@ -300,13 +305,10 @@ global templib
             
             # Test with reference preview (2 outputs × 5 prediction steps = 10 reference values)
             u = zeros(1)
-            x = [0.0, 0.0]
-            r_traj = [0.0 0.5 1.0 1.0 1.0;  # Output 1 trajectory
-                  0.0 0.0 0.0 0.0 0.0]  # Output 2 trajectory
             d = zeros(0)
             
             global templib = joinpath(srcdir, testlib)
-            ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), u, x, r, d)
+            ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), u, x, r_traj, d)
                       
             # Test that Julia and C implementations give same result
             @test norm(u - u_julia) < 1e-10

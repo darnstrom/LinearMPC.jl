@@ -53,7 +53,6 @@ function format_reference(mpc::Union{MPC,ExplicitMPC}, r)
     if mpc.settings.reference_preview
         # Reference preview mode
         ny = mpc.model.ny
-        nr_total = ny * mpc.Np
         
         if r isa AbstractVector
             # Single reference - broadcast across prediction horizon
