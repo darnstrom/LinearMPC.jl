@@ -2,10 +2,25 @@
     compute_control(mpc,x;r,uprev)
 
 For a given MPC `mpc` and state `x`, compute the optimal control action. 
+
 Optional arguments: 
-* `r` - reference value (scalar/vector for single reference, or matrix for reference preview)
+* `r` - reference value. Can be:
+  - Vector of length `ny` for constant reference
+  - Matrix of size `(ny, Np)` for reference preview (when `mpc.settings.reference_preview = true`)
 * `uprev` - previous control action
-all of them defaults to zero.
+
+All arguments default to zero.
+
+# Examples
+```julia
+# Standard reference tracking
+u = compute_control(mpc, x; r=[1.0, 0.0])
+
+# Reference preview (requires mpc.settings.reference_preview = true)
+r_trajectory = [1.0 1.5 2.0 2.0 2.0;   # ny × Np matrix
+                0.0 0.0 0.5 1.0 1.0]
+u = compute_control(mpc, x; r=r_trajectory)
+```
 """
 function compute_control(mpc::Union{MPC,ExplicitMPC},x;r=nothing,d=nothing,uprev=nothing)
     # Setup parameter vector θ
