@@ -211,27 +211,9 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
             # Reference preview mode: handle time-varying references
             ny = mpc.model.ny
             
-            # Create reference selection matrices for each time step
-            R_matrices = []
-            for k in 0:N-1
-                R_k = zeros(ny, nr_param)
-                if k < mpc.Np
-                    R_k[:, (k*ny+1):(k+1)*ny] = I(ny)
-                else
-                    # Use last reference for k >= Np
-                    R_k[:, ((mpc.Np-1)*ny+1):(mpc.Np*ny)] = I(ny)
-                end
-                push!(R_matrices, R_k)
-            end
-            
             # Build reference tracking matrix
-            R_tot = zeros(N*ny, nr_param)
-            for k in 0:N-1
-                R_tot[(k*ny+1):(k+1)*ny, :] = R_matrices[k+1]
-            end
-            
-            # Terminal reference
-            R_f = R_matrices[min(N, mpc.Np)]
+            R_tot = kron(I(N),I(ny))
+            R_f = [zeros(ny,ny*(N-1)) I(ny)]
             
             # Add reference tracking terms to f_theta
             if nr_param > 0 && (phi_state_cols + nr_param) <= size(f_theta, 2)
