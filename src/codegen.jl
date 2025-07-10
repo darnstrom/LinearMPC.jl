@@ -68,7 +68,6 @@ int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_
     // update parameter
     for(i=0,j=0;j<N_STATE;i++, j++) mpc_parameter[i] = state[j];
     for(j=0;j<N_REFERENCE;i++, j++) mpc_parameter[i] = reference[j];
-    
     for(j=0;j<N_DISTURBANCE;i++, j++) mpc_parameter[i] = disturbance[j];
     for(j=0;j<N_CONTROL_PREV;i++, j++) mpc_parameter[i] = control[j];
 
