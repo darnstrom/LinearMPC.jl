@@ -22,6 +22,7 @@ include("mpc2mpqp.jl");
 include("mpc_examples.jl");
 
 include("simulation.jl");
+export Simulation
 
 using Printf
 include("codegen.jl");
