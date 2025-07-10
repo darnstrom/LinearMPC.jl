@@ -86,10 +86,17 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
     Np, Nc= mpc.Np, mpc.Nc
     m= length(mpc.constraints)
     nu,nx = mpc.model.nu, mpc.model.nx 
-    nth = sum(get_parameter_dims(mpc))
+
+    if mpc.settings.reference_preview
+        nxe = sum(get_parameter_dims(mpc))-mpc.nr
+        nrx = 0
+    else
+        nxe = sum(get_parameter_dims(mpc))
+        nrx = mpc.nr
+    end
 
     ubtot,lbtot = zeros(0,1),zeros(0,1);
-    Axtot,Autot = zeros(0,nth*(Np+1)), zeros(0,nu*Nc);
+    Axtot,Autot = zeros(0,nxe*(Np+1)), zeros(0,nu*Nc);
     issoft,isbinary = falses(0),falses(0)
     prios = zeros(Int,0)
 
@@ -101,7 +108,7 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
         ks = [k for k in c.ks if k<= Np]
         Ni = length(ks);
 
-        Ar = isempty(c.Ar) ? zeros(mi,mpc.nr) : c.Ar
+        Ar = isempty(c.Ar) ? zeros(mi,nrx) : c.Ar
         Ad = isempty(c.Ad) ? zeros(mi,mpc.model.nd) : c.Ad
         Aup = isempty(c.Aup) ? zeros(mi,mpc.nuprev) : c.Auip
 
@@ -117,6 +124,11 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
     end
     A=Axtot*Γ+Autot;
     W = -Axtot*Φ;
+
+    # Correct for r not being state when using reference preview
+    if mpc.settings.reference_preview
+        W = [W[:,1:nx] zeros(size(W,1),mpc.nr) W[:,nx+1:end]]
+    end
 
     return A,ubtot,lbtot,W,issoft,isbinary,prios
 end
