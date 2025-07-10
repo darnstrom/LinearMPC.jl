@@ -26,16 +26,11 @@ function compute_control(mpc::Union{MPC,ExplicitMPC},x;r=nothing,d=nothing,uprev
     # Setup parameter vector θ
     nx,nr,nd,nuprev = get_parameter_dims(mpc)
     
-    # Handle reference parameter
-    if isnothing(r) || !mpc.settings.reference_tracking
-        r_vec = zeros(nr)
-    else
-        r_vec = format_reference(mpc, r)
-    end
-    
+    r = format_reference(mpc, r)
     d = isnothing(d) ? zeros(nd) : d 
     uprev = isnothing(uprev) ? mpc.uprev[1:nuprev] : uprev[1:nuprev]
-    mpc.uprev = solve(mpc,[x;r_vec;d;uprev])
+
+    mpc.uprev = solve(mpc,[x;r;d;uprev])
     return mpc.uprev
 end
 
@@ -46,9 +41,10 @@ Format reference input for MPC controller. Handles both single reference
 and reference preview scenarios.
 """
 function format_reference(mpc::Union{MPC,ExplicitMPC}, r)
-    if !mpc.settings.reference_tracking
-        return zeros(0)
+    if isnothing(r)
+        r = mpc.settings.reference_tracking ?  zeros(mpc.model.ny) : zeros(0)
     end
+    isempty(r) && return r
     
     if mpc.settings.reference_preview
         # Reference preview mode
