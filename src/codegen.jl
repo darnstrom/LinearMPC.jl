@@ -49,13 +49,6 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
     @printf(fh, "#define N_REFERENCE %d\n",mpc.nr);
     @printf(fh, "#define N_DISTURBANCE %d\n",mpc.model.nd);
     @printf(fh, "#define N_CONTROL_PREV %d\n",mpc.nuprev);
-    if mpc.settings.reference_preview
-        @printf(fh, "#define REFERENCE_PREVIEW 1\n");
-        @printf(fh, "#define N_REFERENCE_HORIZON %d\n",mpc.Np);
-    else
-        @printf(fh, "#define REFERENCE_PREVIEW 0\n");
-        @printf(fh, "#define N_REFERENCE_HORIZON 1\n");
-    end
 
     @printf(fh, "extern c_float mpc_parameter[%d];\n", nth);
 
@@ -74,14 +67,7 @@ int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_
     c_float mpc_parameter[$nth];
     // update parameter
     for(i=0,j=0;j<N_STATE;i++, j++) mpc_parameter[i] = state[j];
-    
-    #if REFERENCE_PREVIEW
-        // Reference preview mode: copy entire reference trajectory
-        for(j=0;j<N_REFERENCE;i++, j++) mpc_parameter[i] = reference[j];
-    #else
-        // Standard mode: copy single reference value
-        for(j=0;j<N_REFERENCE;i++, j++) mpc_parameter[i] = reference[j];
-    #endif
+    for(j=0;j<N_REFERENCE;i++, j++) mpc_parameter[i] = reference[j];
     
     for(j=0;j<N_DISTURBANCE;i++, j++) mpc_parameter[i] = disturbance[j];
     for(j=0;j<N_CONTROL_PREV;i++, j++) mpc_parameter[i] = control[j];
