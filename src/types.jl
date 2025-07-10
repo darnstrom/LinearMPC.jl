@@ -23,10 +23,12 @@ struct MPCWeights
     Rr::Matrix{Float64}
     S::Matrix{Float64}
     Qf::Matrix{Float64}
+    Qfx::Matrix{Float64}
 end
 
 function MPCWeights(nu,nx,nr)
-    return MPCWeights(Matrix{Float64}(I,nr,nr),Matrix{Float64}(I,nu,nu),zeros(nu,nu),zeros(nx,nu),zeros(nr,nr))
+    return MPCWeights(Matrix{Float64}(I,nr,nr),Matrix{Float64}(I,nu,nu),zeros(nu,nu),
+                      zeros(nx,nu),zeros(nr,nr),zeros(nx,nx))
 end
 
 """

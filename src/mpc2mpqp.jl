@@ -196,7 +196,8 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
 
     # ==== From (Cx)'Q(Cx) ====
     CQCtot  = kron(I(N),Cp'*Q*Cp);
-    CQCtot = cat(CQCtot,Cf'*Qf*Cf,dims=(1,2))
+    CQCf = Cf'*Qf*Cf + cat(mpc.weights.Qfx,zeros(nx-nx_param,nx-nx_param), dims=(1,2))
+    CQCtot = cat(CQCtot,CQCf,dims=(1,2))
 
     H += Γ'*CQCtot*Γ; 
     # f_theta for state parameters - ensure dimensions match
@@ -261,7 +262,7 @@ function mpc2mpqp(mpc::MPC)
 
     F,G,C = mpc.model.F-mpc.model.G*mpc.K, mpc.model.G, mpc.model.C
     Q,R,Rr,S = mpc.weights.Q, mpc.weights.R, mpc.weights.Rr, mpc.weights.S 
-    Qf = iszero(mpc.weights.Qf) ? Q : mpc.weights.Qf
+    Qf = iszero(mpc.weights.Qf) && iszero(mpc.weights.Qfx) ? Q : mpc.weights.Qf
 
     nx,nr,nd,nuprev = get_parameter_dims(mpc)
     mpc.nr, mpc.nuprev =  nr,nuprev
