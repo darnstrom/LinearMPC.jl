@@ -211,10 +211,22 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
         if mpc.settings.reference_preview
             # Reference preview mode: handle time-varying references
             ny = mpc.model.ny
+            ny_aug = size(C, 1)  # Total number of outputs in augmented system
             
             # Build reference tracking matrix
-            R_tot = kron(I(N),I(ny))
-            R_f = [zeros(ny,ny*(N-1)) I(ny)]
+            R_tot = zeros(ny_aug * N, ny * N)
+            R_f = zeros(ny_aug, ny * N)  # Match column dimension of R_tot
+            
+            for i in 1:N
+                row_start = (i-1) * ny_aug + 1
+                row_end = (i-1) * ny_aug + ny
+                col_start = (i-1) * ny + 1
+                col_end = i * ny
+                R_tot[row_start:row_end, col_start:col_end] .= I(ny)
+            end
+            
+            # Terminal reference matrix (only for actual outputs) - use last time step
+            R_f[1:ny, ((N-1)*ny+1):(N*ny)] .= I(ny)
             
             # Add reference tracking terms to f_theta
             if nr_param > 0 && (phi_state_cols + nr_param) <= size(f_theta, 2)
@@ -296,7 +308,17 @@ function mpc2mpqp(mpc::MPC)
         F = cat(F,zeros(nu,nu),dims=(1,2))
         F[end-nu+1:end,1:nx] .= -mpc.K
         G = [G;I(nu)]
-        C = [C zeros(nr,nu); mpc.K zeros(nu,nr+nd) I(nu)]
+        
+        # Determine the correct C matrix dimensions based on reference handling mode
+        if mpc.settings.reference_preview
+            # Reference preview mode: references not in augmented state, so use actual C dimensions
+            ny_aug = size(C, 1)  # Current number of output rows in C
+            C = [C zeros(ny_aug,nu); mpc.K zeros(nu,nd) I(nu)]
+        else
+            # Standard mode: references are augmented states
+            C = [C zeros(nr,nu); mpc.K zeros(nu,nr+nd) I(nu)]
+        end
+        
         Q = cat(Q,Rr,dims=(1,2))
         Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
         S = [S;-Rr];
@@ -307,7 +329,16 @@ function mpc2mpqp(mpc::MPC)
     if(!iszero(mpc.weights.R) && !iszero(mpc.K)) # terms from prestabilizing feedback
         Q = cat(Q,mpc.weights.R,dims=(1,2))
         Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
-        C = [C; mpc.K zeros(nu,nr+nd+nuprev)]
+        
+        # Handle prestabilizing feedback matrix dimensions based on reference mode
+        if mpc.settings.reference_preview
+            # Reference preview mode: only add disturbance and previous control dimensions
+            C = [C; mpc.K zeros(nu,nd+nuprev)]
+        else
+            # Standard mode: include reference dimensions
+            C = [C; mpc.K zeros(nu,nr+nd+nuprev)]
+        end
+        
         S[1:nx,:] -=mpc.K'*mpc.weights.R
     end
 
