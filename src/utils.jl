@@ -99,7 +99,16 @@ function format_reference(mpc::Union{MPC,ExplicitMPC}, r)
         elseif r isa AbstractMatrix
             # Use first column if matrix provided in non-preview mode
             if size(r, 1) == mpc.model.ny
-                return r[:, 1]
+                N = min(mpc.Np, size(r,2))
+                rs = zeros(mpc.model.ny)
+                α, norm_factor = 1.0,0.0;
+                for i = 1:N
+                    rs += α*r[:,i] 
+                    norm_factor +=α
+                    α*=0.75
+                end
+                @info "" rs/norm_factor
+                return rs/norm_factor
             else
                 error("Reference matrix must have $(mpc.model.ny) rows (number of outputs)")
             end

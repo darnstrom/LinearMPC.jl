@@ -35,7 +35,7 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
         xs[:,k], ys[:,k] = x, mpc.model.C*x+mpc.model.Dd*ds[:,k]
         
         # Prepare reference for controller
-        if mpc.settings.reference_preview && !isnothing(r)
+        if !isnothing(r)
             # Reference preview mode: provide future references
             r_preview = get_reference_preview(rs, k, mpc.Np)
             u = compute_control(mpc,x;r=r_preview,d=ds[:,k])
