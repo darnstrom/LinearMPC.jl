@@ -169,3 +169,12 @@ using RecipesBase
         id+=1
     end
 end
+
+"""
+    evaluate_cost(mpc,sim;Q,Rr,S)
+Compute the cost 0.5 ∑ x'*Q x + u' R u + Δu' Rr Δu + x' S u
+"""
+function evaluate_cost(mpc::MPC,sim::Simulation;
+        Q=mpc.weights.Q, R = mpc.weights.R, Rr = mpc.weights.Rr, S = mpc.weights.S)
+    return evaluate_cost(mpc,sim.xs,sim.us,sim.rs;Q,R,Rr,S)
+end

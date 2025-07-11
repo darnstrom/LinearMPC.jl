@@ -185,3 +185,23 @@ function make_singlesided(mpQP;explicit_soft=true)
             A=Matrix{Float64}(A), b=b, W=W, senses=senses,
             bounds_table=bounds_table)
 end
+
+"""
+    evaluate_cost(mpc,xs,us,rs;Q,Rr,S)
+Compute the cost 0.5 ∑ x'*Q x + u' R u + Δu' Rr Δu + x' S u
+"""
+function evaluate_cost(mpc::MPC,xs,us,rs=zeros(0,0);
+        Q=mpc.weights.Q, R = mpc.weights.R, Rr = mpc.weights.Rr, S = mpc.weights.S)
+    nu,N = size(us)
+    rs = isempty(rs) ? zeros(mpc.model.ny,N) : rs
+    Δus = diff([zeros(nu) us],dims=2)
+    cost = 0.0
+    for i = 1:N
+        err = mpc.model.C*xs[:,i]-rs[:,i]
+        cost += dot(err,Q,err)
+        cost += dot(us[:,i],R,us[:,i])
+        cost += dot(Δus[:,i],Rr,Δus[:,i])
+        cost += dot(xs[:,i],S,us[:,i])
+    end
+    return 0.5*cost
+end
