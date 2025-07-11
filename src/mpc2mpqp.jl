@@ -185,10 +185,8 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
     Cf = C[pos_ids_Qf,:];
 
     # Get parameter dimensions
-    nx_param, nr_param, nd_param, nuprev_param = get_parameter_dims(mpc)
-    nth_param = nx_param + nr_param + nd_param + nuprev_param
-
-    f_theta = zeros(Nc*nu, nth_param)
+    nxp, nrp, ndp, nup = get_parameter_dims(mpc)
+    nth_param = nxp + nrp + ndp + nup
 
     # ==== From u' R u ====
     H = kron(I(Nc),R);
@@ -196,53 +194,13 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
 
     # ==== From (Cx)'Q(Cx) ====
     CQCtot  = kron(I(N),Cp'*Q*Cp);
-    CQCf = Cf'*Qf*Cf + cat(mpc.weights.Qfx,zeros(nx-nx_param,nx-nx_param), dims=(1,2))
+    CQCf = Cf'*Qf*Cf + cat(mpc.weights.Qfx,zeros(nx-nxp,nx-nxp), dims=(1,2))
     CQCtot = cat(CQCtot,CQCf,dims=(1,2))
 
     H += Γ'*CQCtot*Γ; 
-    # f_theta for state parameters - ensure dimensions match
-    phi_state_cols = size(Φ, 2)
-    f_theta[:, 1:phi_state_cols] += Γ'*CQCtot*Φ; # from x0
-    H_theta = zeros(nth_param, nth_param)
-    H_theta[1:phi_state_cols, 1:phi_state_cols] = Φ'*CQCtot*Φ
-
-    # ==== Reference tracking terms ====
-    if mpc.settings.reference_tracking && nr_param > 0
-        if mpc.settings.reference_preview
-            # Reference preview mode: handle time-varying references
-            ny = mpc.model.ny
-            ny_aug = size(C, 1)  # Total number of outputs in augmented system
-            
-            # Build reference tracking matrix
-            R_tot = zeros(ny_aug * N, ny * N)
-            R_f = zeros(ny_aug, ny * N)  # Match column dimension of R_tot
-            
-            for i in 1:N
-                row_start = (i-1) * ny_aug + 1
-                row_end = (i-1) * ny_aug + ny
-                col_start = (i-1) * ny + 1
-                col_end = i * ny
-                R_tot[row_start:row_end, col_start:col_end] .= I(ny)
-            end
-            
-            # Terminal reference matrix (only for actual outputs) - use last time step
-            R_f[1:ny, ((N-1)*ny+1):(N*ny)] .= I(ny)
-            
-            # Add reference tracking terms to f_theta
-            if nr_param > 0 && (phi_state_cols + nr_param) <= size(f_theta, 2)
-                f_theta[:, (phi_state_cols+1):(phi_state_cols+nr_param)] -= Γ'*CQCtot*[R_tot; R_f]
-                
-                # Add reference tracking terms to H_theta
-                if (phi_state_cols + nr_param) <= size(H_theta, 1)
-                    H_theta[(phi_state_cols+1):(phi_state_cols+nr_param), (phi_state_cols+1):(phi_state_cols+nr_param)] = 
-                        [R_tot; R_f]'*CQCtot*[R_tot; R_f]
-                end
-            end
-        else
-            # Standard mode: references are handled as augmented states
-            # No additional terms needed here since references are in the state vector
-        end
-    end
+    # f_theta & H_theta for state parameters
+    f_theta  = Γ'*CQCtot*Φ; # from x0
+    H_theta  = Φ'*CQCtot*Φ
 
     # ==== From x' S u ====
     if(!iszero(S))
@@ -250,8 +208,32 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
         Stot[Nc*nx+1:N*nx,end-nu+1:end] = repeat(S,N-Nc,1) # Due to control horizon
         GS = Γ'*Stot
         H += (GS + GS')
-        f_theta[:, 1:phi_state_cols] += Stot'*Φ
+        f_theta += Stot'*Φ
     end
+
+    # ==== Reference tracking terms ====
+    if mpc.settings.reference_tracking && nrp > 0
+        if mpc.settings.reference_preview
+            # Reference preview mode: handle time-varying references
+            # Needs to add terms for r to f_theta and H_theta
+            # Recall that θ = [x0 r nd uprev]
+            ny = mpc.model.ny
+            if nrp > 0
+                Fr = -Γ'*cat(kron(I(N),Cp[1:ny,:]'*Q[1:ny,1:ny]), Cf[1:ny,:]'*Qf[1:ny,1:ny],dims=(1,2))
+                Fr = Fr[:,nxp+1:end] # First reference superfluous
+                f_theta = [f_theta[:,1:nxp] Fr f_theta[:,nxp+1:end]]
+
+                Hr = cat(kron(I(N-1),Q[1:ny,1:ny]),Qf[1:ny,1:ny],dims=(1,2))
+                H_theta = [H_theta[1:nxp, 1:nxp] zeros(nxp,nrp) H_theta[1:nxp,nxp+1:end];
+                           zeros(nrp,nxp) Hr zeros(nrp,ndp+nup);
+                           H_theta[nxp+1:end,1:nxp] zeros(ndp+nup,nrp) H_theta[nxp+1:end,nxp+1:end]]
+            end
+        else
+            # Standard mode: references are handled as augmented states
+            # No additional terms needed here since references are in the state vector
+        end
+    end
+
 
     # Add regularization for binary variables (won't change the solution)
     f = zeros(size(H,1),1); 
@@ -308,17 +290,8 @@ function mpc2mpqp(mpc::MPC)
         F = cat(F,zeros(nu,nu),dims=(1,2))
         F[end-nu+1:end,1:nx] .= -mpc.K
         G = [G;I(nu)]
-        
-        # Determine the correct C matrix dimensions based on reference handling mode
-        if mpc.settings.reference_preview
-            # Reference preview mode: references not in augmented state, so use actual C dimensions
-            ny_aug = size(C, 1)  # Current number of output rows in C
-            C = [C zeros(ny_aug,nu); mpc.K zeros(nu,nd) I(nu)]
-        else
-            # Standard mode: references are augmented states
-            C = [C zeros(nr,nu); mpc.K zeros(nu,nr+nd) I(nu)]
-        end
-        
+        nye,nxe = size(C)
+        C = [C zeros(nye,nu); mpc.K zeros(nu,nxe-nx) I(nu)]
         Q = cat(Q,Rr,dims=(1,2))
         Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
         S = [S;-Rr];
@@ -329,16 +302,7 @@ function mpc2mpqp(mpc::MPC)
     if(!iszero(mpc.weights.R) && !iszero(mpc.K)) # terms from prestabilizing feedback
         Q = cat(Q,mpc.weights.R,dims=(1,2))
         Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
-        
-        # Handle prestabilizing feedback matrix dimensions based on reference mode
-        if mpc.settings.reference_preview
-            # Reference preview mode: only add disturbance and previous control dimensions
-            C = [C; mpc.K zeros(nu,nd+nuprev)]
-        else
-            # Standard mode: include reference dimensions
-            C = [C; mpc.K zeros(nu,nr+nd+nuprev)]
-        end
-        
+        C = [C; mpc.K zeros(nu,size(C,2)-nx)]
         S[1:nx,:] -=mpc.K'*mpc.weights.R
     end
 
