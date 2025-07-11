@@ -340,6 +340,15 @@ function mpc2mpqp(mpc::MPC)
             A = A[keep,:] 
         end
     end
+    # Apply reference blocking
+    if(mpc.settings.reference_tracking && mpc.settings.reference_preview && !isempty(mpc.ref_blocks))
+        T= zeros(0,0)
+        for mb in mpc.ref_blocks
+            T = cat(T,repeat(I(mpc.model.ny),mb,1),dims=(1,2))
+        end
+        W = [W[:,1:nx] W[:,nx+1:nx+nr]*T W[:,nx+nr+1:end]]
+        f_theta = [f_theta[:,1:nx] f_theta[:,nx+1:nx+nr]*T f_theta[:,nx+nr+1:end]]
+    end
 
     # Setup sense
     senses = zeros(Cint,length(bu)); 

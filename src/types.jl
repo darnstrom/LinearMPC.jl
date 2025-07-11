@@ -89,8 +89,9 @@ mutable struct MPC
     # Prestabilizing feedback
     K::Matrix{Float64}
 
-    # Move blocks
+    # Move/reference blocks
     move_blocks::Vector{Int}
+    ref_blocks::Vector{Int}
 
     mpqp_issetup::Bool
 
@@ -102,7 +103,7 @@ function MPC(model::Model;Np=10,Nc=Np)
         MPCWeights(model.nu,model.nx,model.ny),
         zeros(0),zeros(0),zeros(0),
         Constraint[],MPCSettings(),nothing,
-        DAQP.Model(),zeros(model.nu,model.nx),Int[],false, zeros(model.nu))
+        DAQP.Model(),zeros(model.nu,model.nx),Int[],Int[],false,zeros(model.nu))
 end
 
 function MPC(F,G;Gd=zeros(0,0), C=zeros(0,0), Dd= zeros(0,0), Ts= -1.0, Np=10, Nc = Np)

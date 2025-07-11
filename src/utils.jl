@@ -47,13 +47,25 @@ function format_reference(mpc::Union{MPC,ExplicitMPC}, r)
     isempty(r) && return r
     
     if mpc.settings.reference_preview
+        # Get ids
+        if(isempty(mpc.ref_blocks))
+            ids = 1:mpc.Np
+        else
+            id,ids = 1,Int[]
+            for mb in mpc.ref_blocks
+                push!(ids,id)
+                id += mb
+            end
+        end
+
+
         # Reference preview mode
         ny = mpc.model.ny
         
         if r isa AbstractVector
             # Single reference - broadcast across prediction horizon
             if length(r) == ny
-                return repeat(r, mpc.Np)
+                return repeat(r, length(ids))
             else
                 error("Reference vector length ($(length(r))) must match number of outputs ($(ny))")
             end
@@ -65,13 +77,13 @@ function format_reference(mpc::Union{MPC,ExplicitMPC}, r)
             
             # Flatten and pad/truncate to prediction horizon
             if size(r, 2) >= mpc.Np
-                return vec(r[:, 1:mpc.Np])
+                return vec(r[:, ids])
             else
                 # Pad with last column if trajectory is shorter than prediction horizon
                 r_extended = zeros(ny, mpc.Np)
                 r_extended[:, 1:size(r, 2)] = r
                 r_extended[:, (size(r, 2)+1):end] .= repeat(r[:, end], 1, mpc.Np - size(r, 2))
-                return vec(r_extended)
+                return vec(r_extended[:,ids])
             end
         else
             error("Reference must be a vector or matrix for reference preview")
