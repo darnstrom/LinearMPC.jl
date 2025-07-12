@@ -176,6 +176,10 @@ end
 # (where th contains x0, r and u(k-1))
 function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
 
+    ny = mpc.model.ny
+    Q_full,Qf_full = Q[1:ny,1:ny],Qf[1:ny,1:ny]
+    C_full = C[1:ny,:]
+
     pos_ids_Q = findall(diag(Q).>0); # Ignore zero indices... (and negative)
     Q = Q[pos_ids_Q,pos_ids_Q];
     Cp = C[pos_ids_Q,:];
@@ -217,13 +221,12 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
             # Reference preview mode: handle time-varying references
             # Needs to add terms for r to f_theta and H_theta
             # Recall that θ = [x0 r nd uprev]
-            ny = mpc.model.ny
             if nrp > 0
-                Fr = -Γ'*cat(kron(I(N),Cp[1:ny,:]'*Q[1:ny,1:ny]), Cf[1:ny,:]'*Qf[1:ny,1:ny],dims=(1,2))
+                Fr = -Γ'*cat(kron(I(N),C_full'*Q_full), C_full'*Qf_full,dims=(1,2))
                 Fr = Fr[:,ny+1:end] # First reference superfluous
                 f_theta = [f_theta[:,1:nxp] Fr f_theta[:,nxp+1:end]]
 
-                Hr = cat(kron(I(N-1),Q[1:ny,1:ny]),Qf[1:ny,1:ny],dims=(1,2))
+                Hr = cat(kron(I(N-1),Q_full),Qf_full,dims=(1,2))
                 H_theta = [H_theta[1:nxp, 1:nxp] zeros(nxp,nrp) H_theta[1:nxp,nxp+1:end];
                            zeros(nrp,nxp) Hr zeros(nrp,ndp+nup);
                            H_theta[nxp+1:end,1:nxp] zeros(ndp+nup,nrp) H_theta[nxp+1:end,nxp+1:end]]
