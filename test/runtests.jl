@@ -165,7 +165,7 @@ global templib
         C = [1.0 0; 0 1.0]
         mpc = LinearMPC.MPC(A, B, 0.1; C, Np=5, Nc=3)
         set_bounds!(mpc; umin=[-20.0], umax=[20.0])
-        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1])
+        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1], Rr = [0.1])
         
         # Test with reference preview disabled (default)
         @test mpc.settings.reference_preview == false
@@ -191,7 +191,7 @@ global templib
         @test nx == 2  # State dimension
         @test nr == 2 * 5  # 2 outputs × 5 prediction horizon
         @test nd == 0  # No disturbance
-        @test nuprev == 0  # No control rate penalty
+        @test nuprev == 1  # Control rate penalty enabled (Rr = [0.1])
         
         # Test that reference preview gives different result than standard
         # Use a more dynamic reference trajectory that shows clear benefit
