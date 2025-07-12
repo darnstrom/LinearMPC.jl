@@ -220,7 +220,7 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
             ny = mpc.model.ny
             if nrp > 0
                 Fr = -Γ'*cat(kron(I(N),Cp[1:ny,:]'*Q[1:ny,1:ny]), Cf[1:ny,:]'*Qf[1:ny,1:ny],dims=(1,2))
-                Fr = Fr[:,nxp+1:end] # First reference superfluous
+                Fr = Fr[:,ny+1:end] # First reference superfluous
                 f_theta = [f_theta[:,1:nxp] Fr f_theta[:,nxp+1:end]]
 
                 Hr = cat(kron(I(N-1),Q[1:ny,1:ny]),Qf[1:ny,1:ny],dims=(1,2))
