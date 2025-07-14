@@ -283,7 +283,7 @@ global templib
         @test_nowarn compute_control(mpc, [1.0, 0.0]; r=[0.0 0.0; 0.0 0.0])  # Correct matrix
     end
 
-    @testset "Codegen Reference Preview" begin
+    @testset "Codegen Reference Preview - Full" begin
         # Test code generation with reference preview enabled
         A = [1 1; 0 1] 
         B = [0; 1]
@@ -309,6 +309,70 @@ global templib
         src = [f for f in readdir(srcdir) if last(f,1) == "c"]
         @test !isempty(src)
         
+        if(!isnothing(Sys.which("gcc")))
+            testlib = "mpctest."* Base.Libc.Libdl.dlext
+            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+            
+            # Test with reference preview (2 outputs × 5 prediction steps = 10 reference values)
+            u = zeros(1)
+            d = zeros(0)
+            
+            global templib = joinpath(srcdir, testlib)
+            ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), u, x, r_traj, d)
+                      
+            # Test that Julia and C implementations give same result
+            @test norm(u - u_julia) < 1e-10
+        end
+    end
+
+    @testset "Codegen Reference Preview - Condensed" begin
+        # Test code generation with reference preview enabled
+        A = [1 1; 0 1] 
+        B = [0; 1]
+        C = [1.0 0; 0 1.0]
+        mpc = LinearMPC.MPC(A, B; C, Np=5, Nc=5)
+        set_bounds!(mpc; umin=[-2.0], umax=[2.0])
+        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1])
+        
+        # Enable reference preview
+        mpc.settings.reference_preview = true
+        mpc.settings.reference_condensation = true
+        setup!(mpc)
+
+        r_traj = [0.0 0.5 1.0 1.0 1.0;  # Output 1 trajectory
+                  0.0 0.0 0.0 0.0 0.0]  # Output 2 trajectory
+
+        x = [0.0, 0.0]
+        
+        u_julia = compute_control(mpc, x; r=r_traj)
+        
+        # Generate C code
+        srcdir = tempname()
+        LinearMPC.codegen(mpc; dir=srcdir)
+        src = [f for f in readdir(srcdir) if last(f,1) == "c"]
+        @test !isempty(src)
+        
+        if(!isnothing(Sys.which("gcc")))
+            testlib = "mpctest."* Base.Libc.Libdl.dlext
+            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+            
+            # Test with reference preview (2 outputs × 5 prediction steps = 10 reference values)
+            u = zeros(1)
+            d = zeros(0)
+            
+            global templib = joinpath(srcdir, testlib)
+            ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), u, x, r_traj, d)
+                      
+            # Test that Julia and C implementations give same result
+            @test norm(u - u_julia) < 1e-10
+        end
+
+        # Explicit
+        empc = LinearMPC.ExplicitMPC(mpc;range=LinearMPC.ParameterRange(mpc))
+        srcdir = tempname()
+        LinearMPC.codegen(empc; dir=srcdir)
+        src = [f for f in readdir(srcdir) if last(f,1) == "c"]
+        @test !isempty(src)
         if(!isnothing(Sys.which("gcc")))
             testlib = "mpctest."* Base.Libc.Libdl.dlext
             run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))

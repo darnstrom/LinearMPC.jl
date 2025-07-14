@@ -60,6 +60,10 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
     fsrc = open(joinpath(dir,"mpc_compute_control.c"), "w")
     write(fsrc, "#include \"mpc_compute_control.h\"\n")
     write(fsrc, "#include \"$fname.h\"\n")
+    if(mpc.settings.reference_condensation)
+        @printf(fsrc, "#define N_PREVIEW_HORIZON %d\n",mpc.Np)
+        write_float_array(fsrc,mpc.traj2setpoint[:],"traj2setpoint");
+    end
 
     # Update parameter
     fmpc_para = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_update_parameter.c"), "r");
@@ -124,6 +128,12 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
     write_float_array(fsrc,mpLDP.dl[:],"dl");
     write_float_array(fsrc,mpLDP.Xth[:],"Xth");
     write_float_array(fsrc,mpLDP.uscaling[:],"uscaling");
+
+    if(mpc.settings.reference_condensation)
+        @printf(fsrc, "#define N_PREVIEW_HORIZON %d\n",mpc.Np)
+        @printf(fsrc, "extern c_float traj2setpoint[%d];\n", length(mpc.traj2setpoint));
+        write_float_array(fsrc,mpc.traj2setpoint[:],"traj2setpoint");
+    end
 
     fmpc_h = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_update_qp.h"), "r");
     write(fh, read(fmpc_h))
