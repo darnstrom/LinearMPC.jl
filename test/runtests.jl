@@ -233,6 +233,13 @@ global templib
         @test size(sim_preview.xs) == (2, N_sim)
         @test size(sim_preview.us) == (1, N_sim)
         @test size(sim_preview.rs) == (2, N_sim)
+
+        # Compute explicit solution
+        empc = LinearMPC.ExplicitMPC(mpc;range=LinearMPC.ParameterRange(mpc),build_tree=true)
+        sim_explicit_preview = LinearMPC.Simulation(empc; x0=[1.0, 0.0], N=N_sim, r=r_traj)
+        @test size(sim_explicit_preview.xs) == (2, N_sim)
+        @test size(sim_explicit_preview.us) == (1, N_sim)
+        @test size(sim_explicit_preview.rs) == (2, N_sim)
         
         # Test with reference preview disabled for comparison
         mpc.settings.reference_preview = false
@@ -244,6 +251,9 @@ global templib
         
         # Control sequences should be different
         @test norm(sim_preview.us - sim_no_preview.us) > 1e-1
+
+        # Implicit and explicit should be similar
+        @test norm(sim_preview.ys - sim_explicit_preview.ys) < 1e-6
         
         # Error should be lower with reference preview
         e_preview = sim_preview.ys - sim_preview.rs
