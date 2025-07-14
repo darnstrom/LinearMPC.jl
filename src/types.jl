@@ -36,6 +36,7 @@ MPC controller settings.
 
 # Fields
 - `QP_double_sided::Bool = true`: Use double-sided QP formulation
+- `reference_condensation::Bool = false`: Collapse reference trajectory to setpoint 
 - `reference_tracking::Bool = true`: Enable reference tracking
 - `reference_preview::Bool = false`: Enable time-varying reference preview
 - `soft_constraints::Bool = true`: Allow soft constraint violations
@@ -45,6 +46,7 @@ MPC controller settings.
 """
 Base.@kwdef mutable struct MPCSettings
     QP_double_sided::Bool = true 
+    reference_condensation::Bool= false
     reference_tracking::Bool= true
     reference_preview::Bool = false
     soft_constraints::Bool= true
@@ -95,6 +97,8 @@ mutable struct MPC
     mpqp_issetup::Bool
 
     uprev::Vector{Float64}
+
+    traj2setpoint::Matrix{Float64}
 end
 
 function MPC(model::Model;Np=10,Nc=Np)
@@ -102,7 +106,7 @@ function MPC(model::Model;Np=10,Nc=Np)
         MPCWeights(model.nu,model.nx,model.ny),
         zeros(0),zeros(0),zeros(0),
         Constraint[],MPCSettings(),nothing,
-        DAQP.Model(),zeros(model.nu,model.nx),Int[],false, zeros(model.nu))
+        DAQP.Model(),zeros(model.nu,model.nx),Int[],false, zeros(model.nu),zeros(0,0))
 end
 
 function MPC(F,G;Gd=zeros(0,0), C=zeros(0,0), Dd= zeros(0,0), Ts= -1.0, Np=10, Nc = Np)
