@@ -79,7 +79,7 @@ end
 
 using RecipesBase
 
-@recipe function f(sim::Simulation; yids=1:sim.mpc.model.ny,uids=sim.mpc.model.nu,xids=[])
+@recipe function f(sim::Simulation; yids=1:sim.mpc.model.ny,uids=1:sim.mpc.model.nu,xids=[])
 
 
     layout = Tuple{Int,Int}[]
@@ -105,7 +105,7 @@ using RecipesBase
             color   --> 1
             subplot --> id 
             #label--> latexify(make_subscript(string(sim.mpc.model.labels.y[i])))
-            legend  --> true
+            legend --> false
             if i == length(yids) 
                 xguide --> (sim.mpc.model.Ts < 0 ? "Time step" : "Time [s]")
             end
@@ -145,6 +145,7 @@ using RecipesBase
             color      --> 1
             subplot    --> id
             seriestype --> :steppost
+            legend --> false
             #label--> latexify(make_subscript(string(sim.mpc.model.labels.u[i])))
             if i == length(uids) 
                 xguide --> (sim.mpc.model.Ts < 0 ? "Time step" : "Time [s]")
@@ -160,7 +161,7 @@ using RecipesBase
             yguide  --> latexify(make_subscript(string(sim.mpc.model.labels.x[i])))
             color  --> 1
             subplot--> id
-            legend --> true
+            legend --> false
             if i == length(xids)
                 xguide --> (sim.mpc.model.Ts < 0 ? "Time step" : "Time [s]")
             end
