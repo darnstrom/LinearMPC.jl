@@ -104,9 +104,10 @@ function solve(mpc::MPC,θ)
     bu = mpc.settings.QP_double_sided ? mpc.mpQP.bu + bth : mpc.mpQP.b + bth
     bl = mpc.settings.QP_double_sided ? mpc.mpQP.bl + bth : -1e30*ones(length(bu))
     f = mpc.mpQP.f +mpc.mpQP.f_theta*θ
-    senses = mpc.mpQP.has_binaries ? mpc.mpQP.senses : nothing # binaries => cleanup sense
-    DAQP.update(mpc.opt_model,nothing,f,nothing,bu,bl,mpc.mpQP.senses)
-
+    if mpc.mpQP.has_binaries # Make sure workspace is clean
+        ccall(("node_cleanup_workspace", DAQP.libdaqp),Cvoid,(Cint,Ptr{DAQP.Workspace}),0, mpc.opt_model.work)
+    end
+    DAQP.update(mpc.opt_model,nothing,f,nothing,bu,bl,nothing)
     udaqp,fval,exitflag,info = DAQP.solve(mpc.opt_model)
     @assert(exitflag>=1)
     return udaqp[1:mpc.model.nu]-mpc.K*θ[1:mpc.model.nx]
