@@ -370,7 +370,8 @@ function mpc2mpqp(mpc::MPC)
     # Stack constraints in case of QP is assumed to be single sided. 
     if(mpc.settings.QP_double_sided)
         mpQP = (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
-                A=Matrix{Float64}(A), bu=bu, bl=bl, W=W, senses=senses, prio=prio)
+                A=Matrix{Float64}(A), bu=bu, bl=bl, W=W, senses=senses,
+                prio=prio, has_binaries=any(isbinary))
     else # Transform bl + W θ ≤ A U ≤ bu + W θ → A U ≤ b + W
         ncstr = length(bu);
         n_bounds = ncstr-size(A,1);
@@ -385,7 +386,7 @@ function mpc2mpqp(mpc::MPC)
         prio = [prio;prio]
         mpQP = (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
                 A=Matrix{Float64}(A), b=b, W=W, senses=senses,
-                bounds_table=bounds_table, prio=prio)
+                bounds_table=bounds_table, prio=prio, has_binaries=any(isbinary))
     end
     return mpQP
 end

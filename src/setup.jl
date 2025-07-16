@@ -208,3 +208,12 @@ function set_horizon!(mpc,Np)
     mpc.Np = Np
     mpc.mpqp_issetup = false
 end
+"""
+    set_binary_controls!(mpc,bin_ids)
+
+Makes the controls in bin_ids to binary controls 
+"""
+function set_binary_controls!(mpc,bin_ids)
+    mpc.binary_controls = Int64.(copy(bin_ids))
+    mpc.mpqp_issetup = false
+end
