@@ -65,8 +65,8 @@ function get_reference_preview(rs, k, Np)
     r_preview = zeros(ny, Np)
     
     @views for i in 1:Np
-        if k + i - 1 <= N
-            r_preview[:, i] .= rs[:, k + i - 1]
+        if k + i <= N
+            r_preview[:, i] .= rs[:, k + i]
         else
             # Use last available reference
             r_preview[:, i] .= rs[:, end]
