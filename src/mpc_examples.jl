@@ -389,7 +389,7 @@ function mpc_examples(s, Np, Nc=Np;params = Dict(),settings=nothing)
     elseif(s=="satellite")
         A = [0.0 1 0; 0 0 0; 0 0 0]
         B = [0 0 0; 2.5 1 1; -10 0 0]
-        mpc = MPC(A,B,0.1;Np=20)
+        mpc = MPC(A,B,0.1;Np,Nc)
         set_objective!(mpc;Q=[0.5e4, 1e-2, 1e-1], R = [10,10,10], Rr = 0)
         set_bounds!(mpc;umin=[-Inf;0;-1],umax=[Inf;1;0])
         set_binary_controls!(mpc,[2,3])

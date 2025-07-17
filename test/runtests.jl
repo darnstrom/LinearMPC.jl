@@ -351,5 +351,28 @@ global templib
             @test all(isapprox.(sim.us[bin_id,:],mpc.umin[bin_id],atol=1e-5) .||
                       isapprox.(sim.us[bin_id,:],mpc.umax[bin_id],atol=1e-5))
         end
+
+        # Generate C code
+        srcdir = tempname()
+        LinearMPC.codegen(mpc; dir=srcdir)
+        src = [f for f in readdir(srcdir) if last(f,1) == "c"]
+        @test "bnb.c" ∈ src
+
+        if(!isnothing(Sys.which("gcc")))
+            testlib = "mpctest."* Base.Libc.Libdl.dlext
+            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+
+            # Test with reference preview (2 outputs × 5 prediction steps = 10 reference values)
+            u,d = zeros(3),zeros(0)
+            x = zeros(3)
+
+            global templib = joinpath(srcdir, testlib)
+            exitflag = ccall(("mpc_compute_control", templib), Cint,
+                             (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), u, x, rs, d)
+            # Test that Julia and C implementations give same result
+            u_julia = compute_control(mpc, x; r=rs)
+            @test norm(u - u_julia) < 1e-5
+        end
+
     end
 end
