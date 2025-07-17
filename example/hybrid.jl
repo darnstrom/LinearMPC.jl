@@ -1,6 +1,6 @@
 using LinearMPC
 mpc,_ = LinearMPC.mpc_examples("satellite",20)
-mpc.settings.reference_preview=true
+mpc.settings.reference_preview=false
 x0, N = zeros(3), 20; 
 rs = [zeros(1,5) 0.5*ones(1,N-5);
       zeros(2,N)];
