@@ -16,6 +16,10 @@ end
 
 function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false, opts=ParametricDAQP.Settings())
     mpQP = mpc.mpqp_issetup ? mpc.mpQP : mpc2mpqp(mpc)
+    if mpQP.has_binaries
+        @warn("Explicit controllers currently not supported for hybrid systems")
+        return nothing
+    end
     if(range==nothing)
         @warn("No parameter range defined. Using default limits [-100 and 100]. If you want a bigger/smaller region, create a ParameterRange")
         range = ParameterRange(mpc)
