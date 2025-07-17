@@ -2,12 +2,12 @@
 
 **LinearMPC.jl** can be used to control hybrid systems, where controls and states might take both continuous and binary values.
 
-Binary controls are either equal to its upper or lower bound. For example, if the lower and upper bounds for the control $i$ is $\underline{u}_i$ and $\overline{u}_i$, making $u_i$ binary means that $u_i \in \{\underline{u}_i, \overline{u}_i\}$ rather than $\underline{u}_i \leq u_i \leq \overline{u}_i$. Controls can be made binary with the function `set_binary_controls!`, which is exemplified bellow.
+Binary controls are either equal to its upper or lower bound. For example, if the lower and upper bounds for the control $i$ is $\underline{u}_i$ and $\overline{u}_i$, making $u_i$ binary means that $u_i \in \{\underline{u}_i, \overline{u}_i\}$ rather than $\underline{u}_i \leq u_i \leq \overline{u}_i$. Controls can be made binary with the function `set_binary_controls!`, which is exemplified below.
 
 More generally, **LinearMPC.jl** allows any constraint to be defined as `binary`. A constraint can be enforced to be binary by settings the setting the optional argument `binary` to  `true` in the functions `add_constraint!`.
 
 ## Illustrative example
-As an illustrative example, we consider the control of the attitude of a sattelite[^Axehill04]. The actuators consist of one reaction wheel and two thrusters. The thruster takes on binary values (they are either 'on' or 'off')
+As an illustrative example, we consider the control of the attitude of a satellite[^Axehill04]. The actuators consist of one reaction wheel and two thrusters. The thruster takes on binary values (they are either 'on' or 'off')
 
 [^Axehill04]: Axehill, Daniel, and Anders Hansson. "A preprocessing algorithm for MIQP solvers with applications to MPC." _43rd IEEE Conference on Decision and Control (CDC)_ (2004) 
 
@@ -53,7 +53,7 @@ mpc.settings.reference_preview = true
 nothing # hide
 ```
 
-We simulate the MPC controller with a refernece that changes to 0.5 after 5 time steps with the following code
+We simulate the controller with an attitude reference change to 0.5 after 5 time steps with the following code
 
 ```@example hybrid_mpc
 x0, N = zeros(3), 20; 

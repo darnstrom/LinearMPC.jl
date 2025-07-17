@@ -45,10 +45,6 @@ A binary search tree will also be compuetd by passing the optional argument `bui
 empc = LinearMPC.ExplicitMPC(mpc;build_tree=true)
 ```
 
-!!! warning "Building binary search tree"
-    The functionality of building a binary search tree is currently exponential, and might be unstable for larger problems. Proceed carefully.
-    
-
 When a binary search tree has been formed , a control can be computed, similar as for a normal `MPC` struct, with the function `compute_control`. Given a state `x` and setpoint `r`, the corresponding control is computed with 
 ```julia
 x = LinearMPC.compute_control(empc,x;r=r)
