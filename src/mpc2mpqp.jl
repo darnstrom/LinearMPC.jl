@@ -241,10 +241,10 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
     # Add regularization for binary variables (won't change the solution)
     f = zeros(size(H,1),1); 
     fbin_part = zeros(mpc.model.nu)
-    fbin_part[mpc.binary_controls] .= 1 
+    fbin_part[mpc.binary_controls] = (mpc.umax[mpc.binary_controls] + mpc.umin[mpc.binary_controls])/2
     fbin = repeat(fbin_part,Nc)
-    f -= 0.5*fbin
-    H += diagm(fbin)
+    f -= fbin
+    H += diagm(fbin .!= 0)
 
     return (H+H')/2,f,f_theta,H_theta
 end
@@ -366,6 +366,10 @@ function mpc2mpqp(mpc::MPC)
     end
     # Mark binary constraints
     senses[isbinary[:]].+=DAQP.BINARY
+
+    # Replace Infs for codegen
+    clamp!(bu,-1e30,1e30)
+    clamp!(bl,-1e30,1e30)
 
     # Stack constraints in case of QP is assumed to be single sided. 
     if(mpc.settings.QP_double_sided)
