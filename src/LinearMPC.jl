@@ -37,4 +37,6 @@ using PolyDAQP
 include("invariant.jl");
 export invariant_set
 
+include("robust.jl");
+
 end
