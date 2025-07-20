@@ -217,3 +217,11 @@ function set_binary_controls!(mpc,bin_ids)
     mpc.binary_controls = Int64.(copy(bin_ids))
     mpc.mpqp_issetup = false
 end
+"""
+    set_disturbance!(mpc,wmin,wmax)
+"""
+function set_disturbance!(mpc,wmin,wmax)
+    mpc.model.wmin .= wmin
+    mpc.model.wmax .= wmax
+    mpc.mpqp_issetup = false
+end
