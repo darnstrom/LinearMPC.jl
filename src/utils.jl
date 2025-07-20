@@ -41,10 +41,11 @@ Format reference input for MPC controller. Handles both single reference
 and reference preview scenarios.
 """
 function format_reference(mpc::Union{MPC,ExplicitMPC}, r)
-    if isnothing(r)
-        r = mpc.settings.reference_tracking ?  zeros(mpc.model.ny) : zeros(0)
-    end
+    !mpc.settings.reference_tracking && return zeros(0)
     isempty(r) && return r
+    if isnothing(r) 
+        r = zeros(mpc.model.ny)
+    end
     
     if mpc.settings.reference_preview
         # Reference preview mode
