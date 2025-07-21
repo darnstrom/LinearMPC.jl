@@ -208,6 +208,25 @@ function make_singlesided(mpQP;single_soft=false, soft_weight=1e6)
 
     b = [mpQP.bu;-mpQP.bl]
     W = [mpQP.W;-mpQP.W]
+
+    # Prune possible Inf bounds
+    rm_ids = findall(b[:] .>= 1e20)
+    if(!isempty(rm_ids))
+        bounds_table[bounds_table[rm_ids]] = bounds_table[rm_ids] # Make other bound point to itself
+        # Correct bounds table 
+        rm_offset, keep_ids = 1, Int[]
+        for i in 1:2*ncstr
+            if(i==rm_ids[rm_offset])
+                rm_offset+=1
+            else
+                bounds_table[i] -= (rm_offset-1)
+                push!(keep_ids,i)
+            end
+        end
+        A,b,W = A[keep_ids,:],b[keep_ids],W[keep_ids,:]
+        senses,prio,bounds_table = senses[keep_ids],prio[keep_ids],bounds_table[keep_ids]
+    end
+
     return (H=H,f=f, H_theta = mpQP.H_theta, f_theta=f_theta,
             A=Matrix{Float64}(A), b=b, W=W, senses=senses,
             bounds_table=bounds_table, prio =prio, has_binaries=mpQP.has_binaries)
