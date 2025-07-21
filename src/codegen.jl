@@ -2,10 +2,10 @@ function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=not
     length(dir)==0 && (dir="codegen")
     dir[end] != '/' && (dir*="/") ## Make sure it is a correct directory path
     ## Generate mpQP
-    mpc.settings.QP_double_sided = true # force double-sided constraint for generated code
     setup!(mpc)
     # Generate QP workspace
     d = mpc.opt_model
+    DAQP.settings(d,Dict(:rho_soft=>1/mpc.settings.soft_weight))
     if(!isnothing(opt_settings))
         DAQP.settings(d,opt_settings)
     end

@@ -6,12 +6,7 @@ Internally, this means generating an mpQP, and setting up a DAQP workspace.
 """
 function setup!(mpc::MPC)
     mpc.mpQP = mpc2mpqp(mpc)
-    #mpc.opt_model = DAQP.Model()
-    if(mpc.settings.QP_double_sided)
-        bu,bl = mpc.mpQP.bu[:],mpc.mpQP.bl[:]
-    else
-        bu,bl = mpc.mpQP.b[:], -1e30*ones(length(mpc.mpQP.b))
-    end
+    bu,bl = mpc.mpQP.bu[:],mpc.mpQP.bl[:]
     setup_flag,_ = DAQP.setup(mpc.opt_model, mpc.mpQP.H,mpc.mpQP.f[:],mpc.mpQP.A,bu,bl,mpc.mpQP.senses)
     if(setup_flag < 0)
         @warn " Cannot setup optimization problem " setup_flag

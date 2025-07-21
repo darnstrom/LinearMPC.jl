@@ -101,8 +101,8 @@ function solve(mpc::MPC,θ)
     mpc.mpqp_issetup || setup!(mpc) # ensure mpQP is setup
     mpc.mpqp_issetup || throw("Could not setup optimization problem")
     bth = mpc.mpQP.W*θ
-    bu = mpc.settings.QP_double_sided ? mpc.mpQP.bu + bth : mpc.mpQP.b + bth
-    bl = mpc.settings.QP_double_sided ? mpc.mpQP.bl + bth : -1e30*ones(length(bu))
+    bu = mpc.mpQP.bu + bth
+    bl = mpc.mpQP.bl + bth
     f = mpc.mpQP.f +mpc.mpQP.f_theta*θ
     if mpc.mpQP.has_binaries # Make sure workspace is clean
         ccall(("node_cleanup_workspace", DAQP.libdaqp),Cvoid,(Cint,Ptr{DAQP.Workspace}),0, mpc.opt_model.work)
@@ -172,21 +172,45 @@ function make_subscript(label::String)
     nid = findfirst(isdigit,collect(label))
     return isnothing(nid) ? label : label[1:nid-1]*"_"*label[nid:end]
 end
-function make_singlesided(mpQP;explicit_soft=true)
+
+# 1. Transform bl + W θ ≤ A U ≤ bu + W θ → A U ≤ b + W
+# 2. Make the soft constraints explicit
+function make_singlesided(mpQP;single_soft=false, soft_weight=1e6)
     ncstr = length(mpQP.bu);
     n_bounds = ncstr-size(mpQP.A,1);
     bounds_table=[collect(ncstr+1:2*ncstr);collect(1:ncstr)]
     A = [I(n_bounds) zeros(n_bounds,size(mpQP.A,2)-n_bounds);mpQP.A]
     A = [A;-A]
-    if(explicit_soft && any(senses.==DAQP.SOFT))# Correct sign for slack
-        A[:,end].= -abs.(A[:,end])
+
+    senses = repeat(mpQP.senses,2)
+    prio = repeat(mpQP.prio,2)
+
+    H,f,f_theta = mpQP.H, mpQP.f, mpQP.f_theta
+
+    # Make soft constraints explicit
+    soft_mask = (mpQP.senses .& DAQP.SOFT .== DAQP.SOFT)
+    if(any(soft_mask))
+        if(single_soft)
+            nsoft = 1
+            A = [A [-soft_mask;-soft_mask]]
+        else
+            soft_ids = findall(soft_mask)
+            nsoft, n = length(soft_ids), size(A,2)
+            A = [A zeros(2*ncstr,nsoft)]
+            A[soft_ids,n+1:end] = -I(nsoft)
+            A[soft_ids .+ ncstr,n+1:end] = -I(nsoft)
+
+        end
+        H = cat(H,soft_weight*I(nsoft),dims=(1,2))
+        f = [f;zeros(nsoft)] 
+        f_theta = [f_theta;zeros(nsoft,size(f_theta,2))]
     end
+
     b = [mpQP.bu;-mpQP.bl]
     W = [mpQP.W;-mpQP.W]
-    senses = [mpQP.senses;mpQP.senses]
-    return (H=mpQP.H,f=mpQP.f, H_theta = mpQP.H_theta, f_theta=mpQP.f_theta,
+    return (H=H,f=f, H_theta = mpQP.H_theta, f_theta=f_theta,
             A=Matrix{Float64}(A), b=b, W=W, senses=senses,
-            bounds_table=bounds_table)
+            bounds_table=bounds_table, prio =prio, has_binaries=mpQP.has_binaries)
 end
 
 """

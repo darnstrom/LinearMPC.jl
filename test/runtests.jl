@@ -82,7 +82,6 @@ global templib
         using LinearMPC
         Np = 10
         mpc,_= LinearMPC.mpc_examples("aircraft",Np)
-        mpc.settings.explicit_soft=false
 
         move_block!(mpc,Int[]) # Set empty
         mpqp = LinearMPC.mpc2mpqp(mpc)
@@ -135,7 +134,6 @@ global templib
     @testset "Certification" begin
         # Load inverted pendulum example and certify the iteration complexity 
         mpc,range = LinearMPC.mpc_examples("invpend")
-        mpc.settings.QP_double_sided = true
         result = LinearMPC.certify(mpc;range)
         @test length(result.partition) > 100
     end
