@@ -18,9 +18,7 @@ function mpc_examples(s, Np, Nc=Np;params = Dict(),settings=nothing)
         umin,umax = [-2.0], [2.0]
         set_bounds!(mpc; umin,umax)
 
-        if(isnothing(settings))
-            mpc.settings.QP_double_sided = false;
-        else
+        if(!isnothing(settings))
             mpc.settings=settings
         end
 
@@ -54,9 +52,7 @@ function mpc_examples(s, Np, Nc=Np;params = Dict(),settings=nothing)
         add_constraint!(mpc,Ax=C[2:2,:],lb = [-0.5] ,ub = [0.5], ks = 2:min(mpc.Nc+2,mpc.Np), soft=true)
 
         if(isnothing(settings))
-            mpc.settings.QP_double_sided = false;
             mpc.settings.reference_tracking=true;
-            mpc.settings.explicit_soft=true;
         else
             mpc.settings=settings
         end
@@ -95,9 +91,7 @@ function mpc_examples(s, Np, Nc=Np;params = Dict(),settings=nothing)
         set_output_bounds!(mpc, ymin = [-0.5;-0.5], ymax=[0.5;0.5],ks=2:2)
 
         if(isnothing(settings))
-            mpc.settings.QP_double_sided= false;
             mpc.settings.reference_tracking=true;
-            mpc.settings.explicit_soft=true;
         else
             mpc.settings=settings
         end
@@ -129,9 +123,7 @@ function mpc_examples(s, Np, Nc=Np;params = Dict(),settings=nothing)
         set_output_bounds!(mpc,ymin = -10*ones(nx), ymax=10*ones(nx), ks = 2:mpc.Nc)
 
         if(isnothing(settings))
-            mpc.settings.QP_double_sided= false;
             mpc.settings.reference_tracking=true;
-            mpc.settings.explicit_soft=true;
         else
             mpc.settings=settings
         end
@@ -172,12 +164,11 @@ function mpc_examples(s, Np, Nc=Np;params = Dict(),settings=nothing)
                         ks = 2:mpc.Nc)
 
         if(isnothing(settings))
-            mpc.settings.QP_double_sided= false;
+            mpc.settings.reference_tracking = false;
         else
             mpc.settings=settings
         end
 
-        mpc.settings.reference_tracking= false
         range = ParameterRange(mpc);
         range.xmax[:] .= 4*ones(nx)
         range.xmin[:] .= -4*ones(nx)
@@ -206,7 +197,6 @@ function mpc_examples(s, Np, Nc=Np;params = Dict(),settings=nothing)
         set_bounds!(mpc, umin = [-3.0,2,2], umax = [3.0,2,2])
 
         if(isnothing(settings))
-            mpc.settings.QP_double_sided= false;
             mpc.settings.reference_tracking=true;
         else
             mpc.settings=settings
@@ -256,9 +246,7 @@ function mpc_examples(s, Np, Nc=Np;params = Dict(),settings=nothing)
         set_binary_controls!(mpc,collect(4:7));
 
         if(isnothing(settings))
-            mpc.settings.QP_double_sided= true;
             mpc.settings.reference_tracking=false;
-            mpc.settings.soft_constraints=false;
         else
             mpc.settings=settings
         end
