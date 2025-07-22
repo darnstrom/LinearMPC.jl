@@ -91,6 +91,11 @@ using RecipesBase
     length(xids) == 0 || push!(layout,(length(xids), 1))
     layout := reshape(layout,1,length(layout))
 
+    if sim.mpc isa MPC
+        umin,umax = sim.mpc.umin, sim.mpc.umax
+    else
+        umin,umax = sim.mpc.bst.clipping[:,1],sim.mpc.bst.clipping[:,2]
+    end
     # Plot y
     id = 1 
     for i in yids 
@@ -121,26 +126,26 @@ using RecipesBase
     # Plot u 
     for i in uids 
         # lower bound
-        if(length(sim.mpc.umin) > i && sim.mpc.umin[i] > -1e12)
+        if(length(umin) >= i && umin[i] > -1e12)
             @series begin
                 color     := :black 
                 subplot   --> id
                 linestyle --> :dash
-                linewidth --> 1.0 
+                linewidth --> 0.8
                 primary   --> false
-                sim.ts[[1,end]], fill(sim.mpc.umin[i],2) 
+                sim.ts[[1,end]], fill(umin[i],2) 
             end
         end
 
         # upper bound
-        if(length(sim.mpc.umax) > i &&sim.mpc.umax[i] < 1e12)
+        if(length(umax) >= i && umax[i] < 1e12)
             @series begin
                 color     := :black 
                 subplot   --> id
                 linestyle --> :dash
-                linewidth --> 1 
+                linewidth --> 0.8 
                 primary   --> false
-                sim.ts[[1,end]], fill(sim.mpc.umax[i],2) 
+                sim.ts[[1,end]], fill(umax[i],2) 
             end
         end
         @series begin
