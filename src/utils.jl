@@ -259,3 +259,17 @@ function evaluate_cost(mpc::MPC,xs,us,rs=zeros(0,0);
     end
     return 0.5*cost
 end
+
+"""
+    constraint_violation(c,xs,us)
+evaluates the possible violation of constraint c at state x and control u
+"""
+function constraint_violation(c::Constraint,x::Vector{Float64},u::Vector{Float64})
+    Axx_Aux = c.Ax*x+c.Au*u
+    return maximum([c.lb-Axx_Aux;Axx_Aux-c.ub;0])
+end
+
+function constraint_violation(c::Constraint,xs::Matrix{Float64},us::Matrix{Float64})
+    @assert(size(xs,2) == size(us,2))
+    return [constraint_violation(c,xs[:,i],us[:,i]) for i = 1:size(xs,2)]
+end
