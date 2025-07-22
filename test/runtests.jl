@@ -82,7 +82,6 @@ global templib
         using LinearMPC
         Np = 10
         mpc,_= LinearMPC.mpc_examples("aircraft",Np)
-        mpc.settings.explicit_soft=false
 
         move_block!(mpc,Int[]) # Set empty
         mpqp = LinearMPC.mpc2mpqp(mpc)
@@ -135,7 +134,6 @@ global templib
     @testset "Certification" begin
         # Load inverted pendulum example and certify the iteration complexity 
         mpc,range = LinearMPC.mpc_examples("invpend")
-        mpc.settings.QP_double_sided = true
         result = LinearMPC.certify(mpc;range)
         @test length(result.partition) > 100
     end
@@ -398,5 +396,67 @@ global templib
         dynamics = (x,u,d) -> mpc.model.F*x + mpc.model.G*u
         sim = LinearMPC.Simulation(dynamics, mpc; x0, N = 1000, r=rs)
         @test LinearMPC.evaluate_cost(mpc,sim) > 0
+    end
+
+    @testset "Hybrid MPC" begin
+        mpc,_ = LinearMPC.mpc_examples("satellite",20)
+        mpc.settings.reference_preview=true
+        x0, N = zeros(3), 20;
+        rs = [zeros(1,5) 0.5*ones(1,N-5);
+              zeros(2,N)];
+        dynamics = (x,u,d) -> mpc.model.F*x + mpc.model.G*u
+        sim = LinearMPC.Simulation(dynamics, mpc; x0,N, r=rs)
+        @test mpc.mpQP.has_binaries # generated mpQP has binaries
+        @test abs(sim.ys[1,end]-0.5) < 1e-3;  # convergence to reference
+        # Ensure binary controls are either umin or umax
+        for bin_id in mpc.binary_controls
+            @test all(isapprox.(sim.us[bin_id,:],mpc.umin[bin_id],atol=1e-5) .||
+                      isapprox.(sim.us[bin_id,:],mpc.umax[bin_id],atol=1e-5))
+        end
+
+        # Generate C code
+        srcdir = tempname()
+        LinearMPC.codegen(mpc; dir=srcdir)
+        src = [f for f in readdir(srcdir) if last(f,1) == "c"]
+        @test "bnb.c" ∈ src
+
+        if(!isnothing(Sys.which("gcc")))
+            testlib = "mpctest."* Base.Libc.Libdl.dlext
+            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+
+            # Test with reference preview (2 outputs × 5 prediction steps = 10 reference values)
+            u,d = zeros(3),zeros(0)
+            x = zeros(3)
+
+            global templib = joinpath(srcdir, testlib)
+            exitflag = ccall(("mpc_compute_control", templib), Cint,
+                             (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), u, x, rs, d)
+            # Test that Julia and C implementations give same result
+            u_julia = compute_control(mpc, x; r=rs)
+            @test norm(u - u_julia) < 1e-5
+        end
+
+    end
+
+    @testset "Robust MPC" begin
+        using LinearMPC
+        F = [1.0 1 ;0 1]
+        G = [1;0.5;;]
+        mpc = LinearMPC.MPC(F,G;Np=10)
+        set_prestabilizing_feedback!(mpc)
+        set_bounds!(mpc;umin=-ones(1),umax=ones(1))
+        set_output_bounds!(mpc;ymin=-0.15*ones(2),ymax=ones(2),soft=false)
+        mpqp_nominal = LinearMPC.mpc2mpqp(mpc)
+        dynamics = (x,u,d) -> mpc.model.F*x + mpc.model.G*u
+        x0 = [0.9;0.5]
+        sim_nominal = LinearMPC.Simulation(dynamics, mpc;x0,N=100,r=[0.0;0])
+        @test minimum(sim_nominal.xs[2,:]) < -0.1 
+        wmin,wmax = -[1e-2;1e-1],[1e-2;1e-1]
+        set_disturbance!(mpc,wmin,wmax)
+        mpqp_tightened = LinearMPC.mpc2mpqp(mpc)
+        @test sum(mpqp_tightened.bu) < sum(mpqp_nominal.bu)
+        @test sum(mpqp_tightened.bl) > sum(mpqp_nominal.bl)
+        sim_tight = LinearMPC.Simulation(dynamics, mpc;x0,N=100,r=[0.0;0])
+        @test minimum(sim_tight.xs[2,:]) > -0.1
     end
 end

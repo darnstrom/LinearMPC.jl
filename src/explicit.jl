@@ -15,19 +15,18 @@ mutable struct ExplicitMPC
     traj2setpoint::Matrix{Float64}
 end
 
-function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false, opts=ParametricDAQP.Settings())
-    mpQP = mpc.mpqp_issetup ? mpc.mpQP : mpc2mpqp(mpc)
+function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false, opts=ParametricDAQP.Settings(), single_soft=true)
+    mpQP =  mpc2mpqp(mpc;singlesided=true,single_soft)
+    if mpQP.has_binaries
+        @warn("Explicit controllers currently not supported for hybrid systems")
+        return nothing
+    end
     if(range==nothing)
         @warn("No parameter range defined. Using default limits [-100 and 100]. If you want a bigger/smaller region, create a ParameterRange")
         range = ParameterRange(mpc)
     end
 
     TH = range2region(range)
-
-    # Transform into single-sided QP 
-    if(mpc.settings.QP_double_sided) 
-        mpQP = make_singlesided(mpQP; explicit_soft = mpc.settings.explicit_soft)
-    end
 
     mpQP = merge(mpQP,(out_inds=1:mpc.model.nu,)) # Only compute control at first time step
     # Compute mpQP solution

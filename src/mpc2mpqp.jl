@@ -60,9 +60,6 @@ end
 function create_controlbounds(mpc::MPC, Γ, Φ)
     nu,nx,Nb = mpc.model.nu, mpc.model.nx, mpc.Nc
     nth = sum(get_parameter_dims(mpc))
-    # Create bounds
-    ub = repeat(mpc.umax,Nb,1)
-    lb = repeat(mpc.umin,Nb,1)
 
     #-K*X + V = -K*(Γ V + Φ x0) + V 
     #         = (I-K*Γ)V -K Φ x0
@@ -71,11 +68,20 @@ function create_controlbounds(mpc::MPC, Γ, Φ)
         A = (I-K*Γ[1:Nb*nth, 1:Nb*nu])
         W = K*Φ[1:Nb*nth,:]
     else
-        A = mpc.settings.QP_double_sided ? zeros(0,mpc.Nc*nu) : Matrix{Float64}(kron(I(Nb),I(nu)))
-        W = zeros(length(ub),nth)
+        A = zeros(0,mpc.Nc*nu)
+        W = zeros(Nb*nu,nth)
     end
+    # Create bounds
     ub = repeat(mpc.umax,Nb,1)
     lb = repeat(mpc.umin,Nb,1)
+
+    # Tighten constraint
+    if(!iszero(mpc.K) && !iszero(mpc.model.wmin) && !iszero(mpc.model.wmax))
+        FK= mpc.model.F-mpc.model.G*mpc.K
+        ut,lt= constraint_tightening(-mpc.K,FK,1:Nb,mpc.model.wmin,mpc.model.wmax)
+        ub -= ut
+        lb += lt
+    end
     return A,ub,lb, W 
 end
 
@@ -103,20 +109,30 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
     eyeX, eyeU = I(Np+1), I(Nc);
     eyeU = [eyeU;zeros(Bool,1+Np-Nc,Nc)] # Zeros address that Nc < Np (terminal state)
 
+    tighten_constraints = !iszero(mpc.model.wmin) && !iszero(mpc.model.wmax)
+    FK = tighten_constraints ? mpc.model.F-mpc.model.G*mpc.K : zeros(0,0)
+
     for c in mpc.constraints 
         mi = size(c.Au,1);
         ks = [k for k in c.ks if k<= Np]
         Ni = length(ks);
 
+        Ax = c.Ax-c.Au*mpc.K
         Ar = isempty(c.Ar) ? zeros(mi,nrx) : c.Ar
         Ad = isempty(c.Ad) ? zeros(mi,mpc.model.nd) : c.Ad
         Aup = isempty(c.Aup) ? zeros(mi,mpc.nuprev) : c.Auip
 
         Autot = [Autot; kron(eyeU[ks,:],c.Au)]
-        Axtot = [Axtot; kron(eyeX[ks,:],[c.Ax-c.Au*mpc.K Ar Ad Aup])]
+        Axtot = [Axtot; kron(eyeX[ks,:],[Ax Ar Ad Aup])]
 
         ubtot = [ubtot;repeat(c.ub,Ni,1)]
         lbtot = [lbtot;repeat(c.lb,Ni,1)]
+
+        if(tighten_constraints)
+            ut,lt= constraint_tightening(Ax,FK,ks,mpc.model.wmin,mpc.model.wmax)
+            ubtot -= ut
+            lbtot += lt
+        end
 
         issoft = [issoft;repeat([c.soft],mi*Ni)]
         isbinary = [isbinary;repeat([c.binary],mi*Ni)]
@@ -166,7 +182,6 @@ function create_constraints(mpc,Φ,Γ)
         A = [A;Ag];
         W = [W;Wg];
     end
-    # TODO remove inf bounds...
 
     return A,bu,bl,W,issoft,isbinary,prios
 end
@@ -247,10 +262,10 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
     # Add regularization for binary variables (won't change the solution)
     f = zeros(size(H,1),1); 
     fbin_part = zeros(mpc.model.nu)
-    fbin_part[mpc.binary_controls] .= 1 
+    fbin_part[mpc.binary_controls] = (mpc.umax[mpc.binary_controls] + mpc.umin[mpc.binary_controls])/2
     fbin = repeat(fbin_part,Nc)
-    f -= 0.5*fbin
-    H += diagm(fbin)
+    f -= fbin
+    H += diagm(fbin .!= 0)
 
     return (H+H')/2,f,f_theta,H_theta
 end
@@ -261,7 +276,7 @@ end
 For a given MPC structure `mpc`, form the multi-parametric QP `mpQP`. 
 
 """
-function mpc2mpqp(mpc::MPC)
+function mpc2mpqp(mpc::MPC; singlesided=false, single_soft=false)
 
     F,G,C = mpc.model.F-mpc.model.G*mpc.K, mpc.model.G, mpc.model.C
     Q,R,Rr,S = mpc.weights.Q, mpc.weights.R, mpc.weights.Rr, mpc.weights.S 
@@ -340,7 +355,7 @@ function mpc2mpqp(mpc::MPC)
         keep = keep_bounds ∪ collect(mpc.model.nu*mpc.Nc+1:length(bu))
         bu,bl,W = bu[keep],bl[keep], W[keep,:]
         issoft,isbinary,prio = issoft[keep],isbinary[keep],prio[keep]
-        if (!iszero(mpc.K) || !mpc.settings.QP_double_sided) # prestab feedback -> A rows for bounds
+        if (!iszero(mpc.K)) # prestab feedback -> A rows for bounds
             A = A[keep,:] 
         end
     end
@@ -355,43 +370,23 @@ function mpc2mpqp(mpc::MPC)
         end
     end
 
-    # Handle soft constrints  
-    if(mpc.settings.soft_constraints)
-        if(mpc.settings.explicit_soft && any(issoft))
-            A = [A zeros(size(A,1))];
-            ns = length(issoft)-size(A,1)
-            A[issoft[ns+1:end],end].=-1;
+    # Mark soft constrints  
+    senses[issoft[:]].+=DAQP.SOFT
 
-            H = cat(H,mpc.settings.soft_weight,dims=(1,2));
-            f_theta =[f_theta;zeros(1,size(f_theta,2))];
-            f = [f;0];
-        end
-        if(!mpc.settings.explicit_soft)
-            senses[issoft[:]].+=DAQP.SOFT
-        end
-    end
     # Mark binary constraints
     senses[isbinary[:]].+=DAQP.BINARY
 
+    # Replace Infs for codegen
+    clamp!(bu,-1e30,1e30)
+    clamp!(bl,-1e30,1e30)
+
     # Stack constraints in case of QP is assumed to be single sided. 
-    if(mpc.settings.QP_double_sided)
-        mpQP = (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
-                A=Matrix{Float64}(A), bu=bu, bl=bl, W=W, senses=senses, prio=prio)
-    else # Transform bl + W θ ≤ A U ≤ bu + W θ → A U ≤ b + W
-        ncstr = length(bu);
-        n_bounds = ncstr-size(A,1);
-        bounds_table=[collect(ncstr+1:2*ncstr);collect(1:ncstr)]
-        A = [A;-A]
-        if(mpc.settings.explicit_soft && any(issoft))# Correct sign for slack
-            A[:,end].= -abs.(A[:,end])
-        end
-        b = [bu;-bl]
-        W = [W;-W]
-        senses = [senses;senses]
-        prio = [prio;prio]
-        mpQP = (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
-                A=Matrix{Float64}(A), b=b, W=W, senses=senses,
-                bounds_table=bounds_table, prio=prio)
+    mpQP = (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
+            A=Matrix{Float64}(A), bu=bu, bl=bl, W=W, senses=senses,
+            prio=prio, has_binaries=any(isbinary))
+
+    if(singlesided)
+        mpQP = make_singlesided(mpQP;single_soft,soft_weight=mpc.settings.soft_weight)
     end
     return mpQP
 end

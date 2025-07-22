@@ -1,7 +1,7 @@
 # [Objective function](@id man_objective)
 The basic objective for computing a control action in the MPC controller is of the form 
 ```math
-\textcolor{black}{\sum_{k=0}^{N-1} {\left((Cx_{k}-r)^T Q (C x_{k}-r) + u_{k}^T R u_{k} + \Delta u_{k}^T R_r \Delta u_k\right)}},
+\sum_{k=0}^{N-1} {\left((Cx_{k}-r)^T Q (C x_{k}-r) + u_{k}^T R u_{k} + \Delta u_{k}^T R_r \Delta u_k\right)},
 ```
 where $N$ is the prediction horizon of the controller.
 

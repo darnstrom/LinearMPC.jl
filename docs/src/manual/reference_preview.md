@@ -68,6 +68,7 @@ r_sim = zeros(2, N_sim)
 r_sim[1, 15:end] .= 1.0  # Step reference at time 20
 
 sim = Simulation(mpc; x0=zeros(2), N=N_sim, r=r_sim)
+nothing # hide
 ```
 
 ```@example reference_preview

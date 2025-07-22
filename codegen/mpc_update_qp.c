@@ -15,8 +15,8 @@ void mpc_get_solution(c_float* th, c_float* control, c_float* xstar){
     int i,j,disp;
     c_float ctr_shift_th;
     for(i = 0, disp=0; i < N_CONTROL; i++){
-        ctr_shift_th = 0;
-        for(j = 0; j < N_THETA; j++) ctr_shift_th += Xth[disp++]*th[j];
+        ctr_shift_th = u_offset[i];
+        for(j = 0; j < N_THETA; j++) ctr_shift_th += Uth_offset[disp++]*th[j];
         control[i] = uscaling[i]*xstar[i]+ctr_shift_th;
     }
 }

@@ -6,6 +6,8 @@ struct Simulation
     rs::Matrix{Float64}
     ds::Matrix{Float64}
 
+    solve_times ::Vector{Float64}
+
     mpc::Union{MPC,ExplicitMPC}
 end
 
@@ -18,6 +20,7 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
     ds = zeros(mpc.model.nd,N);
     us = zeros(mpc.model.nu,N)
 
+    solve_times = zeros(N)
     # Setup reference 
     if(!isnothing(r))
         rs[:,1:size(r,2)].= r
@@ -38,10 +41,10 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
         if mpc.settings.reference_preview && !isnothing(r)
             # Reference preview mode: provide future references
             r_preview = get_reference_preview(rs, k, mpc.Np)
-            u = compute_control(mpc,x;r=r_preview,d=ds[:,k])
+            solve_times[k] = @elapsed u = compute_control(mpc,x;r=r_preview,d=ds[:,k])
         else
             # Standard mode: provide current reference
-            u = compute_control(mpc,x;r=rs[:,k],d=ds[:,k])
+            solve_times[k] = @elapsed u = compute_control(mpc,x;r=rs[:,k],d=ds[:,k])
         end
         
         x = dynamics(x,u,ds[:,k])
@@ -49,7 +52,7 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
         us[:,k] = u
     end
     Ts = mpc.model.Ts < 0.0 ? 1.0 : mpc.model.Ts
-    return Simulation(collect(Ts*(0:1:N-1)),ys,us,xs,rs,ds,mpc)
+    return Simulation(collect(Ts*(0:1:N-1)),ys,us,xs,rs,ds,solve_times,mpc)
 end
 
 """
@@ -79,7 +82,7 @@ end
 
 using RecipesBase
 
-@recipe function f(sim::Simulation; yids=1:sim.mpc.model.ny,uids=sim.mpc.model.nu,xids=[])
+@recipe function f(sim::Simulation; yids=1:sim.mpc.model.ny,uids=1:sim.mpc.model.nu,xids=[])
 
 
     layout = Tuple{Int,Int}[]
@@ -88,6 +91,11 @@ using RecipesBase
     length(xids) == 0 || push!(layout,(length(xids), 1))
     layout := reshape(layout,1,length(layout))
 
+    if sim.mpc isa MPC
+        umin,umax = sim.mpc.umin, sim.mpc.umax
+    else
+        umin,umax = sim.mpc.bst.clipping[:,1],sim.mpc.bst.clipping[:,2]
+    end
     # Plot y
     id = 1 
     for i in yids 
@@ -105,7 +113,7 @@ using RecipesBase
             color   --> 1
             subplot --> id 
             #label--> latexify(make_subscript(string(sim.mpc.model.labels.y[i])))
-            legend  --> true
+            legend --> false
             if i == length(yids) 
                 xguide --> (sim.mpc.model.Ts < 0 ? "Time step" : "Time [s]")
             end
@@ -118,26 +126,26 @@ using RecipesBase
     # Plot u 
     for i in uids 
         # lower bound
-        if(length(sim.mpc.umin) > i && sim.mpc.umin[i] > -1e12)
+        if(length(umin) >= i && umin[i] > -1e12)
             @series begin
                 color     := :black 
                 subplot   --> id
                 linestyle --> :dash
-                linewidth --> 1.0 
+                linewidth --> 0.8
                 primary   --> false
-                sim.ts[[1,end]], fill(sim.mpc.umin[i],2) 
+                sim.ts[[1,end]], fill(umin[i],2) 
             end
         end
 
         # upper bound
-        if(length(sim.mpc.umax) > i &&sim.mpc.umax[i] < 1e12)
+        if(length(umax) >= i && umax[i] < 1e12)
             @series begin
                 color     := :black 
                 subplot   --> id
                 linestyle --> :dash
-                linewidth --> 1 
+                linewidth --> 0.8 
                 primary   --> false
-                sim.ts[[1,end]], fill(sim.mpc.umax[i],2) 
+                sim.ts[[1,end]], fill(umax[i],2) 
             end
         end
         @series begin
@@ -145,6 +153,7 @@ using RecipesBase
             color      --> 1
             subplot    --> id
             seriestype --> :steppost
+            legend --> false
             #label--> latexify(make_subscript(string(sim.mpc.model.labels.u[i])))
             if i == length(uids) 
                 xguide --> (sim.mpc.model.Ts < 0 ? "Time step" : "Time [s]")
@@ -160,7 +169,7 @@ using RecipesBase
             yguide  --> latexify(make_subscript(string(sim.mpc.model.labels.x[i])))
             color  --> 1
             subplot--> id
-            legend --> true
+            legend --> false
             if i == length(xids)
                 xguide --> (sim.mpc.model.Ts < 0 ? "Time step" : "Time [s]")
             end

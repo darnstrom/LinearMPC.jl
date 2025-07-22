@@ -2,7 +2,6 @@ function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=not
     length(dir)==0 && (dir="codegen")
     dir[end] != '/' && (dir*="/") ## Make sure it is a correct directory path
     ## Generate mpQP
-    mpc.settings.QP_double_sided = true # force double-sided constraint for generated code
     setup!(mpc)
     # Generate QP workspace
     d = mpc.opt_model
@@ -90,7 +89,7 @@ end
 
 function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_type="double")
     mpLDP = qp2ldp(mpc.mpQP,mpc.model.nu) 
-    mpLDP.Xth[1:mpc.model.nx,:] -= mpc.K' #Account for prestabilizing feedback
+    mpLDP.Uth_offset[1:mpc.model.nx,:] -= mpc.K' #Account for prestabilizing feedback
     # Get dimensions
     nth,m = size(mpLDP.Dth)
 
@@ -117,7 +116,8 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
     @printf(fh, "extern c_float du[%d];\n", m);
     @printf(fh, "extern c_float dl[%d];\n\n", m);
 
-    @printf(fh, "extern c_float Xth[%d];\n\n", mpc.model.nu*nth);
+    @printf(fh, "extern c_float Uth_offset[%d];\n\n", mpc.model.nu*nth);
+    @printf(fh, "extern c_float u_offset[%d];\n\n", mpc.model.nu);
     @printf(fh, "extern c_float uscaling[%d];\n\n", mpc.model.nu);
 
 
@@ -126,7 +126,8 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
     write_float_array(fsrc,mpLDP.Dth[:],"Dth");
     write_float_array(fsrc,mpLDP.du[:],"du");
     write_float_array(fsrc,mpLDP.dl[:],"dl");
-    write_float_array(fsrc,mpLDP.Xth[:],"Xth");
+    write_float_array(fsrc,mpLDP.Uth_offset[:],"Uth_offset");
+    write_float_array(fsrc,mpLDP.u_offset[:],"u_offset");
     write_float_array(fsrc,mpLDP.uscaling[:],"uscaling");
 
     if(mpc.settings.reference_condensation)
@@ -192,12 +193,15 @@ function qp2ldp(mpQP,n_control;normalize=true)
     else
         uscaling = ones(n_control)
     end
-    Xth = -mpQP.H\mpQP.f_theta;
-    Xth = Xth[1:n_control,:];
+    Uth_offset = -mpQP.H\mpQP.f_theta;
+    Uth_offset = Uth_offset[1:n_control,:];
 
+    u_offset = -mpQP.H\mpQP.f;
+    u_offset = u_offset[1:n_control]
     # col major => row major
     Dth = Dth'[:,:]
-    Xth = Xth'[:,:]
+    Uth_offset = Uth_offset'[:,:]
 
-    return (M=Mext[n+1:end,:], Dth=Dth, du=du, dl=dl, Xth=Xth, uscaling=uscaling)
+    return (M=Mext[n+1:end,:], Dth=Dth, du=du, dl=dl, 
+            Uth_offset=Uth_offset, u_offset = u_offset, uscaling=uscaling)
 end

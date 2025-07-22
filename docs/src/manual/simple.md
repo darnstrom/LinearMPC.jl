@@ -3,10 +3,10 @@ A simplified form of the MPC problem that **LinearMPC.jl** solves is
 
 ```math
 \begin{aligned}
-        &\underset{u_0,\dots,u_{N-1}}{\text{minimize}}&& \textcolor{black}{\frac{1}{2}\sum_{k=0}^{N-1} {\left((Cx_{k}-r)^T Q (C x_{k}-r) + u_{k}^T R u_{k} + \Delta u_{k}^T R_r \Delta u_k\right)}}\\
-        &\text{subject to} &&\textcolor{black}{{x_{k+1} = F x_k + G u_k}}, \quad k=0,\dots, N-1\\
-        &&& \textcolor{black}{x_0 = \hat{x}} \\
-        &&& \textcolor{black}{\underline{b} \leq A_x x_k + A_u u_k  \leq \overline{b}}, \quad k=0, \dots, N-1
+        &\underset{u_0,\dots,u_{N-1}}{\text{minimize}}&& \frac{1}{2}\sum_{k=0}^{N-1} {\left((Cx_{k}-r)^T Q (C x_{k}-r) + u_{k}^T R u_{k} + \Delta u_{k}^T R_r \Delta u_k\right)}\\
+        &\text{subject to} && x_{k+1} = F x_k + G u_k, \quad k=0,\dots, N-1\\
+        &&& x_0 = \hat{x} \\
+        &&& \underline{b} \leq A_x x_k + A_u u_k  \leq \overline{b}, \quad k=0, \dots, N-1
 \end{aligned}
 ```
 

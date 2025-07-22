@@ -6,16 +6,14 @@ Internally, this means generating an mpQP, and setting up a DAQP workspace.
 """
 function setup!(mpc::MPC)
     mpc.mpQP = mpc2mpqp(mpc)
-    #mpc.opt_model = DAQP.Model()
-    if(mpc.settings.QP_double_sided)
-        bu,bl = mpc.mpQP.bu[:],mpc.mpQP.bl[:]
-    else
-        bu,bl = mpc.mpQP.b[:], -1e30*ones(length(mpc.mpQP.b))
-    end
+    bu,bl = mpc.mpQP.bu[:],mpc.mpQP.bl[:]
     setup_flag,_ = DAQP.setup(mpc.opt_model, mpc.mpQP.H,mpc.mpQP.f[:],mpc.mpQP.A,bu,bl,mpc.mpQP.senses)
     if(setup_flag < 0)
         @warn " Cannot setup optimization problem " setup_flag
     else
+
+        # Set up soft weight
+        DAQP.settings(mpc.opt_model,Dict(:rho_soft=>1/mpc.settings.soft_weight))
         mpc.mpqp_issetup = true
     end
 end
@@ -206,5 +204,22 @@ Sets the prediction horizon `Np`
 """
 function set_horizon!(mpc,Np)
     mpc.Np = Np
+    mpc.mpqp_issetup = false
+end
+"""
+    set_binary_controls!(mpc,bin_ids)
+
+Makes the controls in bin_ids to binary controls 
+"""
+function set_binary_controls!(mpc,bin_ids)
+    mpc.binary_controls = Int64.(copy(bin_ids))
+    mpc.mpqp_issetup = false
+end
+"""
+    set_disturbance!(mpc,wmin,wmax)
+"""
+function set_disturbance!(mpc,wmin,wmax)
+    mpc.model.wmin .= wmin
+    mpc.model.wmax .= wmax
     mpc.mpqp_issetup = false
 end

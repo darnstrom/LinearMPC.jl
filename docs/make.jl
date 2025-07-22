@@ -9,14 +9,15 @@ makedocs(sitename = "LinearMPC.jl",
                                                    "Models" => "manual/model.md",
                                                    "Objective function" => "manual/objective.md",
                                                    "Constraints" =>  "manual/constraints.md",
-                                                   "Code generation" =>  "manual/codegen.md",
+                                                   #"Code generation" =>  "manual/codegen.md",
                                            ],
                              "Beyond the basics" => ["Prestabilization" => "manual/prestab.md",
                                                      "Move blocking " => "manual/moveblock.md",
                                                      "Reference Preview" => "manual/reference_preview.md",
                                                      "Explict MPC" => "manual/explicit.md",
-                                                     "Complexity Certification" => "manual/compcert.md",
-                                                     "Solver Settings" => "manual/solver.md",
+                                                     "Hybrid MPC" => "manual/hybrid.md",
+                                                     #"Complexity Certification" => "manual/compcert.md",
+                                                     #"Solver Settings" => "manual/solver.md",
                                                     ]
                             ]
                 "Functions" => "functions.md"
