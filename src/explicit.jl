@@ -14,8 +14,8 @@ mutable struct ExplicitMPC
     uprev::Vector{Float64}
 end
 
-function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false, opts=ParametricDAQP.Settings())
-    mpQP = mpc.mpqp_issetup ? mpc.mpQP : mpc2mpqp(mpc)
+function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false, opts=ParametricDAQP.Settings(), single_soft=true)
+    mpQP =  mpc2mpqp(mpc;singlesided=true,single_soft)
     if mpQP.has_binaries
         @warn("Explicit controllers currently not supported for hybrid systems")
         return nothing
@@ -26,11 +26,6 @@ function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false, opts=ParametricD
     end
 
     TH = range2region(range)
-
-    # Transform into single-sided QP 
-    if(mpc.settings.QP_double_sided) 
-        mpQP = make_singlesided(mpQP; explicit_soft = mpc.settings.explicit_soft)
-    end
 
     mpQP = merge(mpQP,(out_inds=1:mpc.model.nu,)) # Only compute control at first time step
     # Compute mpQP solution

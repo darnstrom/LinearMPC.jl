@@ -2,7 +2,6 @@ function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=not
     length(dir)==0 && (dir="codegen")
     dir[end] != '/' && (dir*="/") ## Make sure it is a correct directory path
     ## Generate mpQP
-    mpc.settings.QP_double_sided = true # force double-sided constraint for generated code
     setup!(mpc)
     # Generate QP workspace
     d = mpc.opt_model
