@@ -42,10 +42,10 @@ and reference preview scenarios.
 """
 function format_reference(mpc::Union{MPC,ExplicitMPC}, r)
     !mpc.settings.reference_tracking && return zeros(0)
-    isempty(r) && return r
     if isnothing(r) 
         r = zeros(mpc.model.ny)
     end
+    isempty(r) && return r
     
     if mpc.settings.reference_preview
         # Reference preview mode

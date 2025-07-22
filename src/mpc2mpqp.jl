@@ -69,7 +69,7 @@ function create_controlbounds(mpc::MPC, Γ, Φ)
         W = K*Φ[1:Nb*nth,:]
     else
         A = mpc.settings.QP_double_sided ? zeros(0,mpc.Nc*nu) : Matrix{Float64}(kron(I(Nb),I(nu)))
-        W = zeros(length(ub),nth)
+        W = zeros(Nb*nu,nth)
     end
     # Create bounds
     ub = repeat(mpc.umax,Nb,1)
