@@ -179,8 +179,8 @@ function make_singlesided(mpQP;single_soft=false, soft_weight=1e6)
     ncstr = length(mpQP.bu);
     n_bounds = ncstr-size(mpQP.A,1);
     bounds_table=[collect(ncstr+1:2*ncstr);collect(1:ncstr)]
-    A = [I(n_bounds) zeros(n_bounds,size(mpQP.A,2)-n_bounds);mpQP.A]
-    A = [A;-A]
+    A0 = [I(n_bounds) zeros(n_bounds,size(mpQP.A,2)-n_bounds);mpQP.A]
+    A = [A0;-A0]
 
     senses = repeat(mpQP.senses,2)
     prio = repeat(mpQP.prio,2)
@@ -190,15 +190,22 @@ function make_singlesided(mpQP;single_soft=false, soft_weight=1e6)
     # Make soft constraints explicit
     soft_mask = (mpQP.senses .& DAQP.SOFT .== DAQP.SOFT)
     if(any(soft_mask))
+        soft_ids = findall(soft_mask)
+
+        R = cholesky((mpQP.H+mpQP.H')/2)
+        Ms= A0[soft_mask,:]/R.U
+        norm_factors = [norm(view(Ms,i,:),2) for i in 1:size(Ms,1)]
+
         if(single_soft)
             nsoft = 1
-            A = [A [-soft_mask;-soft_mask]]
+            A = [A zeros(size(A,1),1)]
+            A[soft_ids,end] .= -norm_factors
+            A[soft_ids .+ ncstr,end] .= -norm_factors
         else
-            soft_ids = findall(soft_mask)
             nsoft, n = length(soft_ids), size(A,2)
             A = [A zeros(2*ncstr,nsoft)]
-            A[soft_ids,n+1:end] = -I(nsoft)
-            A[soft_ids .+ ncstr,n+1:end] = -I(nsoft)
+            A[soft_ids,n+1:end] = -diagm(norm_factors)
+            A[soft_ids .+ ncstr,n+1:end] = -diagm(norm_factors)
 
         end
         H = cat(H,soft_weight*I(nsoft),dims=(1,2))

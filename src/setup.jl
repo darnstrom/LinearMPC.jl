@@ -11,6 +11,9 @@ function setup!(mpc::MPC)
     if(setup_flag < 0)
         @warn " Cannot setup optimization problem " setup_flag
     else
+
+        # Set up soft weight
+        DAQP.settings(mpc.opt_model,Dict(:rho_soft=>1/mpc.settings.soft_weight))
         mpc.mpqp_issetup = true
     end
 end

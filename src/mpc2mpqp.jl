@@ -166,7 +166,6 @@ function create_constraints(mpc,Φ,Γ)
         A = [A;Ag];
         W = [W;Wg];
     end
-    # TODO remove inf bounds...
 
     return A,bu,bl,W,issoft,isbinary,prios
 end

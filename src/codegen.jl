@@ -5,7 +5,6 @@ function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=not
     setup!(mpc)
     # Generate QP workspace
     d = mpc.opt_model
-    DAQP.settings(d,Dict(:rho_soft=>1/mpc.settings.soft_weight))
     if(!isnothing(opt_settings))
         DAQP.settings(d,opt_settings)
     end
