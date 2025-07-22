@@ -60,9 +60,6 @@ end
 function create_controlbounds(mpc::MPC, Γ, Φ)
     nu,nx,Nb = mpc.model.nu, mpc.model.nx, mpc.Nc
     nth = sum(get_parameter_dims(mpc))
-    # Create bounds
-    ub = repeat(mpc.umax,Nb,1)
-    lb = repeat(mpc.umin,Nb,1)
 
     #-K*X + V = -K*(Γ V + Φ x0) + V 
     #         = (I-K*Γ)V -K Φ x0
@@ -72,10 +69,19 @@ function create_controlbounds(mpc::MPC, Γ, Φ)
         W = K*Φ[1:Nb*nth,:]
     else
         A = zeros(0,mpc.Nc*nu)
-        W = zeros(length(ub),nth)
+        W = zeros(Nb*nu,nth)
     end
+    # Create bounds
     ub = repeat(mpc.umax,Nb,1)
     lb = repeat(mpc.umin,Nb,1)
+
+    # Tighten constraint
+    if(!iszero(mpc.K) && !iszero(mpc.model.wmin) && !iszero(mpc.model.wmax))
+        FK= mpc.model.F-mpc.model.G*mpc.K
+        ut,lt= constraint_tightening(-mpc.K,FK,1:Nb,mpc.model.wmin,mpc.model.wmax)
+        ub -= ut
+        lb += lt
+    end
     return A,ub,lb, W 
 end
 
@@ -103,20 +109,30 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
     eyeX, eyeU = I(Np+1), I(Nc);
     eyeU = [eyeU;zeros(Bool,1+Np-Nc,Nc)] # Zeros address that Nc < Np (terminal state)
 
+    tighten_constraints = !iszero(mpc.model.wmin) && !iszero(mpc.model.wmax)
+    FK = tighten_constraints ? mpc.model.F-mpc.model.G*mpc.K : zeros(0,0)
+
     for c in mpc.constraints 
         mi = size(c.Au,1);
         ks = [k for k in c.ks if k<= Np]
         Ni = length(ks);
 
+        Ax = c.Ax-c.Au*mpc.K
         Ar = isempty(c.Ar) ? zeros(mi,nrx) : c.Ar
         Ad = isempty(c.Ad) ? zeros(mi,mpc.model.nd) : c.Ad
         Aup = isempty(c.Aup) ? zeros(mi,mpc.nuprev) : c.Auip
 
         Autot = [Autot; kron(eyeU[ks,:],c.Au)]
-        Axtot = [Axtot; kron(eyeX[ks,:],[c.Ax-c.Au*mpc.K Ar Ad Aup])]
+        Axtot = [Axtot; kron(eyeX[ks,:],[Ax Ar Ad Aup])]
 
         ubtot = [ubtot;repeat(c.ub,Ni,1)]
         lbtot = [lbtot;repeat(c.lb,Ni,1)]
+
+        if(tighten_constraints)
+            ut,lt= constraint_tightening(Ax,FK,ks,mpc.model.wmin,mpc.model.wmax)
+            ubtot -= ut
+            lbtot += lt
+        end
 
         issoft = [issoft;repeat([c.soft],mi*Ni)]
         isbinary = [isbinary;repeat([c.binary],mi*Ni)]

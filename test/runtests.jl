@@ -373,4 +373,26 @@ global templib
         end
 
     end
+
+    @testset "Robust MPC" begin
+        using LinearMPC
+        F = [1.0 1 ;0 1]
+        G = [1;0.5;;]
+        mpc = LinearMPC.MPC(F,G;Np=10)
+        set_prestabilizing_feedback!(mpc)
+        set_bounds!(mpc;umin=-ones(1),umax=ones(1))
+        set_output_bounds!(mpc;ymin=-0.15*ones(2),ymax=ones(2),soft=false)
+        mpqp_nominal = LinearMPC.mpc2mpqp(mpc)
+        dynamics = (x,u,d) -> mpc.model.F*x + mpc.model.G*u
+        x0 = [0.9;0.5]
+        sim_nominal = LinearMPC.Simulation(dynamics, mpc;x0,N=100,r=[0.0;0])
+        @test minimum(sim_nominal.xs[2,:]) < -0.1 
+        wmin,wmax = -[1e-2;1e-1],[1e-2;1e-1]
+        set_disturbance!(mpc,wmin,wmax)
+        mpqp_tightened = LinearMPC.mpc2mpqp(mpc)
+        @test sum(mpqp_tightened.bu) < sum(mpqp_nominal.bu)
+        @test sum(mpqp_tightened.bl) > sum(mpqp_nominal.bl)
+        sim_tight = LinearMPC.Simulation(dynamics, mpc;x0,N=100,r=[0.0;0])
+        @test minimum(sim_tight.xs[2,:]) > -0.1
+    end
 end
