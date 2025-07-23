@@ -375,8 +375,12 @@ global templib
             run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
             @test isfile(joinpath(srcdir,testlib))
             u,d = zeros(1),zeros(0)
-            
+
             global templib = joinpath(srcdir, testlib)
+            th  = zeros(5)
+            ccall(("mpc_update_parameter", templib), Cint, (Ptr{Cdouble},Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), th, u, x, r_traj, d)
+            @info "" th
+            
             ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), u, x, r_traj, d)
                       
             @info "" u
