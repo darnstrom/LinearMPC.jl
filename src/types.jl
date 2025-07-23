@@ -47,6 +47,7 @@ Base.@kwdef mutable struct MPCSettings
     reference_preview::Bool = false
     soft_weight::Float64= 1e6
     solver_opts::Dict{Symbol,Any} = Dict()
+    traj2setpoint::Matrix{Float64} = zeros(0,0)
 end
 
 # MPC controller
