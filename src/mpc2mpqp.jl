@@ -278,65 +278,15 @@ For a given MPC structure `mpc`, form the multi-parametric QP `mpQP`.
 """
 function mpc2mpqp(mpc::MPC; singlesided=false, single_soft=false)
 
-    F,G,C = mpc.model.F-mpc.model.G*mpc.K, mpc.model.G, mpc.model.C
-    Q,R,Rr,S = mpc.weights.Q, mpc.weights.R, mpc.weights.Rr, mpc.weights.S 
-    Qf = iszero(mpc.weights.Qf) && iszero(mpc.weights.Qfx) ? Q : mpc.weights.Qf
+    F,G,C,Q,R,S,Qf = create_extended_system_and_cost(mpc) 
 
-    nx,nr,nd,nuprev = get_parameter_dims(mpc)
-    mpc.nr, mpc.nuprev =  nr,nuprev
-    nu = mpc.model.nu 
-
-    Np,Nc = mpc.Np, mpc.Nc
-
-    if(nr > 0) # Reference tracking -> add reference to states
-        if mpc.settings.reference_preview
-            # Reference preview mode: references are part of parameter vector
-            # No need to add reference states to F, G matrices
-            # References will be handled directly in the objective function
-        else
-            # Standard mode: add reference as constant states
-            F = cat(F,I(mpc.model.ny),dims=(1,2))
-            G = [G;zeros(mpc.model.ny,nu)]
-            C = [C -I(mpc.model.ny)] 
-            S = [S;zeros(mpc.model.ny,nu)]
-        end
-    end
-
-    if(nd > 0) # add measureable disturbnace
-        F = cat(F,I(nd),dims=(1,2))
-        F[1:nx,end-nd+1:end] .= mpc.model.Gd
-        G = [G;zeros(nd,nu)]
-        S = [S;zeros(nd,nu)]
-        C = [C mpc.model.Dd]
-    end
-
-    if(nuprev > 0) # Penalizing Δu -> add uold to states 
-        F = cat(F,zeros(nu,nu),dims=(1,2))
-        F[end-nu+1:end,1:nx] .= -mpc.K
-        G = [G;I(nu)]
-        nye,nxe = size(C)
-        C = [C zeros(nye,nu); mpc.K zeros(nu,nxe-nx) I(nu)]
-        Q = cat(Q,Rr,dims=(1,2))
-        Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
-        S = [S;-Rr];
-        S[1:nx,:] -=mpc.K'*Rr
-        R+=Rr
-    end
-
-    if(!iszero(mpc.weights.R) && !iszero(mpc.K)) # terms from prestabilizing feedback
-        Q = cat(Q,mpc.weights.R,dims=(1,2))
-        Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
-        C = [C; mpc.K zeros(nu,size(C,2)-nx)]
-        S[1:nx,:] -=mpc.K'*mpc.weights.R
-    end
-
-    Φ,Γ=state_predictor(F,G,Np,Nc);
+    Φ,Γ=state_predictor(F,G,mpc.Np,mpc.Nc);
 
     # Create objective function 
     nxe,nue= size(G) 
     H,f,f_theta,H_theta = objective(Φ,Γ,C,
                                     Q,R,S,Qf,
-                                    Np,Nc,nue,nxe,mpc)
+                                    mpc.Np,mpc.Nc,nue,nxe,mpc)
     # Create Constraints 
     A, bu, bl, W, issoft, isbinary, prio = create_constraints(mpc,Φ,Γ)
 
@@ -389,4 +339,60 @@ function mpc2mpqp(mpc::MPC; singlesided=false, single_soft=false)
         mpQP = make_singlesided(mpQP;single_soft,soft_weight=mpc.settings.soft_weight)
     end
     return mpQP
+end
+
+function create_extended_system_and_cost(mpc::MPC)
+    F,G,C = mpc.model.F-mpc.model.G*mpc.K, mpc.model.G, mpc.model.C
+    Q,R,Rr,S = mpc.weights.Q, copy(mpc.weights.R), mpc.weights.Rr, mpc.weights.S 
+    Qf = iszero(mpc.weights.Qf) && iszero(mpc.weights.Qfx) ? Q : mpc.weights.Qf
+
+    nx,nr,nd,nuprev = get_parameter_dims(mpc)
+    mpc.nr, mpc.nuprev =  nr,nuprev
+    nu = mpc.model.nu 
+
+    Np,Nc = mpc.Np, mpc.Nc
+
+    if(nr > 0) # Reference tracking -> add reference to states
+        if mpc.settings.reference_preview
+            # Reference preview mode: references are part of parameter vector
+            # No need to add reference states to F, G matrices
+            # References will be handled directly in the objective function
+        else
+            # Standard mode: add reference as constant states
+            F = cat(F,I(mpc.model.ny),dims=(1,2))
+            G = [G;zeros(mpc.model.ny,nu)]
+            C = [C -I(mpc.model.ny)] 
+            S = [S;zeros(mpc.model.ny,nu)]
+        end
+    end
+
+    if(nd > 0) # add measureable disturbnace
+        F = cat(F,I(nd),dims=(1,2))
+        F[1:nx,end-nd+1:end] .= mpc.model.Gd
+        G = [G;zeros(nd,nu)]
+        S = [S;zeros(nd,nu)]
+        C = [C mpc.model.Dd]
+    end
+
+    if(nuprev > 0) # Penalizing Δu -> add uold to states 
+        F = cat(F,zeros(nu,nu),dims=(1,2))
+        F[end-nu+1:end,1:nx] .= -mpc.K
+        G = [G;I(nu)]
+        nye,nxe = size(C)
+        C = [C zeros(nye,nu); mpc.K zeros(nu,nxe-nx) I(nu)]
+        Q = cat(Q,Rr,dims=(1,2))
+        Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
+        S = [S;-Rr];
+        S[1:nx,:] -=mpc.K'*Rr
+        R+=Rr
+    end
+
+    if(!iszero(mpc.weights.R) && !iszero(mpc.K)) # terms from prestabilizing feedback
+        Q = cat(Q,mpc.weights.R,dims=(1,2))
+        Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
+        C = [C; mpc.K zeros(nu,size(C,2)-nx)]
+        S[1:nx,:] -=mpc.K'*mpc.weights.R
+    end
+
+    return F,G,C,Q,R,S,Qf 
 end
