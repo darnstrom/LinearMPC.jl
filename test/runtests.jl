@@ -354,9 +354,7 @@ global templib
             testlib = "mpctest."* Base.Libc.Libdl.dlext
             run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
             
-            # Test with reference preview (2 outputs × 5 prediction steps = 10 reference values)
-            u = zeros(1)
-            d = zeros(0)
+            u,d = zeros(1),zeros(0)
             
             global templib = joinpath(srcdir, testlib)
             ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), u, x, r_traj, d)
@@ -375,13 +373,12 @@ global templib
             testlib = "mpctest."* Base.Libc.Libdl.dlext
             run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
             
-            # Test with reference preview (2 outputs × 5 prediction steps = 10 reference values)
-            u = zeros(1)
-            d = zeros(0)
+            u,d = zeros(1),zeros(0)
             
             global templib = joinpath(srcdir, testlib)
             ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), u, x, r_traj, d)
                       
+            @info "" u
             # Test that Julia and C implementations give same result
             @test norm(u - u_julia) < 1e-10
         end
