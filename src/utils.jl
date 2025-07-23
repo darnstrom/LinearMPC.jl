@@ -54,7 +54,7 @@ function format_reference(mpc::Union{MPC,ExplicitMPC}, r)
         if r isa AbstractVector
             # Single reference - broadcast across prediction horizon
             if length(r) == ny
-                return condense_reference(mpc,repeat(r, mpc.Np))
+                return condense_reference(mpc,vec(repeat(r, mpc.Np)))
             else
                 error("Reference vector length ($(length(r))) must match number of outputs ($(ny))")
             end
