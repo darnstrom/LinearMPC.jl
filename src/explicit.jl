@@ -12,6 +12,7 @@ mutable struct ExplicitMPC
     settings::MPCSettings
     K::Matrix{Float64} # Prestabilizing feedback
     uprev::Vector{Float64}
+    traj2setpoint::Matrix{Float64}
 end
 
 function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false, opts=ParametricDAQP.Settings(), single_soft=true)
@@ -33,7 +34,7 @@ function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false, opts=ParametricD
     sol,info = ParametricDAQP.mpsolve(mpQP, TH;opts)
     nx,nr,nd,nuprev = get_parameter_dims(mpc)
     empc = ExplicitMPC(mpc.model, nr,nuprev, mpc.Np, sol, mpQP,TH,
-                       nothing, mpc.settings, mpc.K, zeros(mpc.model.nu))
+                       nothing, mpc.settings, mpc.K, zeros(mpc.model.nu), mpc.traj2setpoint)
 
     # Build binary search tree
     build_tree && build_tree!(empc)

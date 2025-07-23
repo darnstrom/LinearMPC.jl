@@ -30,7 +30,7 @@ end
 
 function get_parameter_dims(mpc::MPC)
     nr = mpc.settings.reference_tracking ?  mpc.model.ny : 0
-    if mpc.settings.reference_preview && nr > 0
+    if mpc.settings.reference_preview && !mpc.settings.reference_condensation && nr > 0
         nr = nr * mpc.Np  # Reference preview uses Np time steps
     end
     nuprev = iszero(mpc.weights.Rr) ? 0 : mpc.model.nu
@@ -41,7 +41,7 @@ function get_parameter_names(mpc::MPC)
     nx,nr,nd,nuprev = get_parameter_dims(mpc)
     names = copy(mpc.model.labels.x)
     if nr > 0
-        if mpc.settings.reference_preview
+        if mpc.settings.reference_preview && !mpc.settings.reference_condensation
             # For reference preview, create names for each time step
             for k in 0:mpc.Np-1
                 push!(names, Symbol.(string.(mpc.model.labels.y).*"r_$k")...)
@@ -205,7 +205,6 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
 
     # Get parameter dimensions
     nxp, nrp, ndp, nup = get_parameter_dims(mpc)
-    nth_param = nxp + nrp + ndp + nup
 
     # ==== From u' R u ====
     H = kron(I(Nc),R);
@@ -239,9 +238,16 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
             if nrp > 0
                 Fr = -Γ'*cat(kron(I(N),C_full'*Q_full), C_full'*Qf_full,dims=(1,2))
                 Fr = Fr[:,ny+1:end] # First reference superfluous
+                Hr = cat(kron(I(N-1),Q_full),Qf_full,dims=(1,2))
+                if mpc.settings.reference_condensation
+                    Is = repeat(I(ny),mpc.Np)
+                    mpc.traj2setpoint = (inv(H)*Fr*Is)\(inv(H)*Fr)
+                    #mpc.traj2setpoint = (Fr*Is)\(Fr)
+                    Fr *= Is
+                    Hr = Is'*Hr*Is
+                end
                 f_theta = [f_theta[:,1:nxp] Fr f_theta[:,nxp+1:end]]
 
-                Hr = cat(kron(I(N-1),Q_full),Qf_full,dims=(1,2))
                 H_theta = [H_theta[1:nxp, 1:nxp] zeros(nxp,nrp) H_theta[1:nxp,nxp+1:end];
                            zeros(nrp,nxp) Hr zeros(nrp,ndp+nup);
                            H_theta[nxp+1:end,1:nxp] zeros(ndp+nup,nrp) H_theta[nxp+1:end,nxp+1:end]]

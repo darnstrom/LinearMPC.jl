@@ -54,7 +54,7 @@ function format_reference(mpc::Union{MPC,ExplicitMPC}, r)
         if r isa AbstractVector
             # Single reference - broadcast across prediction horizon
             if length(r) == ny
-                return repeat(r, mpc.Np)
+                return condense_reference(mpc,vec(repeat(r, mpc.Np)))
             else
                 error("Reference vector length ($(length(r))) must match number of outputs ($(ny))")
             end
@@ -66,13 +66,13 @@ function format_reference(mpc::Union{MPC,ExplicitMPC}, r)
             
             # Flatten and pad/truncate to prediction horizon
             if size(r, 2) >= mpc.Np
-                return vec(r[:, 1:mpc.Np])
+                return condense_reference(mpc,vec(r[:, 1:mpc.Np]))
             else
                 # Pad with last column if trajectory is shorter than prediction horizon
                 r_extended = zeros(ny, mpc.Np)
                 r_extended[:, 1:size(r, 2)] = r
                 r_extended[:, (size(r, 2)+1):end] .= repeat(r[:, end], 1, mpc.Np - size(r, 2))
-                return vec(r_extended)
+                return condense_reference(mpc,vec(r_extended))
             end
         else
             error("Reference must be a vector or matrix for reference preview")
@@ -95,6 +95,18 @@ function format_reference(mpc::Union{MPC,ExplicitMPC}, r)
         else
             error("Reference must be a vector or matrix")
         end
+    end
+end
+"""
+    condense_reference(mpc, r)
+
+Condense reference trajectory to single setpoint.
+"""
+function condense_reference(mpc::Union{MPC,ExplicitMPC}, r)
+    if mpc.settings.reference_condensation
+        return mpc.traj2setpoint*r
+    else
+        return r
     end
 end
 
