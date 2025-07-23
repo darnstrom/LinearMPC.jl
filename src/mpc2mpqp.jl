@@ -118,7 +118,7 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
         Ni = length(ks);
 
         Ax = c.Ax-c.Au*mpc.K
-        Ar = isempty(c.Ar) ? zeros(mi,nrx) : c.Ar
+        Ar = isempty(c.Ar) || nrx == 0 ? zeros(mi,nrx) : c.Ar
         Ad = isempty(c.Ad) ? zeros(mi,mpc.model.nd) : c.Ad
         Aup = isempty(c.Aup) ? zeros(mi,mpc.nuprev) : c.Auip
 
@@ -141,9 +141,32 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
     A=Axtot*Γ+Autot;
     W = -Axtot*Φ;
 
-    # Correct for r not being state when using reference preview
-    if mpc.settings.reference_preview
-        W = [W[:,1:nx] zeros(size(W,1),mpc.nr) W[:,nx+1:end]]
+    # Add extra row due to reference preview
+    if mpc.settings.reference_tracking && mpc.settings.reference_preview
+        Wr = zeros(0,mpc.nr)
+        if mpc.settings.reference_condensation
+            for c in mpc.constraints
+                mi = size(c.Au,1);
+                ks = [k for k in c.ks if k<= Np]
+
+                Ar = isempty(c.Ar) ? zeros(mi,mpc.nr) : c.Ar
+                Wr = [Wr;repeat(-Ar,length(ks))] 
+            end
+        else
+            eye_r = I(mpc.Np)
+            for c in mpc.constraints 
+                mi,Ni = size(c.Au,1),sum(c.ks .<=Np);
+                if isempty(c.Ar)
+                    Wrn = zeros(mi*Ni,mpc.nr)
+                else
+                    ks = [k-1 for k in c.ks if k<= Np && k>=1] # first ref is at k=2, not k=1 
+                    Wrn = [zeros(mi*(Ni-length(ks)),mpc.nr); 
+                           kron(eye_r[ks,:],-c.Ar) zeros(mi*length(ks),mpc.model.ny*(Ni-length(ks)))]
+                end
+                Wr = [Wr; Wrn] 
+            end
+        end
+        W = [W[:,1:nx] Wr W[:,nx+1:end]]
     end
 
     return A,ubtot,lbtot,W,issoft,isbinary,prios
@@ -241,8 +264,11 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
                 Hr = cat(kron(I(N-1),Q_full),Qf_full,dims=(1,2))
                 if mpc.settings.reference_condensation
                     Is = repeat(I(ny),mpc.Np)
-                    mpc.traj2setpoint = (inv(H)*Fr*Is)\(inv(H)*Fr)
-                    #mpc.traj2setpoint = (Fr*Is)\(Fr)
+                    if(isempty(mpc.settings.traj2setpoint))
+                        mpc.traj2setpoint = (inv(H)*Fr*Is)\(inv(H)*Fr)
+                    else
+                        mpc.traj2setpoint = mpc.settings.traj2setpoint
+                    end
                     Fr *= Is
                     Hr = Is'*Hr*Is
                 end
