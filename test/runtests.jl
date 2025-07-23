@@ -373,7 +373,7 @@ global templib
         if(!isnothing(Sys.which("gcc")))
             testlib = "mpctest."* Base.Libc.Libdl.dlext
             run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
-            
+            @test isfile(joinpath(srcdir,testlib))
             u,d = zeros(1),zeros(0)
             
             global templib = joinpath(srcdir, testlib)
