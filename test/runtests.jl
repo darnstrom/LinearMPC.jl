@@ -364,7 +364,8 @@ global templib
         end
 
         # Explicit
-        empc = LinearMPC.ExplicitMPC(mpc;range=LinearMPC.ParameterRange(mpc))
+        empc = LinearMPC.ExplicitMPC(mpc;range=LinearMPC.ParameterRange(mpc),build_tree=true)
+        @info "" compute_control(empc, x; r=r_traj)
         srcdir = tempname()
         LinearMPC.codegen(empc; dir=srcdir)
         src = [f for f in readdir(srcdir) if last(f,1) == "c"]
