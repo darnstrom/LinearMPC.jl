@@ -28,7 +28,7 @@ The solution map for the optimization problem is a piecewise affine function ove
 * Tools to determine **real-time certificates** of the complexity of the solver, allowing for MPC in with guarantees on the memory and computational requirements before deploying the solver.
 
 ## Why not LinearMPC.jl? 
-As its name suggests, the package is specialized for MPC for _linear_ systems. If a linear (or linearized) model does not suffices for your use case, consider the following packages.
+As its name suggests, the package is specialized for MPC for _linear_ systems. If a linear (or linearized) model does not suffice for your use case, consider the following packages.
 * [ModelPredictiveControl.jl](https://github.com/JuliaControl/ModelPredictiveControl.jl) - A high-level MPC packages in Julia. While it does not generate embeddable C-code, it is an excellent package during development of MPC controllers. 
 * [acados](https://github.com/acados/acados) - provides fast and embedded solvers for nonlinear optimal control, specifically designed for real-time applications and embedded systems. This is the current state-of-the art if you are interested in real-time nonlinear MPC on embedded systems. 
 * Are you more of a Python person? You can still use LinearMPC.jl through its sister package [lmpc](https://github.com/darnstrom/lmpc).

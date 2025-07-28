@@ -15,8 +15,8 @@ void mpc_get_solution(c_float* th, c_float* control, c_float* xstar){
     int i,j,disp;
     c_float ctr_shift_th;
     for(i = 0, disp=0; i < N_CONTROL; i++){
-        ctr_shift_th = 0;
-        for(j = 0; j < N_THETA; j++) ctr_shift_th += Xth[disp++]*th[j];
+        ctr_shift_th = u_offset[i];
+        for(j = 0; j < N_THETA; j++) ctr_shift_th += Uth_offset[disp++]*th[j];
         control[i] = uscaling[i]*xstar[i]+ctr_shift_th;
     }
 }
@@ -27,13 +27,8 @@ void mpc_get_solution(c_float* th, c_float* control, c_float* xstar){
 #endif
 
 int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* disturbance){
-    int i,j;
-    // update parameter
-    for(i=0,j=0;j<N_STATE;i++, j++) mpc_parameter[i] = state[j];
-    for(j=0;j<N_REFERENCE;i++, j++) mpc_parameter[i] = reference[j];
-    for(j=0;j<N_DISTURBANCE;i++, j++) mpc_parameter[i] = disturbance[j];
-    for(j=0;j<N_CONTROL_PREV;i++, j++) mpc_parameter[i] = control[j];
 
+    mpc_update_parameter(mpc_parameter, control, state, reference, disturbance);
     // update problem
     mpc_update_qp(mpc_parameter,daqp_work.dupper,daqp_work.dlower);
 

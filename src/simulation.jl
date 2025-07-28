@@ -6,6 +6,8 @@ struct Simulation
     rs::Matrix{Float64}
     ds::Matrix{Float64}
 
+    solve_times ::Vector{Float64}
+
     mpc::Union{MPC,ExplicitMPC}
 end
 
@@ -18,6 +20,7 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
     ds = zeros(mpc.model.nd,N);
     us = zeros(mpc.model.nu,N)
 
+    solve_times = zeros(N)
     # Setup reference 
     if(!isnothing(r))
         rs[:,1:size(r,2)].= r
@@ -33,13 +36,44 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
     # Start the simulation
     for k = 1:N
         xs[:,k], ys[:,k] = x, mpc.model.C*x+mpc.model.Dd*ds[:,k]
-        u = compute_control(mpc,x;r=rs[:,k],d=ds[:,k],uprev=u)
+        
+        # Prepare reference for controller
+        if mpc.settings.reference_preview && !isnothing(r)
+            # Reference preview mode: provide future references
+            r_preview = get_reference_preview(rs, k, mpc.Np)
+            solve_times[k] = @elapsed u = compute_control(mpc,x;r=r_preview,d=ds[:,k])
+        else
+            # Standard mode: provide current reference
+            solve_times[k] = @elapsed u = compute_control(mpc,x;r=rs[:,k],d=ds[:,k])
+        end
+        
         x = dynamics(x,u,ds[:,k])
         callback(x,u,ds[:,k],k)
         us[:,k] = u
     end
     Ts = mpc.model.Ts < 0.0 ? 1.0 : mpc.model.Ts
-    return Simulation(collect(Ts*(0:1:N-1)),ys,us,xs,rs,ds,mpc)
+    return Simulation(collect(Ts*(0:1:N-1)),ys,us,xs,rs,ds,solve_times,mpc)
+end
+
+"""
+    get_reference_preview(rs, k, Np)
+
+Extract reference preview from reference trajectory starting at time step k.
+"""
+function get_reference_preview(rs, k, Np)
+    ny, N = size(rs)
+    r_preview = zeros(ny, Np)
+    
+    @views for i in 1:Np
+        if k + i <= N
+            r_preview[:, i] .= rs[:, k + i]
+        else
+            # Use last available reference
+            r_preview[:, i] .= rs[:, end]
+        end
+    end
+    
+    return r_preview
 end
 
 function Simulation(mpc::Union{MPC,ExplicitMPC}; kwargs...)
@@ -48,97 +82,108 @@ end
 
 using RecipesBase
 
-@recipe function f(sim::Simulation; show_y=true,show_u=true,show_x=false)
+@recipe function f(sim::Simulation; yids=1:sim.mpc.model.ny,uids=1:sim.mpc.model.nu,xids=[])
 
-    ny = show_y ?  sim.mpc.model.ny : 0 
-    nu = show_u ?  sim.mpc.model.nu : 0
-    nx = show_x ?  sim.mpc.model.nx : 0
 
     layout = Tuple{Int,Int}[]
-    ny == 0 || push!(layout,(ny, 1))
-    nu == 0 || push!(layout,(nu, 1))
-    nx == 0 || push!(layout,(nx, 1))
+    length(yids) == 0 || push!(layout,(length(yids), 1))
+    length(uids) == 0 || push!(layout,(length(uids), 1))
+    length(xids) == 0 || push!(layout,(length(xids), 1))
     layout := reshape(layout,1,length(layout))
 
+    if sim.mpc isa MPC
+        umin,umax = sim.mpc.umin, sim.mpc.umax
+    else
+        umin,umax = sim.mpc.bst.clipping[:,1],sim.mpc.bst.clipping[:,2]
+    end
     # Plot y
     id = 1 
-    for i in 1:ny
+    for i in yids 
         @series begin
-            yguide  --> sim.mpc.model.labels.y[i]
-            color   --> 1
-            subplot --> id 
-            label--> latexify(make_subscript(string(sim.mpc.model.labels.y[i])))
-            legend  --> true
-            sim.ts, sim.ys[i, :]
-        end
-        @series begin
-            color     --> 2
+            linecolor := :black 
             subplot   --> id
-            linestyle --> :dash
-            linewidth --> 0.5
+            linestyle := :dash
+            linewidth --> 0.4
             label     --> "reference"
             primary   --> false
-            if i == ny 
+            sim.ts, sim.rs[i,:]
+        end
+        @series begin
+            yguide  --> latexify(make_subscript(string(sim.mpc.model.labels.y[i])))
+            color   --> 1
+            subplot --> id 
+            #label--> latexify(make_subscript(string(sim.mpc.model.labels.y[i])))
+            legend --> false
+            if i == length(yids) 
                 xguide --> (sim.mpc.model.Ts < 0 ? "Time step" : "Time [s]")
             end
-            sim.ts, sim.rs[i, :]
+            sim.ts, sim.ys[i, :]
         end
 
         id+=1
     end
 
     # Plot u 
-    for i in 1:nu
-        @series begin
-            yguide     --> sim.mpc.model.labels.u[i]
-            color      --> 1
-            subplot    --> id
-            seriestype --> :steppost
-            label--> latexify(make_subscript(string(sim.mpc.model.labels.u[i])))
-            legend     --> true
-            sim.ts, sim.us[i, :]
-        end
+    for i in uids 
         # lower bound
-        if(sim.mpc.umin[i] > -1e12)
+        if(length(umin) >= i && umin[i] > -1e12)
             @series begin
-                color     --> 3 
+                color     := :black 
                 subplot   --> id
                 linestyle --> :dash
-                linewidth --> 1.0 
+                linewidth --> 0.8
                 primary   --> false
-                sim.ts, fill(sim.mpc.umin[i],length(sim.ts)) 
+                sim.ts[[1,end]], fill(umin[i],2) 
             end
         end
 
         # upper bound
-        if(sim.mpc.umax[i] < 1e12)
+        if(length(umax) >= i && umax[i] < 1e12)
             @series begin
-                color     --> 3 
+                color     := :black 
                 subplot   --> id
                 linestyle --> :dash
-                linewidth --> 1 
+                linewidth --> 0.8 
                 primary   --> false
-                if i == nu 
-                    xguide --> (sim.mpc.model.Ts < 0 ? "Time step" : "Time [s]") 
-                end
-                sim.ts, fill(sim.mpc.umax[i],length(sim.ts)) 
+                sim.ts[[1,end]], fill(umax[i],2) 
             end
+        end
+        @series begin
+            yguide--> latexify(make_subscript(string(sim.mpc.model.labels.u[i])))
+            color      --> 1
+            subplot    --> id
+            seriestype --> :steppost
+            legend --> false
+            #label--> latexify(make_subscript(string(sim.mpc.model.labels.u[i])))
+            if i == length(uids) 
+                xguide --> (sim.mpc.model.Ts < 0 ? "Time step" : "Time [s]")
+            end
+            sim.ts, sim.us[i, :]
         end
         id+=1
     end
 
     ## Plot x 
-    for i in 1:nx
+    for i in xids 
         @series begin
-            label  --> latexify(make_subscript(string(sim.mpc.model.labels.x[i])))
+            yguide  --> latexify(make_subscript(string(sim.mpc.model.labels.x[i])))
             color  --> 1
             subplot--> id
-            legend --> true
-            if i == nx
+            legend --> false
+            if i == length(xids)
                 xguide --> (sim.mpc.model.Ts < 0 ? "Time step" : "Time [s]")
             end
             sim.ts, sim.xs[i, :]
         end
         id+=1
     end
+end
+
+"""
+    evaluate_cost(mpc,sim;Q,Rr,S)
+Compute the cost 0.5 ∑ x'*Q x + u' R u + Δu' Rr Δu + x' S u
+"""
+function evaluate_cost(mpc::MPC,sim::Simulation;
+        Q=mpc.weights.Q, R = mpc.weights.R, Rr = mpc.weights.Rr, S = mpc.weights.S)
+    return evaluate_cost(mpc,sim.xs,sim.us,sim.rs;Q,R,Rr,S)
 end

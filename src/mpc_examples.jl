@@ -1,4 +1,4 @@
-function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
+function mpc_examples(s, Np, Nc=Np;params = Dict(),settings=nothing)
     if(s=="inv_pend"||s=="invpend")
         # Inverted pendulum
         A = [0 1 0 0; 
@@ -18,9 +18,7 @@ function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
         umin,umax = [-2.0], [2.0]
         set_bounds!(mpc; umin,umax)
 
-        if(isnothing(settings))
-            mpc.settings.QP_double_sided = false;
-        else
+        if(!isnothing(settings))
             mpc.settings=settings
         end
 
@@ -51,12 +49,10 @@ function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
         umin,umax = [-0.5],[0.5]
         set_bounds!(mpc;umin,umax)
 
-        add_constraint!(mpc,Ax=C[2:2,:],lb = [-0.5] ,ub = [0.5], ks = 2:mpc.Nc+2, soft=true)
+        add_constraint!(mpc,Ax=C[2:2,:],lb = [-0.5] ,ub = [0.5], ks = 2:min(mpc.Nc+2,mpc.Np), soft=true)
 
         if(isnothing(settings))
-            mpc.settings.QP_double_sided = false;
             mpc.settings.reference_tracking=true;
-            mpc.settings.explicit_soft=true;
         else
             mpc.settings=settings
         end
@@ -95,9 +91,7 @@ function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
         set_output_bounds!(mpc, ymin = [-0.5;-0.5], ymax=[0.5;0.5],ks=2:2)
 
         if(isnothing(settings))
-            mpc.settings.QP_double_sided= false;
             mpc.settings.reference_tracking=true;
-            mpc.settings.explicit_soft=true;
         else
             mpc.settings=settings
         end
@@ -129,9 +123,7 @@ function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
         set_output_bounds!(mpc,ymin = -10*ones(nx), ymax=10*ones(nx), ks = 2:mpc.Nc)
 
         if(isnothing(settings))
-            mpc.settings.QP_double_sided= false;
             mpc.settings.reference_tracking=true;
-            mpc.settings.explicit_soft=true;
         else
             mpc.settings=settings
         end
@@ -172,12 +164,11 @@ function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
                         ks = 2:mpc.Nc)
 
         if(isnothing(settings))
-            mpc.settings.QP_double_sided= false;
+            mpc.settings.reference_tracking = false;
         else
             mpc.settings=settings
         end
 
-        mpc.settings.reference_tracking= false
         range = ParameterRange(mpc);
         range.xmax[:] .= 4*ones(nx)
         range.xmin[:] .= -4*ones(nx)
@@ -206,7 +197,6 @@ function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
         set_bounds!(mpc, umin = [-3.0,2,2], umax = [3.0,2,2])
 
         if(isnothing(settings))
-            mpc.settings.QP_double_sided= false;
             mpc.settings.reference_tracking=true;
         else
             mpc.settings=settings
@@ -253,12 +243,10 @@ function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
 
         # Control constraints
         set_bounds!(mpc,umin = [-1.0;0;zeros(4)], umax=[1.0;1e30;1e30;ones(4)])
-        mpc.binary_controls = collect(4:7);
+        set_binary_controls!(mpc,collect(4:7));
 
         if(isnothing(settings))
-            mpc.settings.QP_double_sided= true;
             mpc.settings.reference_tracking=false;
-            mpc.settings.soft_constraints=false;
         else
             mpc.settings=settings
         end
@@ -329,6 +317,71 @@ function mpc_examples(s, Np, Nc;params = Dict(),settings=nothing)
         range = ParameterRange(mpc);
         range.xmax[:] .= 20*ones(4)
         range.xmin[:] .= -20*ones(4)
+    elseif(s=="ball" || s =="ballplate")
+        A = [0 1.0 0 0;
+             0 0 700 0;
+             0 0 0 1;
+             0 0 0 -34.69]
+        B = [0;0;0;3.1119]
+        Ts = 0.03
+        C = [1.0 0 0 0]
+
+        F,G = zoh(A,B,Ts);
+
+        mpc = MPC(F,G;Ts=0.03,Np,Nc,C)
+        set_bounds!(mpc,umin=[-10.0],umax=[10.0])
+        xbounds = [30;15;15*pi/180;1]
+        add_constraint!(mpc; Ax = I(4),lb = -xbounds,ub=xbounds,soft=false)
+        set_objective!(mpc;Q=[100.0],R=[0.1],Rr=[0.0],Qf=[1.0])
+        range = ParameterRange(mpc)
+        range.xmax[:] =xbounds
+        range.xmin[:] =-xbounds
+    elseif(s=="quad" || s == "quadcopter" || s == "crazyflie")
+        println("Starting MPC")
+        F = [1.0 0.0 0.0 0.0000000 0.0009810 0.0000000 0.0100000 0.0000000 0.0000000 0.0000000 0.0000016 0.0000000;
+                0.0 1.0 0.0 -0.0009810 0.0000000 0.0000000 0.0000000 0.0100000 0.0000000 -0.0000016 0.0000000 0.0000000;
+                0.0 0.0 1.0 0.0000000 0.0000000 0.0000000 0.0000000 0.0000000 0.0100000 0.0000000 0.0000000 0.0000000;
+                0.0 0.0 0.0 1.0000000 0.0000000 0.0000000 0.0000000 0.0000000 0.0000000 0.0050000 0.0000000 0.0000000;
+                0.0 0.0 0.0 0.0000000 1.0000000 0.0000000 0.0000000 0.0000000 0.0000000 0.0000000 0.0050000 0.0000000;
+                0.0 0.0 0.0 0.0000000 0.0000000 1.0000000 0.0000000 0.0000000 0.0000000 0.0000000 0.0000000 0.0050000;
+                0.0 0.0 0.0 0.0000000 0.1962000 0.0000000 1.0000000 0.0000000 0.0000000 0.0000000 0.0004905 0.0000000;
+                0.0 0.0 0.0 -0.1962000 0.0000000 0.0000000 0.0000000 1.0000000 0.0000000 -0.0004905 0.0000000 0.0000000;
+                0.0 0.0 0.0 0.0000000 0.0000000 0.0000000 0.0000000 0.0000000 1.0000000 0.0000000 0.0000000 0.0000000;
+                0.0 0.0 0.0 0.0000000 0.0000000 0.0000000 0.0000000 0.0000000 0.0000000 1.0000000 0.0000000 0.0000000;
+                0.0 0.0 0.0 0.0000000 0.0000000 0.0000000 0.0000000 0.0000000 0.0000000 0.0000000 1.0000000 0.0000000;
+                0.0 0.0 0.0 0.0000000 0.0000000 0.0000000 0.0000000 0.0000000 0.0000000 0.0000000 0.0000000 1.0000000]; 
+        G = [-0.0000011 0.0000012 0.0000011 -0.0000012;
+             0.0000011 0.0000012 -0.0000011 -0.0000012;
+             0.0002102 0.0002102 0.0002102 0.0002102;
+             -0.0068839 -0.0075809 0.0068916 0.0075732;
+             -0.0069177 0.0076070 0.0069392 -0.0076285;
+             0.0004937 -0.0001806 -0.0006961 0.0003830;
+             -0.0004524 0.0004975 0.0004538 -0.0004989;
+             0.0004502 0.0004958 -0.0004507 -0.0004953;
+             0.0420429 0.0420429 0.0420429 0.0420429;
+             -2.7535461 -3.0323404 2.7566264 3.0292601;
+             -2.7670702 3.0427842 2.7756950 -3.0514090;
+             0.1974771 -0.0722364 -0.2784376 0.1531969];
+        Q = 1 ./ ([0.1; 0.1; 0.1;  0.5; 0.5; 0.03;  0.5; 0.5; 0.5;  0.7; 0.7; 0.2].^2)
+        R = 1 ./ (([0.5; 0.5; 0.5; 0.5]/6).^2)
+        Rr = 0
+        Ts = 1e-2
+        u0 = [0.5833333520642209, 0.5833333520642209, 0.5833333520642209, 0.5833333520642209]
+        mpc = MPC(F,G;Ts,Np,Nc)
+        mpc.settings.reference_tracking=false;
+        set_bounds!(mpc,umin=-u0,umax=ones(4)-u0)
+        set_objective!(mpc;Q,R,Rr)
+        range = ParameterRange(mpc)
+        range.xmax[:] .= 5
+        range.xmin[:] .=-5
+    elseif(s=="satellite")
+        A = [0.0 1 0; 0 0 0; 0 0 0]
+        B = [0 0 0; 2.5 1 1; -10 0 0]
+        mpc = MPC(A,B,0.1;Np,Nc)
+        set_objective!(mpc;Q=[0.5e4, 1e-2, 1e-1], R = [10,10,10], Rr = 0)
+        set_bounds!(mpc;umin=[-Inf;0;-1],umax=[Inf;1;0])
+        set_binary_controls!(mpc,[2,3])
+        range = ParameterRange(mpc)
     end
     return mpc,range
 end
@@ -342,5 +395,9 @@ function mpc_examples(s;settings=nothing)
         mpc_examples(s,10,2;settings)
     elseif(s=="nonlinear" || s=="nonlin")
         mpc_examples(s,5,2;settings)
+    elseif(s=="ball" || s=="ballplate")
+        mpc_examples(s,10,2;settings)
+    elseif(s=="quad" || s=="quadcopter" || s=="crazyflie")
+        mpc_examples(s,10,10;settings)
     end
 end

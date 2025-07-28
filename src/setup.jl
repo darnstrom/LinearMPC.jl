@@ -6,15 +6,15 @@ Internally, this means generating an mpQP, and setting up a DAQP workspace.
 """
 function setup!(mpc::MPC)
     mpc.mpQP = mpc2mpqp(mpc)
-    #mpc.opt_model = DAQP.Model()
-    if(mpc.settings.QP_double_sided)
-        bu,bl = mpc.mpQP.bu[:],mpc.mpQP.bl[:]
+    bu,bl = mpc.mpQP.bu[:],mpc.mpQP.bl[:]
+    setup_flag,_ = DAQP.setup(mpc.opt_model, mpc.mpQP.H,mpc.mpQP.f[:],mpc.mpQP.A,bu,bl,mpc.mpQP.senses;break_points=mpc.mpQP.break_points)
+    if(setup_flag < 0)
+        @warn " Cannot setup optimization problem " setup_flag
     else
-        bu,bl = mpc.mpQP.b[:], -1e30*ones(length(mpc.mpQP.b))
+        # Set up soft weight
+        DAQP.settings(mpc.opt_model,Dict(:rho_soft=>1/mpc.settings.soft_weight))
+        mpc.mpqp_issetup = true
     end
-    DAQP.setup(mpc.opt_model, mpc.mpQP.H,mpc.mpQP.f[:],mpc.mpQP.A,bu,bl,mpc.mpQP.senses;
-               break_points=mpc.mpQP.break_points)
-    mpc.mpqp_issetup = true
 end
 
 """
@@ -101,12 +101,13 @@ Set the weights in the objective function `xN' C' Qf C xN^T + ∑ (C xₖ - rₖ
 
 A vector is interpreted as a diagonal matrix.
 """
-function set_objective!(mpc::MPC;Q = zeros(0,0), R=zeros(0,0), Rr=zeros(0,0), S= zeros(0,0), Qf=zeros(0,0))
-    isempty(Q)  || (mpc.weights.Q[:,:]  = matrixify(Q,mpc.model.ny))
-    isempty(R)  || (mpc.weights.R[:,:]  = matrixify(R,mpc.model.nu))
-    isempty(Rr) || (mpc.weights.Rr[:,:] = matrixify(Rr,mpc.model.nu))
-    isempty(S)  || (mpc.weights.S[:,:]  = float(S))
-    isempty(Qf) || (mpc.weights.Qf[:,:] = matrixify(Qf,mpc.model.ny))
+function set_objective!(mpc::MPC;Q = zeros(0,0), R=zeros(0,0), Rr=zeros(0,0), S= zeros(0,0), Qf=zeros(0,0), Qfx=zeros(0,0))
+    isempty(Q)  || (mpc.weights.Q .= matrixify(Q,mpc.model.ny))
+    isempty(R)  || (mpc.weights.R .= matrixify(R,mpc.model.nu))
+    isempty(Rr) || (mpc.weights.Rr .= matrixify(Rr,mpc.model.nu))
+    isempty(S)  || (mpc.weights.S .= float(S))
+    isempty(Qf) || (mpc.weights.Qf .= matrixify(Qf,mpc.model.ny))
+    isempty(Qfx) || (mpc.weights.Qfx .= matrixify(Qfx,mpc.model.nx))
     mpc.mpqp_issetup = false
 end
 set_weights! = set_objective! # backwards compatibility
@@ -120,8 +121,12 @@ using MatrixEquations
 Sets the terminal cost `Qf` to the inifinite horizon LQR cost 
 """
 function set_terminal_cost!(mpc)
-    Qf, _, _ = ared(mpc.model.F, mpc.model.G, mpc.weights.R, mpc.model.C'*mpc.weights.Q*mpc.model.C) # solve Riccati
-    mpc.weights.Qf = Qf
+    if mpc.settings.reference_tracking
+        @warn "LQR cost not valid for reference tracking problems. Instead, use set_objective! to set Qf"
+        return false
+    end
+    Qfx, _, _ = ared(mpc.model.F, mpc.model.G, mpc.weights.R, mpc.model.C'*mpc.weights.Q*mpc.model.C) # solve Riccati
+    mpc.weights.Qfx .= Qfx
     mpc.mpqp_issetup = false
 end
 
@@ -150,29 +155,35 @@ end
 
 Reduce the number of controls by keeping it constant in blocks.
 For example, `block`=[2,1,3] keeps the control constant for 2 time-steps, 1 time step, and 3 time steps.
-* if sum(block) ≠ mpc.Nc, the resulting block will be padded or clipped
+* if sum(block) ≠ mpc.Np, the resulting block will be padded or clipped
 * if `block` is an Int, a vector with constant block size is created
 """
 function move_block!(mpc,block::Vector{Int})
-    Nnew = sum(block)
-    if Nnew == mpc.Nc
-        mpc.move_blocks[:] = block
-    elseif(Nnew < mpc.Nc) # pad
-        mpc.move_blocks[:] = block
-        mpc.move_blocks[end] += mpc.Nc-Nnew
-    elseif Nnew > mpc.Nc # clip
-        tot,i = 0,1
-        while((tot+=block[i]) < mpc.Nc) i += 1 end
-        mpc.move_blocks = block[1:i]
-        mpc.move_blocks[end] += mpc.Nc-tot;
+    if isempty(block)
+        mpc.move_blocks = Int[]
+        mpc.Nc = mpc.Np
+        mpc.mpqp_issetup = false
+        return
     end
+    Nnew = sum(block)
+    if Nnew == mpc.Np
+        mpc.move_blocks = copy(block)
+    elseif(Nnew < mpc.Np) # pad
+        mpc.move_blocks = copy(block)
+        mpc.move_blocks[end] += mpc.Np-Nnew
+    elseif Nnew > mpc.Np # clip
+        tot,i = 0,1
+        while((tot+=block[i]) < mpc.Np) i += 1 end
+        mpc.move_blocks = block[1:i]
+        mpc.move_blocks[end] += mpc.Np-tot;
+    end
+
+    mpc.Nc = sum(mpc.move_blocks[1:end-1])+1;
     mpc.mpqp_issetup = false
 end
 function move_block!(mpc,block::Int)
-    nb,res  = mpc.Nc ÷ block, mpc.Nc % block
-    mpc.move_blocks = fill(block,nb+1)
-    mpc.move_blocks[end] = res
-    mpc.mpqp_issetup = false
+    block <= 0  && return move_block!(mpc,Int[])
+    return move_block!(mpc,fill(block,mpc.Np ÷ block +1))
 end
 
 """
@@ -187,11 +198,27 @@ function set_labels!(mpc;x=nothing,u=nothing,y=nothing,d=nothing)
 end
 
 """
-    set_horizon!(mpc;Np,Nc)
-Sets the prediction horizon `Np` and control horizon `Nc`
+    set_horizon!(mpc,Np)
+Sets the prediction horizon `Np`
 """
-function set_horizon!(mpc;Np=mpc.Np,Nc=mpc.Nc)
-    mpc.Np = mpc.Np
-    mpc.Nc = min(mpc.Nc,mpc.Np) # ensure Nc <= Np
+function set_horizon!(mpc,Np)
+    mpc.Np = Np
+    mpc.mpqp_issetup = false
+end
+"""
+    set_binary_controls!(mpc,bin_ids)
+
+Makes the controls in bin_ids to binary controls 
+"""
+function set_binary_controls!(mpc,bin_ids)
+    mpc.binary_controls = Int64.(copy(bin_ids))
+    mpc.mpqp_issetup = false
+end
+"""
+    set_disturbance!(mpc,wmin,wmax)
+"""
+function set_disturbance!(mpc,wmin,wmax)
+    mpc.model.wmin .= wmin
+    mpc.model.wmax .= wmax
     mpc.mpqp_issetup = false
 end

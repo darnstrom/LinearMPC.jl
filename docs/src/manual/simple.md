@@ -3,10 +3,10 @@ A simplified form of the MPC problem that **LinearMPC.jl** solves is
 
 ```math
 \begin{aligned}
-        &\underset{u_0,\dots,u_{N-1}}{\text{minimize}}&& \textcolor{black}{\frac{1}{2}\sum_{k=0}^{N-1} {\left((Cx_{k}-r)^T Q (C x_{k}-r) + u_{k}^T R u_{k} + \Delta u_{k}^T R_r \Delta u_k\right)}}\\
-        &\text{subject to} &&\textcolor{black}{{x_{k+1} = F x_k + G u_k}}, \quad k=0,\dots, N-1\\
-        &&& \textcolor{black}{x_0 = \hat{x}} \\
-        &&& \textcolor{black}{\underline{b} \leq A_x x_k + A_u u_k  \leq \overline{b}}, \quad k=0, \dots, N-1
+        &\underset{u_0,\dots,u_{N-1}}{\text{minimize}}&& \frac{1}{2}\sum_{k=0}^{N-1} {\left((Cx_{k}-r)^T Q (C x_{k}-r) + u_{k}^T R u_{k} + \Delta u_{k}^T R_r \Delta u_k\right)}\\
+        &\text{subject to} && x_{k+1} = F x_k + G u_k, \quad k=0,\dots, N-1\\
+        &&& x_0 = \hat{x} \\
+        &&& \underline{b} \leq A_x x_k + A_u u_k  \leq \overline{b}, \quad k=0, \dots, N-1
 \end{aligned}
 ```
 
@@ -66,9 +66,9 @@ set_bounds!(mpc,umin=[-3],umax=[3], ymin= [0, 0],ymax = [1,2])
 add_constraint!(mpc,Ax = [2 -1], lb = [-1], ub = [2])
 
 # the prediction/control horizons
-set_horizon!(mpc, Np=10)
+set_horizon!(mpc,10)
 ```
-where the last command `set_horizon!(Np=10)` sets the prediction horizon of the controller to 10 time steps.
+where the last command `set_horizon!(mpc,10)` sets the prediction horizon of the controller to 10 time steps.
 
 That is it! Let's try our MPC controller.
 
@@ -120,6 +120,9 @@ LinearMPC.codegen(mpc; dir="code_dir", fname="test_mpc")
 where `fname` determines some of the naming of the generated code.
 
 The main function of interest (located in `{fname}.h`) is `mpc_compute_control(control, state, reference, disturbance)`. This function computes the optimal control given the current `state`, `reference`, and measured disturbances `disturbance`, which are all floating-point arrays. The optimal control is stored in the floating-point array `control`.
+
+!!! note "Previous control action"
+    If there is a penalty on the change in of control actions $\Delta u$, the function `mpc_compute_control` uses the value that is in `control` as the previous control action `uprev`. 
 
 To run a quick test of the generated code, let's test to compute a control for `x=[0,0]` and `r=[1,0]`. We do this with the following C-code, which we put in a file called `test.c`:
 

@@ -23,19 +23,31 @@ struct MPCWeights
     Rr::Matrix{Float64}
     S::Matrix{Float64}
     Qf::Matrix{Float64}
+    Qfx::Matrix{Float64}
 end
 
 function MPCWeights(nu,nx,nr)
-    return MPCWeights(Matrix{Float64}(I,nr,nr),Matrix{Float64}(I,nu,nu),zeros(nu,nu),zeros(nx,nu),zeros(nr,nr))
+    return MPCWeights(Matrix{Float64}(I,nr,nr),Matrix{Float64}(I,nu,nu),zeros(nu,nu),
+                      zeros(nx,nu),zeros(nr,nr),zeros(nx,nx))
 end
 
+"""
+MPC controller settings.
+
+# Fields
+- `reference_condensation::Bool = false`: Collapse reference trajectory to setpoint 
+- `reference_tracking::Bool = true`: Enable reference tracking
+- `reference_preview::Bool = false`: Enable time-varying reference preview
+- `soft_weight::Float64 = 1e6`: Penalty weight for soft constraint violations
+- `solver_opts::Dict{Symbol,Any}`: Additional solver options
+"""
 Base.@kwdef mutable struct MPCSettings
-    QP_double_sided::Bool = true 
+    reference_condensation::Bool= false
     reference_tracking::Bool= true
-    soft_constraints::Bool= true
-    explicit_soft::Bool= false
+    reference_preview::Bool = false
     soft_weight::Float64= 1e6
     solver_opts::Dict{Symbol,Any} = Dict()
+    traj2setpoint::Matrix{Float64} = zeros(0,0)
 end
 
 # MPC controller
@@ -78,13 +90,18 @@ mutable struct MPC
     move_blocks::Vector{Int}
 
     mpqp_issetup::Bool
+
+    uprev::Vector{Float64}
+
+    traj2setpoint::Matrix{Float64}
 end
 
 function MPC(model::Model;Np=10,Nc=Np)
     MPC(model,0,0,Np,Nc,
         MPCWeights(model.nu,model.nx,model.ny),
         zeros(0),zeros(0),zeros(0),
-        Constraint[],MPCSettings(),nothing,DAQP.Model(),zeros(model.nu,model.nx),Int[],false)
+        Constraint[],MPCSettings(),nothing,
+        DAQP.Model(),zeros(model.nu,model.nx),Int[],false, zeros(model.nu),zeros(0,0))
 end
 
 function MPC(F,G;Gd=zeros(0,0), C=zeros(0,0), Dd= zeros(0,0), Ts= -1.0, Np=10, Nc = Np)

@@ -3,6 +3,7 @@ mutable struct ExplicitMPC
 
     nr::Int
     nuprev::Int
+    Np::Int
 
     solution::ParametricDAQP.Solution
     mpQP
@@ -10,10 +11,16 @@ mutable struct ExplicitMPC
     bst::Union{Nothing,ParametricDAQP.BinarySearchTree}
     settings::MPCSettings
     K::Matrix{Float64} # Prestabilizing feedback
+    uprev::Vector{Float64}
+    traj2setpoint::Matrix{Float64}
 end
 
-function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false)
-    mpQP = mpc.mpqp_issetup ? mpc.mpQP : mpc2mpqp(mpc)
+function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false, opts=ParametricDAQP.Settings(), single_soft=true)
+    mpQP =  mpc2mpqp(mpc;singlesided=true,single_soft)
+    if mpQP.has_binaries
+        @warn("Explicit controllers currently not supported for hybrid systems")
+        return nothing
+    end
     if(range==nothing)
         @warn("No parameter range defined. Using default limits [-100 and 100]. If you want a bigger/smaller region, create a ParameterRange")
         range = ParameterRange(mpc)
@@ -21,16 +28,13 @@ function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false)
 
     TH = range2region(range)
 
-    # Transform into single-sided QP 
-    if(mpc.settings.QP_double_sided) 
-        mpQP = make_singlesided(mpQP; explicit_soft = mpc.settings.explicit_soft)
-    end
-
     mpQP = merge(mpQP,(out_inds=1:mpc.model.nu,)) # Only compute control at first time step
     # Compute mpQP solution
-    sol,info = ParametricDAQP.mpsolve(mpQP, TH)
+    opts.daqp_settings = merge(Dict(:sing_tol => 1e-11),opts.daqp_settings)
+    sol,info = ParametricDAQP.mpsolve(mpQP, TH;opts)
     nx,nr,nd,nuprev = get_parameter_dims(mpc)
-    empc = ExplicitMPC(mpc.model,nr,nuprev, sol,mpQP, TH, nothing,mpc.settings,mpc.K,)
+    empc = ExplicitMPC(mpc.model, nr,nuprev, mpc.Np, sol, mpQP,TH,
+                       nothing, mpc.settings, mpc.K, zeros(mpc.model.nu), mpc.traj2setpoint)
 
     # Build binary search tree
     build_tree && build_tree!(empc)
@@ -42,11 +46,12 @@ function get_parameter_dims(mpc::ExplicitMPC)
     return mpc.model.nx, mpc.nr, mpc.model.nd, mpc.nuprev
 end
 
-function build_tree!(mpc::ExplicitMPC)
-    mpc.bst  = ParametricDAQP.build_tree(mpc.solution)
+function build_tree!(mpc::ExplicitMPC; daqp_settings=nothing, clipping=true)
+    mpc.bst  = ParametricDAQP.build_tree(mpc.solution;daqp_settings, clipping)
     for i in 1:length(mpc.bst.feedbacks) # Correct for prestabilizing feedback
         mpc.bst.feedbacks[i][1:mpc.model.nx,:] -= mpc.K'
     end
+    return mpc.bst
 end
 
 function plot_regions(mpc::ExplicitMPC;fix_ids=nothing,fix_vals=nothing,opts=Dict{Symbol,Any}())
