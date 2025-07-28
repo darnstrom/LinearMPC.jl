@@ -22,7 +22,7 @@ r_trajectory = [1.0 1.5 2.0 2.0 2.0;   # ny × Np matrix
 u = compute_control(mpc, x; r=r_trajectory)
 ```
 """
-function compute_control(mpc::Union{MPC,ExplicitMPC},x;r=nothing,d=nothing,uprev=nothing)
+function compute_control(mpc::Union{MPC,ExplicitMPC},x;r=nothing,d=nothing,uprev=nothing, check=true)
     # Setup parameter vector θ
     nx,nr,nd,nuprev = get_parameter_dims(mpc)
     
@@ -30,7 +30,7 @@ function compute_control(mpc::Union{MPC,ExplicitMPC},x;r=nothing,d=nothing,uprev
     d = isnothing(d) ? zeros(nd) : d 
     uprev = isnothing(uprev) ? mpc.uprev[1:nuprev] : uprev[1:nuprev]
 
-    mpc.uprev = solve(mpc,[x;r;d;uprev])
+    mpc.uprev = solve(mpc,[x;r;d;uprev];check)
     return mpc.uprev
 end
 
@@ -126,7 +126,7 @@ function solve(mpc::MPC,θ; check=true)
     return udaqp[1:mpc.model.nu]-mpc.K*θ[1:mpc.model.nx]
 end
 
-function solve(empc::ExplicitMPC,θ)
+function solve(empc::ExplicitMPC,θ; check=true)
     if isnothing(empc.bst) 
         @error "Need to build a binary search tree to evaluate control law"
     else
