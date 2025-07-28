@@ -346,6 +346,17 @@ function mpc2mpqp(mpc::MPC; singlesided=false, single_soft=false)
         end
     end
 
+    # Resort based on priorities
+    ns = length(prio)-size(A,1)
+    prio_order = sortperm(prio[ns+1:end])
+    A = A[prio_order,:]
+    prio_order = [1:ns; prio_order .+ ns] # Offset correctly
+    bu,bl,W = bu[prio_order], bl[prio_order], W[prio_order,:]
+    issoft,isbinary,prio = issoft[prio_order],isbinary[prio_order], prio[prio_order]
+    break_points = unique(i->prio[i], eachindex(prio))[2:end].-1;
+    break_points = Cint.(break_points)
+    isempty(break_points) || push!(break_points,length(prio))
+                                                
     # Mark soft constrints  
     senses[issoft[:]].+=DAQP.SOFT
 
@@ -359,7 +370,7 @@ function mpc2mpqp(mpc::MPC; singlesided=false, single_soft=false)
     # Stack constraints in case of QP is assumed to be single sided. 
     mpQP = (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
             A=Matrix{Float64}(A), bu=bu, bl=bl, W=W, senses=senses,
-            prio=prio, has_binaries=any(isbinary))
+            prio=prio, has_binaries=any(isbinary), break_points=break_points)
 
     if(singlesided)
         mpQP = make_singlesided(mpQP;single_soft,soft_weight=mpc.settings.soft_weight)

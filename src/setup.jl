@@ -7,11 +7,10 @@ Internally, this means generating an mpQP, and setting up a DAQP workspace.
 function setup!(mpc::MPC)
     mpc.mpQP = mpc2mpqp(mpc)
     bu,bl = mpc.mpQP.bu[:],mpc.mpQP.bl[:]
-    setup_flag,_ = DAQP.setup(mpc.opt_model, mpc.mpQP.H,mpc.mpQP.f[:],mpc.mpQP.A,bu,bl,mpc.mpQP.senses)
+    setup_flag,_ = DAQP.setup(mpc.opt_model, mpc.mpQP.H,mpc.mpQP.f[:],mpc.mpQP.A,bu,bl,mpc.mpQP.senses;break_points=mpc.mpQP.break_points)
     if(setup_flag < 0)
         @warn " Cannot setup optimization problem " setup_flag
     else
-
         # Set up soft weight
         DAQP.settings(mpc.opt_model,Dict(:rho_soft=>1/mpc.settings.soft_weight))
         mpc.mpqp_issetup = true
