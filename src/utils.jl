@@ -110,7 +110,7 @@ function condense_reference(mpc::Union{MPC,ExplicitMPC}, r)
     end
 end
 
-function solve(mpc::MPC,θ)
+function solve(mpc::MPC,θ; check=true)
     mpc.mpqp_issetup || setup!(mpc) # ensure mpQP is setup
     mpc.mpqp_issetup || throw("Could not setup optimization problem")
     bth = mpc.mpQP.W*θ
@@ -122,7 +122,7 @@ function solve(mpc::MPC,θ)
     end
     DAQP.update(mpc.opt_model,nothing,f,nothing,bu,bl,nothing)
     udaqp,fval,exitflag,info = DAQP.solve(mpc.opt_model)
-    @assert(exitflag>=1)
+    check && @assert(exitflag>=1)
     return udaqp[1:mpc.model.nu]-mpc.K*θ[1:mpc.model.nx]
 end
 
