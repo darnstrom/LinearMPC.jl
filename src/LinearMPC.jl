@@ -21,6 +21,7 @@ export set_binary_controls!
 export set_disturbance!
 export set_terminal_cost!,set_prestabilizing_feedback!
 export move_block!,set_labels!
+export settings!
 
 include("mpc2mpqp.jl");
 include("mpc_examples.jl");

@@ -18,6 +18,7 @@ global templib
         setup!(mpc)
         set_horizon!(mpc,5)
         setup!(mpc)
+        settings!(mpc,reference_tracking=false)
     end
     @testset "MPC examples " begin
         mpc,range = LinearMPC.mpc_examples("invpend");

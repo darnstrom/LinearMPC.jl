@@ -222,3 +222,25 @@ function set_disturbance!(mpc,wmin,wmax)
     mpc.model.wmax .= wmax
     mpc.mpqp_issetup = false
 end
+
+function settings!(mpc::MPC;kwargs...)
+    settings!(mpc,kwargs)
+    for (key,val) in kwargs
+        key = Symbol(key)
+        if hasproperty(mpc.settings,key)
+            setproperty!(mpc.settings,key,val)
+        else
+            @warn("The setting \"$key\" does not exist")
+        end
+    end
+end
+function settings!(mpc::MPC, dict)
+    for (key,val) in dict
+        key = Symbol(key)
+        if hasproperty(mpc.settings,key)
+            setproperty!(mpc.settings,key,val)
+        else
+            @warn("The setting \"$key\" does not exist")
+        end
+    end
+end
