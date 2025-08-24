@@ -201,8 +201,9 @@ end
     set_horizon!(mpc,Np)
 Sets the prediction horizon `Np`
 """
-function set_horizon!(mpc,Np)
+function set_horizon!(mpc,Np, Nc = Np)
     mpc.Np = Np
+    mpc.Nc = Nc
     mpc.mpqp_issetup = false
 end
 """
@@ -222,7 +223,9 @@ function set_disturbance!(mpc,wmin,wmax)
     mpc.model.wmax .= wmax
     mpc.mpqp_issetup = false
 end
-
+"""
+    settings!(mpc,key1=value1, key2=value2,...)
+"""
 function settings!(mpc::MPC;kwargs...)
     settings!(mpc,kwargs)
     for (key,val) in kwargs
