@@ -158,7 +158,11 @@ For example, `block`=[2,1,3] keeps the control constant for 2 time-steps, 1 time
 * if sum(block) ≠ mpc.Np, the resulting block will be padded or clipped
 * if `block` is an Int, a vector with constant block size is created
 """
-function move_block!(mpc,block::Vector{Int})
+function move_block!(mpc,block)
+    block = Int.(copy(block))
+    if block isa Number
+        block = block <= 0  ? Int[] : fill(block,mpc.Np ÷ block +1)
+    end
     if isempty(block)
         mpc.move_blocks = Int[]
         mpc.Nc = mpc.Np
@@ -167,9 +171,9 @@ function move_block!(mpc,block::Vector{Int})
     end
     Nnew = sum(block)
     if Nnew == mpc.Np
-        mpc.move_blocks = copy(block)
+        mpc.move_blocks = block
     elseif(Nnew < mpc.Np) # pad
-        mpc.move_blocks = copy(block)
+        mpc.move_blocks = block
         mpc.move_blocks[end] += mpc.Np-Nnew
     elseif Nnew > mpc.Np # clip
         tot,i = 0,1
@@ -180,10 +184,6 @@ function move_block!(mpc,block::Vector{Int})
 
     mpc.Nc = sum(mpc.move_blocks[1:end-1])+1;
     mpc.mpqp_issetup = false
-end
-function move_block!(mpc,block::Int)
-    block <= 0  && return move_block!(mpc,Int[])
-    return move_block!(mpc,fill(block,mpc.Np ÷ block +1))
 end
 
 """
@@ -212,7 +212,7 @@ end
 Makes the controls in bin_ids to binary controls 
 """
 function set_binary_controls!(mpc,bin_ids)
-    mpc.binary_controls = Int64.(copy(bin_ids))
+    mpc.binary_controls = Int.(copy(bin_ids))
     mpc.mpqp_issetup = false
 end
 """
