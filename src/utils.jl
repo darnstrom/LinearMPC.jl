@@ -22,16 +22,28 @@ r_trajectory = [1.0 1.5 2.0 2.0 2.0;   # ny × Np matrix
 u = compute_control(mpc, x; r=r_trajectory)
 ```
 """
-function compute_control(mpc::Union{MPC,ExplicitMPC},x;r=nothing,d=nothing,uprev=nothing, check=true)
-    # Setup parameter vector θ
-    nx,nr,nd,nuprev = get_parameter_dims(mpc)
-    
-    r = format_reference(mpc, r)
-    d = isnothing(d) ? zeros(nd) : d 
-    uprev = isnothing(uprev) ? mpc.uprev[1:nuprev] : uprev[1:nuprev]
-
-    mpc.uprev = solve(mpc,[x;r;d;uprev];check)
+function compute_control(mpc::MPC,x;r=nothing,d=nothing,uprev=nothing, check=true)
+    θ = form_parameter(mpc,x,r,d,uprev)
+    udaqp,fval,exitflag,info = solve(mpc,θ)
+    check && @assert(exitflag>=1)
+    mpc.uprev = udaqp[1:mpc.model.nu]-mpc.K*θ[1:mpc.model.nx]
     return mpc.uprev
+end
+
+function compute_control(empc::ExplicitMPC,x;r=nothing,d=nothing,uprev=nothing, check=true)
+    if isnothing(empc.bst)
+        @error "Need to build a binary search tree to evaluate control law"
+    else
+        return ParametricDAQP.evaluate(empc.bst,form_parameter(empc,x,r,d,uprev))
+    end
+end
+
+function compute_control_trajectory(mpc::MPC,x;r=nothing,d=nothing,uprev=nothing, check=true)
+    θ = form_parameter(mpc,x,r,d,uprev)
+    udaqp,_,exitflag,_ = solve(mpc,θ)
+    check && @assert(exitflag>=1)
+    mpc.uprev = udaqp[1:mpc.model.nu]-mpc.K*θ[1:mpc.model.nx]
+    return udaqp
 end
 
 """
@@ -110,7 +122,12 @@ function condense_reference(mpc::Union{MPC,ExplicitMPC}, r)
     end
 end
 
-function solve(mpc::MPC,θ; check=true)
+"""
+    xdaqp,fval,exitflag,info = solve(mpc,θ)
+
+Solve corresponding QP given the parameter θ
+"""
+function solve(mpc::MPC,θ)
     mpc.mpqp_issetup || setup!(mpc) # ensure mpQP is setup
     mpc.mpqp_issetup || throw("Could not setup optimization problem")
     bth = mpc.mpQP.W*θ
@@ -121,17 +138,7 @@ function solve(mpc::MPC,θ; check=true)
         ccall(("node_cleanup_workspace", DAQP.libdaqp),Cvoid,(Cint,Ptr{DAQP.Workspace}),0, mpc.opt_model.work)
     end
     DAQP.update(mpc.opt_model,nothing,f,nothing,bu,bl,nothing)
-    udaqp,fval,exitflag,info = DAQP.solve(mpc.opt_model)
-    check && @assert(exitflag>=1)
-    return udaqp[1:mpc.model.nu]-mpc.K*θ[1:mpc.model.nx]
-end
-
-function solve(empc::ExplicitMPC,θ; check=true)
-    if isnothing(empc.bst) 
-        @error "Need to build a binary search tree to evaluate control law"
-    else
-        return ParametricDAQP.evaluate(empc.bst,θ) 
-    end
+    return DAQP.solve(mpc.opt_model)
 end
 
 function range2region(range)

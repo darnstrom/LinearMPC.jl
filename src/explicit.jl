@@ -46,6 +46,15 @@ function get_parameter_dims(mpc::ExplicitMPC)
     return mpc.model.nx, mpc.nr, mpc.model.nd, mpc.nuprev
 end
 
+function form_parameter(mpc::Union{MPC,ExplicitMPC},x,r,d,uprev)
+    # Setup parameter vector θ
+    nx,nr,nd,nuprev = get_parameter_dims(mpc)
+    r = format_reference(mpc, r)
+    d = isnothing(d) ? zeros(nd) : d
+    uprev = isnothing(uprev) ? mpc.uprev[1:nuprev] : uprev[1:nuprev]
+    return [x;r;d;uprev]
+end
+
 function build_tree!(mpc::ExplicitMPC; daqp_settings=nothing, clipping=true)
     mpc.bst  = ParametricDAQP.build_tree(mpc.solution;daqp_settings, clipping)
     for i in 1:length(mpc.bst.feedbacks) # Correct for prestabilizing feedback
