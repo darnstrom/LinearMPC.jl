@@ -465,7 +465,7 @@ global templib
 
     @testset "Control trajectory" begin
         # Test code generation with reference preview enabled
-        A = [1 1; 0 1] 
+        A = [1 1; 0 1]
         B = [0; 1]
         C = [1.0 0; 0 1.0]
         mpc = LinearMPC.MPC(A, B; C, Np=5, Nc=5)
