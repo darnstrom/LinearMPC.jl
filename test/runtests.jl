@@ -462,4 +462,16 @@ global templib
         sim_tight = LinearMPC.Simulation(dynamics, mpc;x0,N=100,r=[0.0;0])
         @test minimum(sim_tight.xs[2,:]) > -0.1
     end
+
+    @testset "Control trajectory" begin
+        # Test code generation with reference preview enabled
+        A = [1 1; 0 1]
+        B = [0; 1]
+        C = [1.0 0; 0 1.0]
+        mpc = LinearMPC.MPC(A, B; C, Np=5, Nc=5)
+        x = [0.5;1]
+        u = compute_control(mpc,x)
+        utraj = compute_control(mpc,x)
+        @test u == utraj[1:1]
+    end
 end
