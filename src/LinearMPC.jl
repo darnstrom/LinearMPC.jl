@@ -13,6 +13,7 @@ export plot_regions,plot_feedback
 
 include("utils.jl");
 export compute_control
+export compute_control_trajectory
 include("setup.jl");
 export setup!
 export set_bounds!,add_constraint!,set_input_bounds!, set_output_bounds!
