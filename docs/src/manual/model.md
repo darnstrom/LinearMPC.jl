@@ -94,7 +94,8 @@ can be used with
 ```julia
 mpc = LinearMPC.MPC(A,B,Ts;Bd,C,Dd)
 ```
-
+!!! note "Constant disturbance"
+    The disturbance $d$ is assumed to be constant over the horizon 
 ## Linearization
 For a nonlinear discrete-time state-space model of the form  
 ```math
