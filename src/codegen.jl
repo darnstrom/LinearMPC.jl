@@ -138,20 +138,24 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
 
     fmpc_h = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_update_qp.h"), "r");
     write(fh, read(fmpc_h))
+    close(fmpc_h)
 
     @printf(fsrc, "#include \"%s.h\"\n",fname);
     fmpc_para = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_update_parameter.c"), "r");
     write(fsrc, read(fmpc_para))
+    close(fmpc_para)
     fmpc_src = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_update_qp.c"), "r");
     write(fsrc, read(fmpc_src))
+    close(fmpc_src)
+
+    if !isnothing(mpc.kf)
+        codegen(mpc.kf,fh,fsrc)
+    end
 
     @printf(fh, "#endif // ifndef %s\n", hguard);
 
     close(fh)
     close(fsrc)
-    close(fmpc_h)
-    close(fmpc_para)
-    close(fmpc_src)
 end
 
 function write_float_array(f,a::Vector{<:Real},name::String)
