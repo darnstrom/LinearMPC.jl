@@ -52,8 +52,6 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
     @printf(fh, "extern c_float mpc_parameter[%d];\n", nth);
 
     @printf(fh, "int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* disturbance); \n");
-    @printf(fh, "#endif // ifndef %s\n", hguard);
-    close(fh)
 
     # SOURCE
     fsrc = open(joinpath(dir,"mpc_compute_control.c"), "w")
@@ -82,6 +80,14 @@ int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_
     return 1;
 }
           """)
+
+    if !isnothing(mpc.state_observer)
+        @printf(fh, "#define N_CONTROL %d\n",mpc.model.nu);
+        codegen(mpc.state_observer,fh,fsrc)
+    end
+
+    @printf(fh, "#endif // ifndef %s\n", hguard);
+    close(fh)
     close(fsrc)
 
     @info "Generated code for EMPC controller" dir fname
