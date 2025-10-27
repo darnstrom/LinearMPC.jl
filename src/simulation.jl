@@ -49,12 +49,12 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
     end
 
     # Start the simulation
-    has_observer && set_state!(mpc.state_observer,x0)
+    has_observer && set_state!(mpc,x0)
     for k = 1:N
         xs[:,k], ys[:,k] = x, get_measurement(x,ds[:,k])
 
         # Get state estimate
-        xhat = has_observer ? correct!(mpc.state_observer,ys[:,k]) : x
+        xhat = has_observer ? correct_state!(mpc,ys[:,k]) : x
         xhats[:,k] = xhat
         # Get reference
         if mpc.settings.reference_preview && !isnothing(r)
@@ -66,7 +66,7 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
 
         solve_times[k] = @elapsed u = compute_control(mpc,xhat;r,d=ds[:,k])
 
-        has_observer && predict!(mpc.state_observer,u)
+        has_observer && predict_state!(mpc,u)
         
         x = dynamics(x,u,ds[:,k])
         callback(x,u,ds[:,k],k)

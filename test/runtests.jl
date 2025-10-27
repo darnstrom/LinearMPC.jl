@@ -518,7 +518,7 @@ global templib
                 u = randn(1) 
                 y = zeros(2)
 
-                LinearMPC.set_state_estimate!(mpc,x)
+                LinearMPC.set_state!(mpc,x)
                 xref1 = copy(LinearMPC.predict!(mpc.state_observer,u))
                 xref2 = copy(LinearMPC.correct!(mpc.state_observer,y))
 

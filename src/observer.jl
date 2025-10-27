@@ -58,12 +58,34 @@ function codegen(kf::KalmanFilter,fh,fsrc)
     close(fmpc_src)
 end
 
-function update_state!(mpc,u,y)
+"""
+    predict_state!(mpc,u)
+Predict the state at the next time step if the control `u` is applied.
+This updates the state of `state_observer`
+"""
+function predict_state!(mpc::Union{MPC,ExplicitMPC},u)
+    predict!(mpc.state_observer,u)
+end
+
+"""
+    set_correct_state!(mpcy)
+Correct the state estimated based on measurement `u`.
+This updates the state of `state_observer`
+"""
+function correct_state!(mpc::Union{MPC,ExplicitMPC},y)
+    correct!(mpc.state_observer,y)
+end
+
+"""
+    set_state!(mpc,x)
+Set the state of `state_observer` to `x`  
+"""
+function set_state!(mpc::Union{MPC,ExplicitMPC},x)
+    set_state!(mpc.state_observer,x)
+end
+
+function update_state!(mpc::Union{MPC,ExplicitMPC},u,y)
     isnothing(u) || predict!(mpc.state_observer,u)
     isnothing(y) || correct!(mpc.state_observer,y)
     return mpc.state_observer.x
-end
-
-function set_state_estimate!(mpc,x)
-    set_state!(mpc.state_observer,x)
 end
