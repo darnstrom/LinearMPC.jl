@@ -5,25 +5,40 @@ struct Simulation
     xs::Matrix{Float64}
     rs::Matrix{Float64}
     ds::Matrix{Float64}
+    xhats::Matrix{Float64}
 
     solve_times ::Vector{Float64}
 
     mpc::Union{MPC,ExplicitMPC}
 end
 
-function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx),N=1000, r=nothing,d=nothing, callback=(x,u,d,k)->nothing)
+function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx),N=1000, r=nothing,d=nothing, callback=(x,u,d,k)->nothing, get_measurement= nothing)
+
+    # Check if MPC has observer
+    has_observer = !isnothing(mpc.state_observer)
+    ny = has_observer ? size(mpc.state_observer.C,1) : mpc.model.ny
+    if isnothing(get_measurement)
+        if has_observer 
+            get_measurement = (x,d) -> mpc.state_observer.C*x+mpc.model.Dd*d
+        else
+            get_measurement = (x,d) -> mpc.model.C*x+mpc.model.Dd*d
+        end
+    end
+
     x,u = x0,zeros(mpc.model.nu)
     
-    xs = zeros(mpc.model.nx,N); xs[:,1] = x0
-    ys = zeros(mpc.model.ny,N);
+    xs = zeros(mpc.model.nx,N);
+    ys = zeros(ny,N);
     rs = zeros(mpc.model.ny,N);
     ds = zeros(mpc.model.nd,N);
     us = zeros(mpc.model.nu,N)
+    xhats = zeros(mpc.model.nx,N);
 
     solve_times = zeros(N)
     # Setup reference 
     if(!isnothing(r))
-        rs[:,1:size(r,2)].= r
+        Nr = min(N,size(r,2))
+        rs[:,1:Nr].= r[:,1:Nr]
         rs[:,size(r,2)+1:end] .= r[:,end] # hold last value of reference
     end
 
@@ -34,25 +49,31 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
     end
 
     # Start the simulation
+    has_observer && set_state!(mpc.state_observer,x0)
     for k = 1:N
-        xs[:,k], ys[:,k] = x, mpc.model.C*x+mpc.model.Dd*ds[:,k]
-        
-        # Prepare reference for controller
+        xs[:,k], ys[:,k] = x, get_measurement(x,ds[:,k])
+
+        # Get state estimate
+        xhat = has_observer ? correct!(mpc.state_observer,ys[:,k]) : x
+        xhats[:,k] = xhat
+        # Get reference
         if mpc.settings.reference_preview && !isnothing(r)
             # Reference preview mode: provide future references
-            r_preview = get_reference_preview(rs, k, mpc.Np)
-            solve_times[k] = @elapsed u = compute_control(mpc,x;r=r_preview,d=ds[:,k])
-        else
-            # Standard mode: provide current reference
-            solve_times[k] = @elapsed u = compute_control(mpc,x;r=rs[:,k],d=ds[:,k])
+            r = get_reference_preview(rs, k, mpc.Np)
+        else # Standard mode: provide current reference
+            r = rs[:,k]
         end
+
+        solve_times[k] = @elapsed u = compute_control(mpc,xhat;r,d=ds[:,k])
+
+        has_observer && predict!(mpc.state_observer,u)
         
         x = dynamics(x,u,ds[:,k])
         callback(x,u,ds[:,k],k)
         us[:,k] = u
     end
     Ts = mpc.model.Ts < 0.0 ? 1.0 : mpc.model.Ts
-    return Simulation(collect(Ts*(0:1:N-1)),ys,us,xs,rs,ds,solve_times,mpc)
+    return Simulation(collect(Ts*(0:1:N-1)),ys,us,xs,rs,ds,xhats,solve_times,mpc)
 end
 
 """

@@ -248,7 +248,8 @@ function settings!(mpc::MPC, dict)
     end
 end
 
-function set_state_observer!(mpc::MPC;F=nothing,G=nothing,C=nothing,Q=nothing,R=nothing,x0=nothing)
+function set_state_observer!(mpc::Union{MPC,ExplicitMPC};
+        F=nothing,G=nothing,C=nothing,Q=nothing,R=nothing,x0=nothing)
     F = isnothing(F) ? mpc.model.F : F
     G = isnothing(G) ? mpc.model.G : G
     C = isnothing(C) ? mpc.model.C : C
