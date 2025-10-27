@@ -84,6 +84,14 @@ function set_state!(mpc::Union{MPC,ExplicitMPC},x)
     set_state!(mpc.state_observer,x)
 end
 
+"""
+    get_state!(mpc)
+Get the current state of the observer
+"""
+function get_state(mpc::Union{MPC,ExplicitMPC})
+    return mpc.state_observer.x
+end
+
 function update_state!(mpc::Union{MPC,ExplicitMPC},u,y)
     isnothing(u) || predict!(mpc.state_observer,u)
     isnothing(y) || correct!(mpc.state_observer,y)
