@@ -148,8 +148,8 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
     write(fsrc, read(fmpc_src))
     close(fmpc_src)
 
-    if !isnothing(mpc.kf)
-        codegen(mpc.kf,fh,fsrc)
+    if !isnothing(mpc.state_observer)
+        codegen(mpc.state_observer,fh,fsrc)
     end
 
     @printf(fh, "#endif // ifndef %s\n", hguard);

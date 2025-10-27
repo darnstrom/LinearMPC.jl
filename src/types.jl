@@ -95,7 +95,7 @@ mutable struct MPC
 
     traj2setpoint::Matrix{Float64}
 
-    kf
+    state_observer
 end
 
 function MPC(model::Model;Np=10,Nc=Np)
