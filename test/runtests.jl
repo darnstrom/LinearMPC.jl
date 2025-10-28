@@ -474,4 +474,60 @@ global templib
         utraj = compute_control(mpc,x)
         @test u == utraj[1:1]
     end
+
+    @testset "Observer" begin
+        mpc0,th_range = LinearMPC.mpc_examples("invpend",100)
+        move_block!(mpc0,[1,1,5,10,10])
+        LinearMPC.set_state_observer!(mpc0;Q=1e2*[1e-3,1,1e-3,1],R=[1,0.1])
+        empc = ExplicitMPC(mpc0;range=th_range,build_tree=true)
+
+        for mpc in [mpc0,empc] 
+
+            N=2000;
+            rs = [zeros(2,20) repeat([10;0],1,N)]
+            x = zeros(4)
+
+            xs = zeros(4,N);
+            ys = zeros(2,N);
+            us = zeros(1,N);
+            xhats = zeros(4,N);
+
+            LinearMPC.set_state!(mpc.state_observer,x)
+            for k = 1:N
+                xs[:,k],ys[:,k] = x,mpc.model.C*x + [0.05;0.005].*randn(2)
+                LinearMPC.correct!(mpc.state_observer,ys[:,k])
+                xhats[:,k] = mpc.state_observer.x
+                u = compute_control(mpc,mpc.state_observer.x;r=rs[:,k])
+                us[:,k] .= u
+                LinearMPC.predict!(mpc.state_observer,u)
+                x = mpc.model.F*x + mpc.model.G*u + [0 0; 0.05 0; 0 0;0 0.005]*randn(2)
+            end
+
+            @test all(abs.(xs[1,end-50:end].-10) .< 1.0) # Check if x1 converged to 10
+
+            # Test to generate C code
+            srcdir = tempname()
+            LinearMPC.codegen(mpc; dir=srcdir)
+            src = [f for f in readdir(srcdir) if last(f,1) == "c"]
+
+            if !isnothing(Sys.which("gcc"))
+                testlib = "mpctest."* Base.Libc.Libdl.dlext
+                run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+
+                x = randn(4) 
+                u = randn(1) 
+                y = zeros(2)
+
+                LinearMPC.set_state!(mpc,x)
+                xref1 = copy(LinearMPC.predict!(mpc.state_observer,u))
+                xref2 = copy(LinearMPC.correct!(mpc.state_observer,y))
+
+                global templib = joinpath(srcdir, testlib)
+                ccall(("mpc_predict_state", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble}), x,u)
+                @test norm(x-xref1) < 1e-9
+                ccall(("mpc_correct_state", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble}), x,y)
+                @test norm(x-xref2) < 1e-9
+            end
+        end
+    end
 end

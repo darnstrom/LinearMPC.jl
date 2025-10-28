@@ -42,4 +42,6 @@ export invariant_set
 
 include("robust.jl");
 
+include("observer.jl");
+
 end

@@ -52,8 +52,6 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
     @printf(fh, "extern c_float mpc_parameter[%d];\n", nth);
 
     @printf(fh, "int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* disturbance); \n");
-    @printf(fh, "#endif // ifndef %s\n", hguard);
-    close(fh)
 
     # SOURCE
     fsrc = open(joinpath(dir,"mpc_compute_control.c"), "w")
@@ -82,6 +80,14 @@ int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_
     return 1;
 }
           """)
+
+    if !isnothing(mpc.state_observer)
+        @printf(fh, "#define N_CONTROL %d\n",mpc.model.nu);
+        codegen(mpc.state_observer,fh,fsrc)
+    end
+
+    @printf(fh, "#endif // ifndef %s\n", hguard);
+    close(fh)
     close(fsrc)
 
     @info "Generated code for EMPC controller" dir fname
@@ -138,20 +144,24 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
 
     fmpc_h = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_update_qp.h"), "r");
     write(fh, read(fmpc_h))
+    close(fmpc_h)
 
     @printf(fsrc, "#include \"%s.h\"\n",fname);
     fmpc_para = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_update_parameter.c"), "r");
     write(fsrc, read(fmpc_para))
+    close(fmpc_para)
     fmpc_src = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_update_qp.c"), "r");
     write(fsrc, read(fmpc_src))
+    close(fmpc_src)
+
+    if !isnothing(mpc.state_observer)
+        codegen(mpc.state_observer,fh,fsrc)
+    end
 
     @printf(fh, "#endif // ifndef %s\n", hguard);
 
     close(fh)
     close(fsrc)
-    close(fmpc_h)
-    close(fmpc_para)
-    close(fmpc_src)
 end
 
 function write_float_array(f,a::Vector{<:Real},name::String)
