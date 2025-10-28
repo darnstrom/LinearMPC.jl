@@ -17,6 +17,7 @@ makedocs(sitename = "LinearMPC.jl",
                                                      "Reference Preview" => "manual/reference_preview.md",
                                                      "Explict MPC" => "manual/explicit.md",
                                                      "Hybrid MPC" => "manual/hybrid.md",
+                                                     "Robust MPC" => "manual/robust.md",
                                                      #"Complexity Certification" => "manual/compcert.md",
                                                      #"Solver Settings" => "manual/solver.md",
                                                     ]

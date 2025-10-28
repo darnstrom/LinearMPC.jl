@@ -9,7 +9,7 @@ More generally, **LinearMPC.jl** allows any constraint to be defined as `binary`
 ## Illustrative example
 As an illustrative example, we consider the control of the attitude of a satellite[^Axehill04]. The actuators consist of one reaction wheel and two thrusters. The thruster takes on binary values (they are either 'on' or 'off')
 
-[^Axehill04]: Axehill, Daniel, and Anders Hansson. "A preprocessing algorithm for MIQP solvers with applications to MPC." _43rd IEEE Conference on Decision and Control (CDC)_ (2004) 
+[^Axehill04]: Axehill, Daniel, and Hansson, Anders. "A preprocessing algorithm for MIQP solvers with applications to MPC." _43rd IEEE Conference on Decision and Control (CDC)_ (2004) 
 
 The dynamics of the system is given by
 
