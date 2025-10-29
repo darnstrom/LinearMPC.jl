@@ -96,6 +96,8 @@ mutable struct MPC
     traj2setpoint::Matrix{Float64}
 
     state_observer
+
+    Δx0::Vector{Float64}
 end
 
 function MPC(model::Model;Np=10,Nc=Np)
@@ -104,7 +106,7 @@ function MPC(model::Model;Np=10,Nc=Np)
         zeros(0),zeros(0),zeros(0),
         Constraint[],MPCSettings(),nothing,
         DAQP.Model(),zeros(model.nu,model.nx),Int[],false, zeros(model.nu),zeros(0,0),
-       nothing)
+       nothing,zeros(model.nx))
 end
 
 function MPC(F,G;Gd=zeros(0,0), C=zeros(0,0), Dd= zeros(0,0), Ts= -1.0, Np=10, Nc = Np)

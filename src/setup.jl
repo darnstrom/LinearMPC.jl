@@ -224,6 +224,13 @@ function set_disturbance!(mpc,wmin,wmax)
     mpc.mpqp_issetup = false
 end
 """
+    set_x0_uncertainty!(mpc,wmin,wmax)
+"""
+function set_x0_uncertainty!(mpc,x0_uncertainty)
+    mpc.Δx0 .= x0_uncertainty 
+    mpc.mpqp_issetup = false
+end
+"""
     settings!(mpc,key1=value1, key2=value2,...)
 """
 function settings!(mpc::MPC;kwargs...)

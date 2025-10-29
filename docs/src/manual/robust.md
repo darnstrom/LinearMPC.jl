@@ -1,4 +1,8 @@
 # [Robust MPC](@id man_robust)
+
+**LinearMPC.jl** can handle uncertaintiy in the system dynamics and in the current state. 
+
+## Uncertainty in the dynamics
 Model predictive control requires a model of the system dynamics. In practice, there is often a mismatch between this model and the true dynamics. This mismatch can be captured with an additive disturbance $w_k$ in the dynamics
 ```math
 x_{k+1} = F x_k + G u_k + w_k.
@@ -52,3 +56,13 @@ ylims!(0.4,0.6) #hide
 ```
 !!! note "Measurable disturbance"
     Note that if the disturbance $w$ is measurable/known, it can be accounted for without having to tighten the constraints by providing it as a measurable disturbance $d$ (see `Model` for details.)
+
+## Uncertainty in the current state
+Uncertainty in the current state can also be handled robustly. If the current state $\hat{x}$ is assumed to be in the box 
+```math
+-\delta \leq x - \hat{x} \leq \delta,
+```
+constraints can be tightened with 
+```julia
+set_x0_uncertainty!(mpc,delta)
+```
