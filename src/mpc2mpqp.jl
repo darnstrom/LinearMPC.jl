@@ -78,7 +78,7 @@ function create_controlbounds(mpc::MPC, Γ, Φ)
     # Tighten constraint
     if(!iszero(mpc.K) && (!iszero(mpc.model.wmin) || !iszero(mpc.model.wmax)))
         FK= mpc.model.F-mpc.model.G*mpc.K
-        ut,lt= constraint_tightening(-mpc.K,FK,1:Nb,mpc.model.wmin,mpc.model.wmax)
+        ut,lt= constraint_tightening(-mpc.K,FK,1:Nb,mpc.model.wmin,mpc.model.wmax,mpc.Δx0)
         ub -= ut
         lb += lt
     end
@@ -109,8 +109,7 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
     eyeX, eyeU = I(Np+1), I(Nc);
     eyeU = [eyeU;zeros(Bool,1+Np-Nc,Nc)] # Zeros address that Nc < Np (terminal state)
 
-    tighten_constraints = !iszero(mpc.model.wmin) || !iszero(mpc.model.wmax)
-    FK = tighten_constraints ? mpc.model.F-mpc.model.G*mpc.K : zeros(0,0)
+    tighten_constraints = !iszero(mpc.model.wmin) || !iszero(mpc.model.wmax) || !iszero(mpc.Δx0)
 
     for c in mpc.constraints 
         mi = size(c.Au,1);
@@ -129,7 +128,8 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
         lbtot = [lbtot;repeat(c.lb,Ni,1)]
 
         if(tighten_constraints)
-            ut,lt= constraint_tightening(Ax,FK,ks,mpc.model.wmin,mpc.model.wmax)
+            FK = mpc.model.F-mpc.model.G*mpc.K
+            ut,lt= constraint_tightening(Ax,FK,ks,mpc.model.wmin,mpc.model.wmax,mpc.Δx0)
             ubtot -= ut
             lbtot += lt
         end

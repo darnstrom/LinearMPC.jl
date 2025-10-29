@@ -19,7 +19,7 @@ export setup!
 export set_bounds!,add_constraint!,set_input_bounds!, set_output_bounds!
 export set_objective!, set_weights!, set_horizon!
 export set_binary_controls!
-export set_disturbance!
+export set_disturbance!, set_x0_uncertainty!
 export set_terminal_cost!,set_prestabilizing_feedback!
 export move_block!,set_labels!
 export settings!

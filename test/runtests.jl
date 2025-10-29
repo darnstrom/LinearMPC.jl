@@ -530,4 +530,12 @@ global templib
             end
         end
     end
+    @testset "x0 uncertainty" begin
+        F,G = [1 0.1; 0 1], [0.005;0.1;;] # double integrator with Ts=0.1 
+        mpc= LinearMPC.MPC(F,G;Ts=0.1,Np=25,C=[1 0;])
+        set_bounds!(mpc;umin=[-0.2],umax=[0.2],ymin=[-0.5],ymax=[0.5]) 
+        set_x0_uncertainty!(mpc,0.1*ones(2))
+        sim= Simulation(mpc;r=[0.5])
+        @test abs(sim.xs[1,end] - 0.4) < 1e-6
+    end
 end
