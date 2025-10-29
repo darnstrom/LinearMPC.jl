@@ -8,7 +8,7 @@ function constraint_tightening(Ax,F,ks,wmin,wmax,x0_uncertainty)
     # x0 uncertainty
     for (i,ci) in enumerate(eachrow(Ck))
         accum_upper[i] = sum(abs(ci[j] * x0_uncertainty[j]) for j in 1:nx)
-        accum_lower[i] = -accum_upper[i]
+        accum_lower[i] = accum_upper[i]
     end
 
     ki = 1+sum(ks .< 2); # Ignore before k=2 
