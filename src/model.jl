@@ -17,6 +17,7 @@ struct Model
     F::Matrix{Float64}
     G::Matrix{Float64}
     Gd::Matrix{Float64}
+    h::Vector{Float64}
 
     wmin::Vector{Float64}
     wmax::Vector{Float64}
@@ -38,7 +39,7 @@ function Model(F,G,Gd,C,Dd;Ts=-1.0)
     Model(F,G;Gd,C,Dd,Ts)
 end
 
-function Model(F,G;Ts=-1.0, C = zeros(0,0), Gd = zeros(0,0), Dd = zeros(0,0), wmin=zeros(0), wmax=zeros(0))
+function Model(F,G;Ts=-1.0, C = zeros(0,0), Gd = zeros(0,0), h=zeros(0), Dd = zeros(0,0), wmin=zeros(0), wmax=zeros(0))
     G = reshape(G,size(G,1),:) 
     nx,nu = size(G)
     C = isempty(C) ? Matrix{Float64}(I,nx,nx) : float(C)
@@ -47,12 +48,13 @@ function Model(F,G;Ts=-1.0, C = zeros(0,0), Gd = zeros(0,0), Dd = zeros(0,0), wm
     # disturbance
     Gd = isempty(Gd) ? zeros(nx,0) : Gd
     Dd = isempty(Dd) ? zeros(ny,0) : Dd 
+    h = isempty(h) ? zeros(nx) : h
     wmin = isempty(wmin) ? zeros(nx) : wmin
     wmax = isempty(wmax) ? zeros(nx) : wmax
     nd = max(size(Gd,2),size(Dd,2))
     Gd = [Gd zeros(nx,nd-size(Gd,2))]
     Dd = [Dd zeros(ny,nd-size(Dd,2))]
-    Model(float(F),float(G),float(Gd),float(wmin), float(wmax), float(C),float(Dd),nx,nu,ny,nd,Ts,Labels(nx,nu,ny,nd))
+    Model(float(F),float(G),float(Gd), float(h),float(wmin), float(wmax), float(C),float(Dd),nx,nu,ny,nd,Ts,Labels(nx,nu,ny,nd))
 end
 
 function Model(A,B,Ts; Bd = zeros(0,0), C = zeros(0,0), Dd = zeros(0,0))

@@ -60,6 +60,7 @@ end
 function create_controlbounds(mpc::MPC, Γ, Φ)
     nu,nx,Nb = mpc.model.nu, mpc.model.nx, mpc.Nc
     nth = sum(get_parameter_dims(mpc))
+    !iszero(mpc.model.h) && (nth+=1); # contant offset in dynamics 
 
     #-K*X + V = -K*(Γ V + Φ x0) + V 
     #         = (I-K*Γ)V -K Φ x0
@@ -100,6 +101,7 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
         nxe = sum(get_parameter_dims(mpc))
         nrx = mpc.nr
     end
+    !iszero(mpc.model.h) && (nxe+=1); # contant offset in dynamics 
 
     ubtot,lbtot = zeros(0,1),zeros(0,1);
     Axtot,Autot = zeros(0,nxe*(Np+1)), zeros(0,nu*Nc);
@@ -120,9 +122,10 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
         Ar = isempty(c.Ar) || nrx == 0 ? zeros(mi,nrx) : c.Ar
         Ad = isempty(c.Ad) ? zeros(mi,mpc.model.nd) : c.Ad
         Aup = isempty(c.Aup) ? zeros(mi,mpc.nuprev) : c.Auip
+        Ah = iszero(mpc.model.h) ? zeros(mi,0) : zeros(mi,1)
 
         Autot = [Autot; kron(eyeU[ks,:],c.Au)]
-        Axtot = [Axtot; kron(eyeX[ks,:],[Ax Ar Ad Aup])]
+        Axtot = [Axtot; kron(eyeX[ks,:],[Ax Ar Ad Aup Ah])]
 
         ubtot = [ubtot;repeat(c.ub,Ni,1)]
         lbtot = [lbtot;repeat(c.lb,Ni,1)]
@@ -316,6 +319,15 @@ function mpc2mpqp(mpc::MPC; singlesided=false, single_soft=false)
     # Create Constraints 
     A, bu, bl, W, issoft, isbinary, prio = create_constraints(mpc,Φ,Γ)
 
+    # Collapse constant term in dynamics
+    if(!iszero(mpc.model.h))
+        f += f_theta[:,end]
+        f_theta = f_theta[:,1:end-1]
+        bu += W[:,end]
+        bl += W[:,end]
+        W = W[:,1:end-1]
+    end
+
     # Apply move blocking
     if(!isempty(mpc.move_blocks))
         T,id = zeros(0,0), 0
@@ -429,6 +441,14 @@ function create_extended_system_and_cost(mpc::MPC)
         Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
         C = [C; mpc.K zeros(nu,size(C,2)-nx)]
         S[1:nx,:] -=mpc.K'*mpc.weights.R
+    end
+
+    if(!iszero(mpc.model.h))
+        F = cat(F,1,dims=(1,2))
+        F[1:nx,end] .= mpc.model.h
+        G = [G;zeros(1,nu)]
+        S = [S;zeros(1,nu)]
+        C = [C zeros(size(C,1),1)]
     end
 
     return F,G,C,Q,R,S,Qf 

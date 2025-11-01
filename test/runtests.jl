@@ -538,4 +538,13 @@ global templib
         sim= Simulation(mpc;r=[0.5])
         @test abs(sim.xs[1,end] - 0.4) < 1e-6
     end
+    @testset "Constant offset" begin
+        F,G = [1 0.1; 0 1], [0.005;0.1;;] # double integrator with Ts=0.1 
+        mpc= LinearMPC.MPC(F,G;Ts=0.1,Np=25,C=[1 0;])
+        set_objective!(mpc,R=0,Rr=1,Q=1)
+        mpc.model.h .= [0.1;0.1] 
+        set_bounds!(mpc;umin=[-2],umax=[2],ymin=[-0.5],ymax=[0.5]) 
+        dynamics = (x,u,d) -> mpc.model.F*x + mpc.model.G*u + [0.1;0.1] 
+        sim= Simulation(dynamics,mpc;r=[0.5])
+    end
 end
