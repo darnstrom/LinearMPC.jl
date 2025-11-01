@@ -35,8 +35,8 @@ struct Model
     labels::Labels
 end
 
-function Model(F,G,Gd,C,Dd;Ts=-1.0)
-    Model(F,G;Gd,C,Dd,Ts)
+function Model(F,G,Gd,C,Dd;Ts=-1.0, h=zeros(0))
+    Model(F,G;Gd,h,C,Dd,Ts)
 end
 
 function Model(F,G;Ts=-1.0, C = zeros(0,0), Gd = zeros(0,0), h=zeros(0), Dd = zeros(0,0), wmin=zeros(0), wmax=zeros(0))
@@ -57,10 +57,15 @@ function Model(F,G;Ts=-1.0, C = zeros(0,0), Gd = zeros(0,0), h=zeros(0), Dd = ze
     Model(float(F),float(G),float(Gd), float(h),float(wmin), float(wmax), float(C),float(Dd),nx,nu,ny,nd,Ts,Labels(nx,nu,ny,nd))
 end
 
-function Model(A,B,Ts; Bd = zeros(0,0), C = zeros(0,0), Dd = zeros(0,0))
-    (size(A,1)==size(B,1)) || throw(ArgumentError("Dimensions of ss-model incompatible"))
-    F,G,Gd=zoh(A,B,Ts;Bd)
-    return Model(F,G;Ts,Gd,C,Dd)
+function Model(A,B,Ts; Bd = zeros(0,0), C = zeros(0,0), Dd = zeros(0,0), h=zeros(0))
+    dims = size(B);
+    nx,nu = length(dims)==1 ? (dims[1],1) : dims
+    (size(A,1) == nx) || throw(ArgumentError("Dimensions of ss-model incompatible"))
+    Bd = isempty(Bd) ? zeros(nx,0) : Bd
+    h  = isempty(h) ? zeros(nx) : h 
+    F,Gext =zoh(A,[B Bd h],Ts)
+    G,Gd,h = Gext[:,1:nu], Gext[:,nu+1:nu+size(Bd,2)], Gext[:,end]
+    return Model(F,G;Ts,Gd,C,Dd,h)
 end
 
 function Model(A,B,Bd,C,Dd,Ts::AbstractFloat)
