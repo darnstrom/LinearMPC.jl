@@ -3,7 +3,7 @@ void mpc_predict_state(c_float* state, c_float* control){
     c_float state_old[N_STATE];
     for(i=0;i<N_STATE;i++) state_old[i] = state[i];
     for(i=0,disp_F=0,disp_G=0;i<N_STATE;i++){
-        state[i] = 0;
+        state[i] = OFFSET_OBSERVER[i];
         for(j=0;j<N_STATE;j++) state[i] += F_OBSERVER[disp_F++]*state_old[j];
         for(j=0;j<N_CONTROL;j++) state[i] += G_OBSERVER[disp_G++]*control[j];
     }
