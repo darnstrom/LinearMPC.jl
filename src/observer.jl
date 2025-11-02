@@ -39,18 +39,14 @@ function codegen(kf::KalmanFilter,fh,fsrc)
     ny,nx = size(kf.C)
     nu = size(kf.G,2)
     @printf(fh, "#define N_MEASUREMENT %d\n",ny);
-    @printf(fh, "extern c_float F_OBSERVER[%d];\n",nx*nx);
-    @printf(fh, "extern c_float G_OBSERVER[%d];\n",nx*nu);
-    @printf(fh, "extern c_float OFFSET_OBSERVER[%d];\n",nx);
+    @printf(fh, "extern c_float MPC_PLANT_DYNAMICS[%d];\n",nx*(1+nx+nu));
     @printf(fh, "extern c_float C_OBSERVER[%d];\n",ny*nx);
     @printf(fh, "extern c_float K_TRANSPOSE_OBSERVER[%d];\n",ny*nx);
     fmpc_h = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_observer.h"), "r");
     write(fh, read(fmpc_h))
     close(fmpc_h)
 
-    write_float_array(fsrc,kf.F'[:],"F_OBSERVER");
-    write_float_array(fsrc,kf.G[:],"G_OBSERVER");
-    write_float_array(fsrc,kf.h[:],"OFFSET_OBSERVER");
+    write_float_array(fsrc,[kf.h kf.F kf.G]'[:],"MPC_PLANT_DYNAMICS");
     write_float_array(fsrc,kf.C'[:],"C_OBSERVER");
     write_float_array(fsrc,kf.K[:],"K_TRANSPOSE_OBSERVER");
     fmpc_src = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_observer.c"), "r");
