@@ -116,6 +116,7 @@ Condense reference trajectory to single setpoint.
 """
 function condense_reference(mpc::Union{MPC,ExplicitMPC}, r)
     if mpc.settings.reference_condensation
+        isempty(mpc.traj2setpoint) && setup!(mpc)
         return mpc.traj2setpoint*r
     else
         return r
