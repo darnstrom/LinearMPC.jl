@@ -68,8 +68,8 @@ function Model(A,B,Ts; Bd = zeros(0,0), C = zeros(0,0), Dd = zeros(0,0), h=zeros
     return Model(F,G;Ts,Gd,C,Dd,h)
 end
 
-function Model(A,B,Bd,C,Dd,Ts::AbstractFloat)
-    Model(A,B,Ts;Bd,C,Dd)
+function Model(A,B,Bd,C,Dd,Ts::AbstractFloat;h=zeros(0))
+    Model(A,B,Ts;Bd,C,Dd,h)
 end
 
 using ForwardDiff

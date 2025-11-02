@@ -544,7 +544,9 @@ global templib
         set_objective!(mpc,R=0,Rr=1,Q=1)
         mpc.model.h .= [0.1;0.1]
         set_bounds!(mpc;umin=[-2],umax=[2],ymin=[-0.5],ymax=[0.5])
+        LinearMPC.set_state_observer!(mpc;Q=1e-3)
         dynamics = (x,u,d) -> mpc.model.F*x + mpc.model.G*u + [0.1;0.1]
-        sim= Simulation(dynamics,mpc;r=[0.5])
+        get_measurement = (x,d) -> mpc.state_observer.C*x + 0.01*randn(1)
+        sim= Simulation(dynamics,mpc;r=[0.5], get_measurement)
     end
 end
