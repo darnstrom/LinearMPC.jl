@@ -540,7 +540,7 @@ global templib
     end
     @testset "Constant offset" begin
         F,G = [1 0.1; 0 1], [0.005;0.1;;] # double integrator with Ts=0.1
-        mpc= LinearMPC.MPC(F,G;Ts=0.1,Np=25,C=[1 0;], h = [0.1;0.1])
+        mpc= LinearMPC.MPC(F,G;Ts=0.1,Np=25,C=[1 0;], offset = [0.1;0.1])
         set_objective!(mpc,R=0,Rr=1,Q=1)
         set_bounds!(mpc;umin=[-2],umax=[2],ymin=[-0.5],ymax=[0.5])
         LinearMPC.set_state_observer!(mpc;Q=1e-3)

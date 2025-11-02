@@ -60,7 +60,7 @@ end
 function create_controlbounds(mpc::MPC, Γ, Φ)
     nu,nx,Nb = mpc.model.nu, mpc.model.nx, mpc.Nc
     nth = sum(get_parameter_dims(mpc))
-    !iszero(mpc.model.h) && (nth+=1); # contant offset in dynamics 
+    !iszero(mpc.model.offset) && (nth+=1); # contant offset in dynamics 
 
     #-K*X + V = -K*(Γ V + Φ x0) + V 
     #         = (I-K*Γ)V -K Φ x0
@@ -101,7 +101,7 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
         nxe = sum(get_parameter_dims(mpc))
         nrx = mpc.nr
     end
-    !iszero(mpc.model.h) && (nxe+=1); # contant offset in dynamics 
+    !iszero(mpc.model.offset) && (nxe+=1); # contant offset in dynamics 
 
     ubtot,lbtot = zeros(0,1),zeros(0,1);
     Axtot,Autot = zeros(0,nxe*(Np+1)), zeros(0,nu*Nc);
@@ -122,7 +122,7 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
         Ar = isempty(c.Ar) || nrx == 0 ? zeros(mi,nrx) : c.Ar
         Ad = isempty(c.Ad) ? zeros(mi,mpc.model.nd) : c.Ad
         Aup = isempty(c.Aup) ? zeros(mi,mpc.nuprev) : c.Auip
-        Ah = iszero(mpc.model.h) ? zeros(mi,0) : zeros(mi,1)
+        Ah = iszero(mpc.model.offset) ? zeros(mi,0) : zeros(mi,1)
 
         Autot = [Autot; kron(eyeU[ks,:],c.Au)]
         Axtot = [Axtot; kron(eyeX[ks,:],[Ax Ar Ad Aup Ah])]
@@ -320,7 +320,7 @@ function mpc2mpqp(mpc::MPC; singlesided=false, single_soft=false)
     A, bu, bl, W, issoft, isbinary, prio = create_constraints(mpc,Φ,Γ)
 
     # Collapse constant term in dynamics
-    if(!iszero(mpc.model.h))
+    if(!iszero(mpc.model.offset))
         f += f_theta[:,end]
         f_theta = f_theta[:,1:end-1]
         bu += W[:,end]
@@ -443,9 +443,9 @@ function create_extended_system_and_cost(mpc::MPC)
         S[1:nx,:] -=mpc.K'*mpc.weights.R
     end
 
-    if(!iszero(mpc.model.h))
+    if(!iszero(mpc.model.offset))
         F = cat(F,1,dims=(1,2))
-        F[1:nx,end] .= mpc.model.h
+        F[1:nx,end] .= mpc.model.offset
         G = [G;zeros(1,nu)]
         S = [S;zeros(1,nu)]
         C = [C zeros(size(C,1),1)]

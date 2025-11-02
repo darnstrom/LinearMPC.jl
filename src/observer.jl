@@ -1,25 +1,25 @@
 struct KalmanFilter
     F::Matrix{Float64}
     G::Matrix{Float64}
-    h::Vector{Float64}
+    offset::Vector{Float64}
     C::Matrix{Float64}
     K::Matrix{Float64}
     x::Vector{Float64} 
 end
 
-function KalmanFilter(F,G,C;h=nothing, x0=nothing, Q=nothing,R=nothing)
+function KalmanFilter(F,G,C;offset=nothing, x0=nothing, Q=nothing,R=nothing)
     # Solve equation 
     ny,nx = size(C) 
     nu = size(G,2)
 
-    h = isnothing(h) ? zeros(nx) : h;
+    offset = isnothing(offset) ? zeros(nx) : offset;
     x0 = isnothing(x0) ? zeros(nx) : x0;
     Q = isnothing(Q) ? Matrix{Float64}(I,nx,nx) : matrixify(Q,nx);
     R = isnothing(R) ? Matrix{Float64}(I,ny,ny) : matrixify(R,nu);
 
     P,_ = ared(F',C',R,Q);
     K = P*C'/(C*P*C'+R) 
-    return KalmanFilter(F,G,h,C,K,x0)
+    return KalmanFilter(F,G,offset,C,K,x0)
 
 end
 
@@ -27,7 +27,7 @@ function set_state!(kf::KalmanFilter,x)
     kf.x[:] = x
 end
 function predict!(kf::KalmanFilter,u)
-    kf.x[:] = kf.F*kf.x + kf.G*u +kf.h
+    kf.x[:] = kf.F*kf.x + kf.G*u +kf.offset
 end
 
 function correct!(kf::KalmanFilter,y)
@@ -46,7 +46,7 @@ function codegen(kf::KalmanFilter,fh,fsrc)
     write(fh, read(fmpc_h))
     close(fmpc_h)
 
-    write_float_array(fsrc,[kf.h kf.F kf.G]'[:],"MPC_PLANT_DYNAMICS");
+    write_float_array(fsrc,[kf.offset kf.F kf.G]'[:],"MPC_PLANT_DYNAMICS");
     write_float_array(fsrc,kf.C'[:],"C_OBSERVER");
     write_float_array(fsrc,kf.K[:],"K_TRANSPOSE_OBSERVER");
     fmpc_src = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_observer.c"), "r");
