@@ -109,12 +109,12 @@ function MPC(model::Model;Np=10,Nc=Np)
        nothing,zeros(model.nx))
 end
 
-function MPC(F,G;Gd=zeros(0,0), C=zeros(0,0), Dd= zeros(0,0), Ts= -1.0, Np=10, Nc = Np)
-    MPC(Model(F,G;Gd,C,Dd,Ts);Np,Nc);
+function MPC(F,G;Gd=zeros(0,0), C=zeros(0,0), Dd= zeros(0,0), offset=zeros(0), Ts= -1.0, Np=10, Nc = Np)
+    MPC(Model(F,G;Gd,offset,C,Dd,Ts);Np,Nc);
 end
 
-function MPC(A,B,Ts::Float64; Bd = zeros(0,0), C = zeros(0,0), Dd = zeros(0,0), Np=10, Nc=Np)
-    MPC(Model(A,B,Ts;Bd,C,Dd);Np,Nc)
+function MPC(A,B,Ts::Float64; Bd = zeros(0,0), offset=zeros(0), C = zeros(0,0), Dd = zeros(0,0), Np=10, Nc=Np)
+    MPC(Model(A,B,Ts;Bd,offset,C,Dd);Np,Nc)
 end
 
 function MPC(sys; Ts=1.0, Np=10, Nc=Np)

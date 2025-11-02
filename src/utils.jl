@@ -147,17 +147,10 @@ function range2region(range)
     return (A = zeros(length(ub), 0), b=zeros(0), lb=lb,ub=ub)
 end
 
-function zoh(A,B,Ts; Bd = zeros(0,0))
-  dims = size(B);
-  nx,nu = length(dims)==1 ? (dims[1],1) : dims
-  if isempty(Bd)
-      M = exp([A*Ts  B*Ts; zeros(nu, nx + nu)])
-      return M[1:nx, 1:nx], M[1:nx, nx+1:nx+nu],zeros(0,0)
-  else
-      nd = size(Bd,2);
-      M = exp([A*Ts  [B Bd]*Ts; zeros(nu+nd, nx + nu + nd)])
-      return M[1:nx, 1:nx], M[1:nx, nx+1:nx+nu], M[1:nx, nx+nu+1:nx+nu+nd]
-  end
+function zoh(A,B,Ts)
+  nx,nu= size(B);
+  M = exp([A*Ts  B*Ts; zeros(nu, nx + nu)])
+  return M[1:nx, 1:nx], M[1:nx, nx+1:nx+nu]
 end
 
 matrixify(x::Number, n::Int) = diagm(fill(float(x),n))
