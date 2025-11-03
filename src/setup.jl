@@ -151,14 +151,15 @@ function set_prestabilizing_feedback!(mpc)
 end
 
 """
-    move_block!(mpc,block)
+    move_block!(mpc,block; type=:ZOH)
 
 Reduce the number of controls by keeping it constant in blocks.
 For example, `block`=[2,1,3] keeps the control constant for 2 time-steps, 1 time step, and 3 time steps.
 * if sum(block) ≠ mpc.Np, the resulting block will be padded or clipped
 * if `block` is an Int, a vector with constant block size is created
+Supported types are zero-order hold (:ZOH) and first-order hold (:FOH)
 """
-function move_block!(mpc,block)
+function move_block!(mpc,block; type=:ZOH)
     block = Int.(copy(block))
     if block isa Number
         block = block <= 0  ? Int[] : fill(block,mpc.Np ÷ block +1)
@@ -169,6 +170,7 @@ function move_block!(mpc,block)
         mpc.mpqp_issetup = false
         return
     end
+    mpc.settings.move_block_foh = type==:FOH # Defaults to ZOH if type =/= :ZOH
     Nnew = sum(block)
     if Nnew == mpc.Np
         mpc.move_blocks = block
