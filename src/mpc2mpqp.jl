@@ -268,7 +268,8 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
                 if mpc.settings.reference_condensation
                     Is = repeat(I(ny),mpc.Np)
                     if(isempty(mpc.settings.traj2setpoint))
-                        mpc.traj2setpoint = (inv(H)*Fr*Is)\(inv(H)*Fr)
+                        W = cat(1e6*I(nu),I(nu*(Nc-1)),dims=(1,2))
+                        mpc.traj2setpoint = (W*inv(H)*Fr*Is)\(W*inv(H)*Fr)
                     else
                         mpc.traj2setpoint = mpc.settings.traj2setpoint
                     end
