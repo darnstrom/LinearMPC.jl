@@ -330,17 +330,29 @@ function mpc2mpqp(mpc::MPC; singlesided=false, single_soft=false)
 
     # Apply move blocking
     if(!isempty(mpc.move_blocks))
-        T,id = zeros(0,0), 0
         keep_bounds = Int[] 
-        for mb in [mpc.move_blocks[1:end-1];1]
-            T = cat(T,repeat(I(mpc.model.nu),mb,1),dims=(1,2))
-            keep_bounds = keep_bounds ∪ collect(id+1:id+mpc.model.nu)
-            id += mb*mpc.model.nu
+        nu = mpc.model.nu
+        if(!mpc.settings.move_block_foh)
+            T= zeros(0,0)
+            for (k,mb) in enumerate([mpc.move_blocks[1:end-1];1])
+                T = cat(T,repeat(I(nu),mb,1),dims=(1,2))
+                keep_bounds = keep_bounds ∪ collect((k-1)*nu+1:k*nu)
+            end
+        else
+            T = zeros(length(f),length(mpc.move_blocks)*nu)
+            offset = 0
+            for (k,mb) in enumerate(mpc.move_blocks[1:end-1])
+                block = [[(mb-i)/mb for i in 0:mb-1] [i/mb for i in 0:mb-1]]
+                T[offset*nu+1:(offset+mb)*nu,(k-1)*nu+1:(k+1)*nu] = kron(block,I(nu))
+                keep_bounds = keep_bounds ∪ collect((k-1)*nu+1:k*nu)
+                offset += mb
+            end
+            T[end-nu+1:end,end-nu+1:end] = I(nu)
         end
         A, H, f, f_theta = A*T, T'*H*T, T'*f, T'*f_theta
 
         # remove superfluous control bounds
-        keep = keep_bounds ∪ collect(mpc.model.nu*mpc.Nc+1:length(bu))
+        keep = keep_bounds ∪ collect(nu*mpc.Nc+1:length(bu))
         bu,bl,W = bu[keep],bl[keep], W[keep,:]
         issoft,isbinary,prio = issoft[keep],isbinary[keep],prio[keep]
         if (!iszero(mpc.K)) # prestab feedback -> A rows for bounds
