@@ -324,6 +324,7 @@ function mpc2mpqp(mpc::MPC; singlesided=false, single_soft=false)
     if(!iszero(mpc.model.offset))
         f += f_theta[:,end]
         f_theta = f_theta[:,1:end-1]
+        H_theta = H_theta[1:end-1,1:end-1]
         bu += W[:,end]
         bl += W[:,end]
         W = W[:,1:end-1]
