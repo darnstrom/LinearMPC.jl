@@ -98,7 +98,7 @@ function get_reference_preview(rs, k, Np)
 end
 
 function Simulation(mpc::Union{MPC,ExplicitMPC}; kwargs...)
-    return Simulation((xk,uk,dk)-> mpc.model.F*xk +mpc.model.G*uk+mpc.model.Gd*dk+mpc.model.offset, mpc; kwargs...)
+    return Simulation(mpc.model.true_dynamics, mpc; kwargs...)
 end
 
 using RecipesBase
