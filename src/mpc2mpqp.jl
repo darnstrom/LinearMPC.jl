@@ -406,8 +406,8 @@ end
 
 function create_extended_system_and_cost(mpc::MPC)
     F,G,C = mpc.model.F-mpc.model.G*mpc.K, mpc.model.G, mpc.model.C
-    Q,R,Rr,S = mpc.weights.Q, copy(mpc.weights.R), mpc.weights.Rr, mpc.weights.S 
-    Qf = iszero(mpc.weights.Qf) && iszero(mpc.weights.Qfx) ? Q : mpc.weights.Qf
+    Q,R,Rr,S = copy(mpc.weights.Q), copy(mpc.weights.R), copy(mpc.weights.Rr), copy(mpc.weights.S)
+    Qf = iszero(mpc.weights.Qf) && iszero(mpc.weights.Qfx) ? Q : copy(mpc.weights.Qf)
 
     nx,nr,nd,nuprev = get_parameter_dims(mpc)
     mpc.nr, mpc.nuprev =  nr,nuprev
