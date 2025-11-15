@@ -29,7 +29,7 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
     
     xs = zeros(mpc.model.nx,N);
     ys = zeros(ny,N);
-    rs = zeros(mpc.model.ny,N);
+    rs = repeat(mpc.model.C*mpc.model.xo,1,N)
     ds = zeros(mpc.model.nd,N);
     us = zeros(mpc.model.nu,N)
     xhats = zeros(mpc.model.nx,N);
