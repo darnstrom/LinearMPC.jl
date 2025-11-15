@@ -550,13 +550,15 @@ global templib
         @test all(abs.(sim.xs[1,end-50:end].-0.5) .< 0.1) # Check if x1 converged to 0.5 
     end
     @testset "Operating points" begin
-        using LinearMPC
         f = (x,u,d) -> [x[1] - x[2];x[2]+u[1]-1]
         xo,uo = [0.5;0.5],[0.5]
         Ts  = 0.1
         model = LinearMPC.Model(f,(x,u,d)->x,xo,uo,Ts)
+
         mpc = LinearMPC.MPC(model;Np=100)
+        mpc.settings.reference_tracking = false
         set_objective!(mpc;Q=1,R=1,Rr=0)
+
         sim = LinearMPC.Simulation(mpc;x0 = [0.1;0], N = 100)
         @test norm(sim.xs[:,end]-xo) < 1e-4
         # Update opearting point

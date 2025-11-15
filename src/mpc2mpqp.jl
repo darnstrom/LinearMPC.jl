@@ -325,6 +325,12 @@ For a given MPC structure `mpc`, form the multi-parametric QP `mpQP`.
 
 """
 function mpc2mpqp(mpc::MPC; singlesided=false, single_soft=false)
+    if(mpc.settings.reference_tracking && !iszero(mpc.model.uo) && !iszero(mpc.weights.R))
+        @warn("Tracking and a direct penalty on u can yield steady-state error. 
+Consider instead to:
+1) Setting R=0 and Rr≠0               →  penalize change in u instead
+2) Setting reference_tracking = false →  regulation to the operating point.")
+    end
 
     F,G,C,Q,R,S,Qf = create_extended_system_and_cost(mpc) 
 
