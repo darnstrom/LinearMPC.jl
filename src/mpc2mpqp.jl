@@ -60,7 +60,7 @@ end
 function create_controlbounds(mpc::MPC, Γ, Φ)
     nu,nx,Nb = mpc.model.nu, mpc.model.nx, mpc.Nc
     nth = sum(get_parameter_dims(mpc))
-    !iszero(mpc.model.offset) && (nth+=1); # contant offset in dynamics 
+    !iszero(mpc.model.offset) && (nth+=1); # constant offset in dynamics
 
     #-K*X + V = -K*(Γ V + Φ x0) + V 
     #         = (I-K*Γ)V -K Φ x0
@@ -101,7 +101,7 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
         nxe = sum(get_parameter_dims(mpc))
         nrx = mpc.nr
     end
-    !iszero(mpc.model.offset) && (nxe+=1); # contant offset in dynamics 
+    !iszero(mpc.model.offset) && (nxe+=1); # constant offset in dynamics
 
     ubtot,lbtot = zeros(0,1),zeros(0,1);
     Axtot,Autot = zeros(0,nxe*(Np+1)), zeros(0,nu*Nc);
@@ -181,6 +181,7 @@ function create_constraints(mpc,Φ,Γ)
 
     n = size(Γ,2);
     nth = sum(get_parameter_dims(mpc))
+    !iszero(mpc.model.offset) && (nth +=1); # constant offset in dynamics
     # Control bounds
     if(!isempty(mpc.umax))
         A,bu,bl,W = create_controlbounds(mpc,Γ,Φ)
@@ -260,6 +261,9 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
     # f_theta & H_theta for state parameters
     f_theta  = Γ'*CQCtot*Φ; # from x0
     H_theta  = Φ'*CQCtot*Φ
+    if(!iszero(mpc.model.xo))
+        f -= Γ'*CQCtot*repeat([mpc.model.xo;zeros(nx-nxp)],N+1)
+    end
 
     # ==== From x' S u ====
     if(!iszero(S))
