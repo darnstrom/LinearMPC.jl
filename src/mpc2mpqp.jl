@@ -229,12 +229,27 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
     Qf = Qf[pos_ids_Qf,pos_ids_Qf];
     Cf = C[pos_ids_Qf,:];
 
+
     # Get parameter dimensions
     nxp, nrp, ndp, nup = get_parameter_dims(mpc)
 
     # ==== From u' R u ====
     H = kron(I(Nc),R);
+    f = zeros(size(H,1),1);
     H[end-nu+1:end,end-nu+1:end] .+= (N-Nc)*R # To accound for Nc < N...
+
+    # Compensate for nonzero operating point
+    if(!iszero(mpc.model.uo))
+        Uo = repeat(mpc.model.uo,Nc)
+        f-=H*Uo
+        if(!iszero(mpc.K) && !iszero(R)) # contribution from prestabilizing feedback
+            KR = [-mpc.K'*R;zeros(nx-size(mpc.K,2),nu)]
+            KRtot = [kron(I(Nc),KR);zeros((N-Nc+1)*nx,Nc*nu)]
+            KRtot[Nc*nx+1:N*nx,end-nu+1:end] = repeat(KR,N-Nc,1) # Due to control horizon
+            GKR= Γ'*KRtot
+            f-=(GKR+GKR')*Uo
+        end
+    end
 
     # ==== From (Cx)'Q(Cx) ====
     CQCtot  = kron(I(N),Cp'*Q*Cp);
@@ -290,7 +305,6 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
 
 
     # Add regularization for binary variables (won't change the solution)
-    f = zeros(size(H,1),1); 
     fbin_part = zeros(mpc.model.nu)
     fbin_part[mpc.binary_controls] = (mpc.umax[mpc.binary_controls] + mpc.umin[mpc.binary_controls])/2
     fbin = repeat(fbin_part,Nc)
