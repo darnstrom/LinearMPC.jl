@@ -240,7 +240,7 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
     H[end-nu+1:end,end-nu+1:end] .+= (N-Nc)*R # To accound for Nc < N...
 
     # Compensate for nonzero operating point
-    if(!iszero(mpc.model.uo))
+    if(!mpc.settings.reference_tracking && !iszero(mpc.model.uo))
         Uo = repeat(mpc.model.uo,Nc)
         f-=H*Uo
         if(!iszero(mpc.K) && !iszero(R)) # contribution from prestabilizing feedback
@@ -261,7 +261,7 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
     # f_theta & H_theta for state parameters
     f_theta  = Γ'*CQCtot*Φ; # from x0
     H_theta  = Φ'*CQCtot*Φ
-    if(!iszero(mpc.model.xo))
+    if(!mpc.settings.reference_tracking && !iszero(mpc.model.xo))
         f -= Γ'*CQCtot*repeat([mpc.model.xo;zeros(nx-nxp)],N+1)
     end
 
