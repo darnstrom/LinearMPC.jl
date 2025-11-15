@@ -21,7 +21,7 @@ export set_objective!, set_weights!, set_horizon!
 export set_binary_controls!
 export set_disturbance!, set_x0_uncertainty!
 export set_terminal_cost!,set_prestabilizing_feedback!
-export set_state_observer!
+export set_state_observer!, set_operating_point!
 export move_block!,set_labels!
 export settings!
 

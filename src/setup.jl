@@ -251,6 +251,7 @@ function settings!(mpc::MPC, dict)
         key = Symbol(key)
         if hasproperty(mpc.settings,key)
             setproperty!(mpc.settings,key,val)
+            mpc.mpqp_issetup = false
         else
             @warn("The setting \"$key\" does not exist")
         end
@@ -269,4 +270,20 @@ function set_state_observer!(mpc::Union{MPC,ExplicitMPC};
     C = isnothing(C) ? mpc.model.C : C
     offset = isnothing(offset) ? mpc.model.offset : offset 
     mpc.state_observer = KalmanFilter(F,G,C;offset,Q,R,x0)
+end
+
+"""
+    set_operating_point!(mpc;xo,uo,relinearize=true)
+Sets the operating point to the state xo and control uo.
+If relinearize is set to true, the original model will be relinearized around xo and uo.
+"""
+function set_operating_point!(mpc;xo=nothing,uo=nothing,relinearize=true)
+    !isnothing(xo) && (mpc.model.xo[:] = xo)
+    !isnothing(uo) && (mpc.model.uo[:] = uo)
+
+    if(relinearize)
+        # XXX will not relinearize measurement function (for that, need to store true_measure)
+        mpc.model = LinearMPC.Model(mpc.model.true_dynamics,(x,u,d)->mpc.model.C*x,xo,uo)
+    end
+    mpc.mpqp_issetup = false
 end
