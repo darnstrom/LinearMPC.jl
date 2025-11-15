@@ -60,7 +60,7 @@ end
 function create_controlbounds(mpc::MPC, Γ, Φ)
     nu,nx,Nb = mpc.model.nu, mpc.model.nx, mpc.Nc
     nth = sum(get_parameter_dims(mpc))
-    !iszero(mpc.model.offset) && (nth+=1); # contant offset in dynamics 
+    !iszero(mpc.model.offset) && (nth+=1); # constant offset in dynamics
 
     #-K*X + V = -K*(Γ V + Φ x0) + V 
     #         = (I-K*Γ)V -K Φ x0
@@ -101,7 +101,7 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
         nxe = sum(get_parameter_dims(mpc))
         nrx = mpc.nr
     end
-    !iszero(mpc.model.offset) && (nxe+=1); # contant offset in dynamics 
+    !iszero(mpc.model.offset) && (nxe+=1); # constant offset in dynamics
 
     ubtot,lbtot = zeros(0,1),zeros(0,1);
     Axtot,Autot = zeros(0,nxe*(Np+1)), zeros(0,nu*Nc);
@@ -181,6 +181,7 @@ function create_constraints(mpc,Φ,Γ)
 
     n = size(Γ,2);
     nth = sum(get_parameter_dims(mpc))
+    !iszero(mpc.model.offset) && (nth +=1); # constant offset in dynamics
     # Control bounds
     if(!isempty(mpc.umax))
         A,bu,bl,W = create_controlbounds(mpc,Γ,Φ)
@@ -229,12 +230,27 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
     Qf = Qf[pos_ids_Qf,pos_ids_Qf];
     Cf = C[pos_ids_Qf,:];
 
+
     # Get parameter dimensions
     nxp, nrp, ndp, nup = get_parameter_dims(mpc)
 
     # ==== From u' R u ====
     H = kron(I(Nc),R);
+    f = zeros(size(H,1),1);
     H[end-nu+1:end,end-nu+1:end] .+= (N-Nc)*R # To accound for Nc < N...
+
+    # Compensate for nonzero operating point
+    if(!mpc.settings.reference_tracking && !iszero(mpc.model.uo))
+        Uo = repeat(mpc.model.uo,Nc)
+        f-=H*Uo
+        if(!iszero(mpc.K) && !iszero(R)) # contribution from prestabilizing feedback
+            KR = [-mpc.K'*R;zeros(nx-size(mpc.K,2),nu)]
+            KRtot = [kron(I(Nc),KR);zeros((N-Nc+1)*nx,Nc*nu)]
+            KRtot[Nc*nx+1:N*nx,end-nu+1:end] = repeat(KR,N-Nc,1) # Due to control horizon
+            GKR= Γ'*KRtot
+            f-=(GKR+GKR')*Uo
+        end
+    end
 
     # ==== From (Cx)'Q(Cx) ====
     CQCtot  = kron(I(N),Cp'*Q*Cp);
@@ -245,6 +261,9 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
     # f_theta & H_theta for state parameters
     f_theta  = Γ'*CQCtot*Φ; # from x0
     H_theta  = Φ'*CQCtot*Φ
+    if(!mpc.settings.reference_tracking && !iszero(mpc.model.xo))
+        f -= Γ'*CQCtot*repeat([mpc.model.xo;zeros(nx-nxp)],N+1)
+    end
 
     # ==== From x' S u ====
     if(!iszero(S))
@@ -290,7 +309,6 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
 
 
     # Add regularization for binary variables (won't change the solution)
-    f = zeros(size(H,1),1); 
     fbin_part = zeros(mpc.model.nu)
     fbin_part[mpc.binary_controls] = (mpc.umax[mpc.binary_controls] + mpc.umin[mpc.binary_controls])/2
     fbin = repeat(fbin_part,Nc)
@@ -307,6 +325,12 @@ For a given MPC structure `mpc`, form the multi-parametric QP `mpQP`.
 
 """
 function mpc2mpqp(mpc::MPC; singlesided=false, single_soft=false)
+    if(mpc.settings.reference_tracking && !iszero(mpc.model.uo) && !iszero(mpc.weights.R))
+        @warn("Tracking and a direct penalty on u can yield steady-state error. 
+Consider instead to:
+1) Setting R=0 and Rr≠0               →  penalize change in u instead
+2) Setting reference_tracking = false →  regulation to the operating point.")
+    end
 
     F,G,C,Q,R,S,Qf = create_extended_system_and_cost(mpc) 
 
