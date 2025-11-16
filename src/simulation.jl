@@ -12,22 +12,34 @@ struct Simulation
     mpc::Union{MPC,ExplicitMPC}
 end
 
-function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx),T=-1.0, N=1000, r=nothing,d=nothing, callback=(x,u,d,k)->nothing, get_measurement= nothing)
+struct Scenario
+    x0::Vector{Float64}
+    T::Float64
+    N::Int
+    r::Union{Vector{Float64},Matrix{Float64},Nothing}
+    d::Union{Vector{Float64},Matrix{Float64},Nothing}
+    callback::Function
+    dynamics::Function
+    get_measurement::Union{Function,Nothing}
+end
 
+function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
     # Get number of time steps (prioritize T if it is entered)
-    N = T < 0 ? N : Int(abs(ceil(T/mpc.model.Ts)))
+    N = scenario.T < 0 ? scenario.N : Int(abs(ceil(scenario.T/mpc.model.Ts)))
     # Check if MPC has observer
     has_observer = !isnothing(mpc.state_observer)
     ny = has_observer ? size(mpc.state_observer.C,1) : mpc.model.ny
-    if isnothing(get_measurement)
+    if isnothing(scenario.get_measurement)
         if has_observer 
             get_measurement = (x,d) -> mpc.state_observer.C*x+mpc.model.Dd*d
         else
             get_measurement = (x,d) -> mpc.model.C*x+mpc.model.Dd*d
         end
+    else
+        get_measurement = scenario.get_measurement
     end
 
-    x,u = x0,zeros(mpc.model.nu)
+    x,u = scenario.x0,zeros(mpc.model.nu)
     
     xs = zeros(mpc.model.nx,N);
     ys = zeros(ny,N);
@@ -38,20 +50,20 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
 
     solve_times = zeros(N)
     # Setup reference 
-    if(!isnothing(r))
-        Nr = min(N,size(r,2))
-        rs[:,1:Nr].= r[:,1:Nr]
-        rs[:,size(r,2)+1:end] .= r[:,end] # hold last value of reference
+    if(!isnothing(scenario.r))
+        Nr = min(N,size(scenario.r,2))
+        rs[:,1:Nr].= scenario.r[:,1:Nr]
+        rs[:,size(scenario.r,2)+1:end] .= scenario.r[:,end] # hold last value
     end
 
     # Setup disturbance
-    if(!isnothing(d))
+    if(!isnothing(scenario.d))
         ds[:,1:size(d,2)].= d
         ds[:,size(d,2)+1:end] .= d[:,end] # hold last
     end
 
     # Start the simulation
-    has_observer && set_state!(mpc,x0)
+    has_observer && set_state!(mpc,scenario.x0)
     for k = 1:N
         xs[:,k], ys[:,k] = x, get_measurement(x,ds[:,k])
 
@@ -59,7 +71,7 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
         xhat = has_observer ? correct_state!(mpc,ys[:,k]) : x
         xhats[:,k] = xhat
         # Get reference
-        if mpc.settings.reference_preview && !isnothing(r)
+        if mpc.settings.reference_preview && !isnothing(scenario.r)
             # Reference preview mode: provide future references
             r = get_reference_preview(rs, k, mpc.Np)
         else # Standard mode: provide current reference
@@ -70,13 +82,18 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
 
         has_observer && predict_state!(mpc,u)
         
-        x = dynamics(x,u,ds[:,k])
-        callback(x,u,ds[:,k],k)
+        x = scenario.dynamics(x,u,ds[:,k])
+        scenario.callback(x,u,ds[:,k],k)
         us[:,k] = u
     end
     Ts = mpc.model.Ts < 0.0 ? 1.0 : mpc.model.Ts
     return Simulation(collect(Ts*(0:1:N-1)),ys,us,xs,rs,ds,xhats,solve_times,mpc)
 end
+
+function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC};x0=zeros(mpc.model.nx),T=-1.0, N=1000, r=nothing,d=nothing, callback=(x,u,d,k)->nothing, get_measurement= nothing)
+    return Simulation(mpc,Scenario(x0,T,N,r,d,callback,dynamics,get_measurement))
+end
+
 
 """
     get_reference_preview(rs, k, Np)
