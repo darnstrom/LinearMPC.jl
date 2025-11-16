@@ -12,8 +12,10 @@ struct Simulation
     mpc::Union{MPC,ExplicitMPC}
 end
 
-function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx),N=1000, r=nothing,d=nothing, callback=(x,u,d,k)->nothing, get_measurement= nothing)
+function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx),T=-1.0, N=1000, r=nothing,d=nothing, callback=(x,u,d,k)->nothing, get_measurement= nothing)
 
+    # Get number of time steps (prioritize T if it is entered)
+    N = T < 0 ? N : Int(abs(ceil(T/mpc.model.Ts)))
     # Check if MPC has observer
     has_observer = !isnothing(mpc.state_observer)
     ny = has_observer ? size(mpc.state_observer.C,1) : mpc.model.ny
