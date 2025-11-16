@@ -19,13 +19,19 @@ struct Scenario
     r::Union{Vector{Float64},Matrix{Float64},Nothing}
     d::Union{Vector{Float64},Matrix{Float64},Nothing}
     callback::Function
-    dynamics::Function
+    dynamics::Union{Function,Nothing}
     get_measurement::Union{Function,Nothing}
+end
+
+function Scenario(x0;T=-1.0,N=1000,r=nothing,d=nothing,
+        callback = (x,u,d,k)->nothing, get_measurement=nothing, dynamics = nothing)
+    return Scenario(x0,T,N,r,d,callback,dynamics,get_measurement)
 end
 
 function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
     # Get number of time steps (prioritize T if it is entered)
     N = scenario.T < 0 ? scenario.N : Int(abs(ceil(scenario.T/mpc.model.Ts)))
+    dynamics = isnothing(scenario.dynamics) ? mpc.model.true_dynamics : scenario.dynamics
     # Check if MPC has observer
     has_observer = !isnothing(mpc.state_observer)
     ny = has_observer ? size(mpc.state_observer.C,1) : mpc.model.ny
@@ -82,7 +88,7 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
 
         has_observer && predict_state!(mpc,u)
         
-        x = scenario.dynamics(x,u,ds[:,k])
+        x = dynamics(x,u,ds[:,k])
         scenario.callback(x,u,ds[:,k],k)
         us[:,k] = u
     end
