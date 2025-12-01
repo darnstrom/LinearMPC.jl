@@ -1,13 +1,18 @@
 """
-    compute_control(mpc,x;r,uprev)
+    compute_control(mpc,x;r,d,uprev,l)
 
-For a given MPC `mpc` and state `x`, compute the optimal control action. 
+For a given MPC `mpc` and state `x`, compute the optimal control action.
 
-Optional arguments: 
+Optional arguments:
 * `r` - reference value. Can be:
   - Vector of length `ny` for constant reference
   - Matrix of size `(ny, Np)` for reference preview (when `mpc.settings.reference_preview = true`)
+* `d` - measured disturbance
 * `uprev` - previous control action
+* `l` - linear cost on control. Can be:
+  - Vector of length `nu` for constant linear cost across horizon
+  - Matrix of size `(nu, Nc)` for time-varying linear cost
+  - Nothing (default) for no linear cost
 
 All arguments default to zero.
 
@@ -20,26 +25,33 @@ u = compute_control(mpc, x; r=[1.0, 0.0])
 r_trajectory = [1.0 1.5 2.0 2.0 2.0;   # ny × Np matrix
                 0.0 0.0 0.5 1.0 1.0]
 u = compute_control(mpc, x; r=r_trajectory)
+
+# With linear cost (requires mpc.settings.linear_cost = true)
+u = compute_control(mpc, x; l=[1.0])  # Constant cost
+
+# Time-varying linear cost
+l_trajectory = [1.0 0.5 0.0 -0.5 -1.0]  # nu × Nc matrix
+u = compute_control(mpc, x; l=l_trajectory)
 ```
 """
-function compute_control(mpc::MPC,x;r=nothing,d=nothing,uprev=nothing, check=true)
-    θ = form_parameter(mpc,x,r,d,uprev)
+function compute_control(mpc::MPC,x;r=nothing,d=nothing,uprev=nothing,l=nothing, check=true)
+    θ = form_parameter(mpc,x,r,d,uprev,l)
     udaqp,fval,exitflag,info = solve(mpc,θ)
     check && @assert(exitflag>=1)
     mpc.uprev = udaqp[1:mpc.model.nu]-mpc.K*θ[1:mpc.model.nx]
     return mpc.uprev
 end
 
-function compute_control(empc::ExplicitMPC,x;r=nothing,d=nothing,uprev=nothing, check=true)
+function compute_control(empc::ExplicitMPC,x;r=nothing,d=nothing,uprev=nothing,l=nothing, check=true)
     if isnothing(empc.bst)
         @error "Need to build a binary search tree to evaluate control law"
     else
-        return ParametricDAQP.evaluate(empc.bst,form_parameter(empc,x,r,d,uprev))
+        return ParametricDAQP.evaluate(empc.bst,form_parameter(empc,x,r,d,uprev,l))
     end
 end
 
-function compute_control_trajectory(mpc::MPC,x;r=nothing,d=nothing,uprev=nothing, check=true)
-    θ = form_parameter(mpc,x,r,d,uprev)
+function compute_control_trajectory(mpc::MPC,x;r=nothing,d=nothing,uprev=nothing,l=nothing, check=true)
+    θ = form_parameter(mpc,x,r,d,uprev,l)
     udaqp,_,exitflag,_ = solve(mpc,θ)
     check && @assert(exitflag>=1)
     mpc.uprev = udaqp[1:mpc.model.nu]-mpc.K*θ[1:mpc.model.nx]
@@ -124,6 +136,56 @@ function condense_reference(mpc::Union{MPC,ExplicitMPC}, r)
 end
 
 """
+    format_linear_cost(mpc, l)
+
+Format linear cost input for MPC controller. Handles both single vector
+and time-varying scenarios.
+
+# Arguments
+- `mpc`: MPC or ExplicitMPC controller
+- `l`: Linear cost input. Can be:
+  - `nothing`: Returns zero vector of length `nl`
+  - Vector of length `nu`: Broadcast across control horizon
+  - Vector of length `nl=nu*Nc`: Used directly
+  - Matrix of size `(nu, Nc)`: Flattened and used directly
+"""
+function format_linear_cost(mpc::Union{MPC,ExplicitMPC}, l)
+    # Use stored mpc.nl (set during setup!) to ensure consistency with the QP
+    mpc.nl == 0 && return zeros(0)
+    isnothing(l) && return zeros(mpc.nl)
+
+    nu = mpc.model.nu
+    Nc_eff = mpc.nl ÷ nu  # Effective Nc (handles move blocking)
+
+    if l isa AbstractVector
+        if length(l) == nu
+            # Single vector - broadcast across control horizon
+            return repeat(l, Nc_eff)
+        elseif length(l) == mpc.nl
+            # Already correct length
+            return l
+        else
+            error("Linear cost vector length ($(length(l))) must match nu ($nu) or nl ($(mpc.nl))")
+        end
+    elseif l isa AbstractMatrix
+        if size(l, 1) != nu
+            error("Linear cost matrix must have $nu rows (number of controls)")
+        end
+        if size(l, 2) >= Nc_eff
+            return vec(l[:, 1:Nc_eff])
+        else
+            # Pad with last column
+            l_ext = zeros(nu, Nc_eff)
+            l_ext[:, 1:size(l, 2)] = l
+            l_ext[:, size(l, 2)+1:end] .= l[:, end]
+            return vec(l_ext)
+        end
+    else
+        error("Linear cost must be a vector or matrix")
+    end
+end
+
+"""
     xdaqp,fval,exitflag,info = solve(mpc,θ)
 
 Solve corresponding QP given the parameter θ
@@ -143,8 +205,8 @@ function solve(mpc::MPC,θ)
 end
 
 function range2region(range)
-    lb = [range.xmin;range.rmin;range.dmin;range.umin]
-    ub = [range.xmax;range.rmax;range.dmax;range.umax]
+    lb = [range.xmin;range.rmin;range.dmin;range.umin;range.lmin]
+    ub = [range.xmax;range.rmax;range.dmax;range.umax;range.lmax]
     return (A = zeros(length(ub), 0), b=zeros(0), lb=lb,ub=ub)
 end
 

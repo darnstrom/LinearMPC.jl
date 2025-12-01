@@ -46,19 +46,21 @@ Base.@kwdef mutable struct MPCSettings
     reference_condensation::Bool= false
     reference_tracking::Bool= true
     reference_preview::Bool = false
+    linear_cost::Bool = false
     soft_weight::Float64= 1e6
     solver_opts::Dict{Symbol,Any} = Dict()
     traj2setpoint::Matrix{Float64} = zeros(0,0)
 end
 
 # MPC controller
-mutable struct MPC 
+mutable struct MPC
 
     model::Model
 
-    # parameters 
+    # parameters
     nr::Int
     nuprev::Int
+    nl::Int
 
     # Horizons 
     Np::Int # Prediction
@@ -102,7 +104,7 @@ mutable struct MPC
 end
 
 function MPC(model::Model;Np=10,Nc=Np)
-    MPC(model,0,0,Np,Nc,
+    MPC(model,0,0,0,Np,Nc,
         MPCWeights(model.nu,model.nx,model.ny),
         zeros(0),zeros(0),zeros(0),
         Constraint[],MPCSettings(),nothing,
@@ -134,12 +136,15 @@ struct ParameterRange
 
     umin::Vector{Float64}
     umax::Vector{Float64}
+
+    lmin::Vector{Float64}
+    lmax::Vector{Float64}
 end
 
 
 function ParameterRange(mpc::MPC)
 
-    nx,nr,nd,nuprev = get_parameter_dims(mpc);
+    nx,nr,nd,nuprev,nl = get_parameter_dims(mpc);
 
     xmin,xmax = -100*ones(nx),100*ones(nx)
     rmin,rmax = -100*ones(nr),100*ones(nr)
@@ -152,9 +157,11 @@ function ParameterRange(mpc::MPC)
     else
         umin,umax = zeros(0),zeros(0)
     end
+    lmin,lmax = -100*ones(nl),100*ones(nl)
 
     return ParameterRange(xmin,xmax,
                           rmin,rmax,
                           dmin,dmax,
-                          umin,umax)
+                          umin,umax,
+                          lmin,lmax)
 end

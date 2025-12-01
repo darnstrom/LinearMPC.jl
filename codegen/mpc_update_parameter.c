@@ -1,8 +1,12 @@
-void  mpc_update_parameter(c_float* parameter, c_float* control, c_float* state, c_float* reference, c_float* disturbance){
+#if N_LINEAR_COST > 0
+void mpc_update_parameter(c_float* parameter, c_float* control, c_float* state, c_float* reference, c_float* disturbance, c_float* linear_cost){
+#else
+void mpc_update_parameter(c_float* parameter, c_float* control, c_float* state, c_float* reference, c_float* disturbance){
+#endif
     int i,j;
     // update parameter
     for(i=0,j=0;j<N_STATE;i++, j++) parameter[i] = state[j];
-#ifdef N_PREVIEW_HORIZON 
+#ifdef N_PREVIEW_HORIZON
     int disp = 0;
     for(;i<N_REFERENCE;i++) parameter[i] = 0.0; // reset parameter
     for(i=0;i<N_REFERENCE*N_PREVIEW_HORIZON;i++)
@@ -14,4 +18,7 @@ void  mpc_update_parameter(c_float* parameter, c_float* control, c_float* state,
 #endif
     for(j=0;j<N_DISTURBANCE;i++, j++) parameter[i] = disturbance[j];
     for(j=0;j<N_CONTROL_PREV;i++, j++) parameter[i] = control[j];
+#if N_LINEAR_COST > 0
+    for(j=0;j<N_LINEAR_COST;i++, j++) parameter[i] = linear_cost[j];
+#endif
 }

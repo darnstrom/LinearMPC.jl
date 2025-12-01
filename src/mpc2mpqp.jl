@@ -29,16 +29,22 @@ function state_predictor(F,G,Np,Nc)
 end
 
 function get_parameter_dims(mpc::MPC)
+    # Use stored values if QP is set up, otherwise compute from settings
+    # This ensures consistency between the QP and parameter vector at runtime
+    if mpc.mpqp_issetup
+        return mpc.model.nx, mpc.nr, mpc.model.nd, mpc.nuprev, mpc.nl
+    end
     nr = mpc.settings.reference_tracking ?  mpc.model.ny : 0
     if mpc.settings.reference_preview && !mpc.settings.reference_condensation && nr > 0
         nr = nr * mpc.Np  # Reference preview uses Np time steps
     end
     nuprev = iszero(mpc.weights.Rr) ? 0 : mpc.model.nu
-    return mpc.model.nx,nr,mpc.model.nd,nuprev
+    nl = mpc.settings.linear_cost ? mpc.model.nu * mpc.Nc : 0
+    return mpc.model.nx,nr,mpc.model.nd,nuprev,nl
 end
 
 function get_parameter_names(mpc::MPC)
-    nx,nr,nd,nuprev = get_parameter_dims(mpc)
+    nx,nr,nd,nuprev,nl = get_parameter_dims(mpc)
     names = copy(mpc.model.labels.x)
     if nr > 0
         if mpc.settings.reference_preview && !mpc.settings.reference_condensation
@@ -52,14 +58,20 @@ function get_parameter_names(mpc::MPC)
     end
     nd>0 && push!(names,mpc.model.labels.d...)
     nuprev>0 && push!(names,Symbol.(string.(mpc.model.labels.u).*"p")...)
+    if nl > 0
+        for k in 0:mpc.Nc-1
+            push!(names, Symbol.(string.(mpc.model.labels.u).*"l_$k")...)
+        end
+    end
     return names
 end
 
-# Create A u <= b+W*theta 
+# Create A u <= b+W*theta
 # correspoding to  lb<=u_i<=ub for i ∈ {1,2,...,Nc}
 function create_controlbounds(mpc::MPC, Γ, Φ)
     nu,nx,Nb = mpc.model.nu, mpc.model.nx, mpc.Nc
-    nth = sum(get_parameter_dims(mpc))
+    _,_,_,_,nl = get_parameter_dims(mpc)
+    nth = sum(get_parameter_dims(mpc)) - nl  # Exclude linear cost from state-related dimensions
     !iszero(mpc.model.offset) && (nth+=1); # constant offset in dynamics
 
     #-K*X + V = -K*(Γ V + Φ x0) + V 
@@ -72,6 +84,8 @@ function create_controlbounds(mpc::MPC, Γ, Φ)
         A = zeros(0,mpc.Nc*nu)
         W = zeros(Nb*nu,nth)
     end
+    # Append zero columns for linear cost parameters (they don't affect constraints)
+    nl > 0 && (W = [W zeros(size(W,1), nl)])
     # Create bounds
     ub = repeat(mpc.umax,Nb,1)
     lb = repeat(mpc.umin,Nb,1)
@@ -86,19 +100,20 @@ function create_controlbounds(mpc::MPC, Γ, Φ)
     return A,ub,lb, W 
 end
 
-# Create A u <= b+W*theta 
-# correspoding to lb <= Au*uk+ Ax*xk <=ub for k ∈ ks 
+# Create A u <= b+W*theta
+# correspoding to lb <= Au*uk+ Ax*xk <=ub for k ∈ ks
 function create_general_constraints(mpc::MPC,Γ,Φ)
     # extract data
     Np, Nc= mpc.Np, mpc.Nc
     m= length(mpc.constraints)
-    nu,nx = mpc.model.nu, mpc.model.nx 
+    nu,nx = mpc.model.nu, mpc.model.nx
+    _,_,_,_,nl = get_parameter_dims(mpc)
 
     if mpc.settings.reference_preview
-        nxe = sum(get_parameter_dims(mpc))-mpc.nr
+        nxe = sum(get_parameter_dims(mpc))-mpc.nr-nl
         nrx = 0
     else
-        nxe = sum(get_parameter_dims(mpc))
+        nxe = sum(get_parameter_dims(mpc))-nl
         nrx = mpc.nr
     end
     !iszero(mpc.model.offset) && (nxe+=1); # constant offset in dynamics
@@ -172,6 +187,9 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
         W = [W[:,1:nx] Wr W[:,nx+1:end]]
     end
 
+    # Append zero columns for linear cost parameters (they don't affect constraints)
+    nl > 0 && (W = [W zeros(size(W,1), nl)])
+
     return A,ubtot,lbtot,W,issoft,isbinary,prios
 end
 
@@ -232,7 +250,7 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
 
 
     # Get parameter dimensions
-    nxp, nrp, ndp, nup = get_parameter_dims(mpc)
+    nxp, nrp, ndp, nup, nlp = get_parameter_dims(mpc)
 
     # ==== From u' R u ====
     H = kron(I(Nc),R);
@@ -307,6 +325,19 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
         end
     end
 
+    # ==== Linear cost on control inputs ====
+    if mpc.settings.linear_cost && nlp > 0
+        # Linear cost l'U adds directly to the linear term
+        # f_theta gets an identity block for the linear cost parameters
+        # This maps l = [l_0; l_1; ...; l_{Nc-1}] directly to U
+        Fl = I(nlp)
+        f_theta = [f_theta Fl]
+
+        # Extend H_theta with zero blocks (linear cost doesn't contribute to quadratic terms)
+        nth_current = size(H_theta, 1)
+        H_theta = [H_theta          zeros(nth_current, nlp);
+                   zeros(nlp, nth_current)  zeros(nlp, nlp)]
+    end
 
     # Add regularization for binary variables (won't change the solution)
     fbin_part = zeros(mpc.model.nu)
@@ -433,8 +464,8 @@ function create_extended_system_and_cost(mpc::MPC)
     Q,R,Rr,S = copy(mpc.weights.Q), copy(mpc.weights.R), copy(mpc.weights.Rr), copy(mpc.weights.S)
     Qf = iszero(mpc.weights.Qf) && iszero(mpc.weights.Qfx) ? Q : copy(mpc.weights.Qf)
 
-    nx,nr,nd,nuprev = get_parameter_dims(mpc)
-    mpc.nr, mpc.nuprev =  nr,nuprev
+    nx,nr,nd,nuprev,nl = get_parameter_dims(mpc)
+    mpc.nr, mpc.nuprev, mpc.nl = nr, nuprev, nl
     nu = mpc.model.nu 
 
     Np,Nc = mpc.Np, mpc.Nc

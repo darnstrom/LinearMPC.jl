@@ -567,4 +567,132 @@ global templib
         sim = LinearMPC.Simulation(mpc;x0 = [0.1;0], N = 100)
         @test norm(sim.xs[:,end]-xo) < 1e-4
     end
+
+    @testset "Linear Cost" begin
+        # Test basic linear cost functionality
+        A = [1 1; 0 1]
+        B = [0; 1]
+        C = [1.0 0; 0 1.0]
+        mpc = LinearMPC.MPC(A, B; C, Np=5, Nc=3)
+        set_bounds!(mpc; umin=[0.0], umax=[2.0])
+        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1])
+
+        # Test with linear cost disabled (default)
+        @test mpc.settings.linear_cost == false
+        control_no_lincost = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0])
+        @test length(control_no_lincost) == 1
+
+        # Enable linear cost
+        mpc.settings.linear_cost = true
+        setup!(mpc)
+
+        # Test parameter dimensions with linear cost
+        nx, nr, nd, nuprev, nl = LinearMPC.get_parameter_dims(mpc)
+        @test nx == 2  # State dimension
+        @test nr == 2  # Reference dimension (no preview)
+        @test nd == 0  # No disturbance
+        @test nuprev == 0  # No rate penalty
+        @test nl == 1 * 3  # nu × Nc = 1 × 3
+
+        # Test that linear cost affects control
+        control_zero_lincost = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0], l=zeros(1))
+        control_pos_lincost = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0], l=[1.0])
+        control_neg_lincost = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0], l=[-1.0])
+
+        # Linear cost should affect the control differently for positive vs negative
+        @test control_zero_lincost ≈ control_no_lincost
+        # The linear cost should decrease on increase the control action depending on the sign
+        @test control_pos_lincost[1] < control_zero_lincost[] < control_neg_lincost[1]
+
+        # Test with linear cost trajectory matrix (nu × Nc)
+        l_traj = [1.0 1.0 1.0]  # Different cost at each time step
+        control_traj = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0], l=l_traj)
+        @test control_traj[] ≈ control_pos_lincost[] # A trajectory of ones should give same result as a single 1
+
+        # Test that omitting linear cost gives same as zero linear cost
+        control_omit = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0])
+        @test control_omit[] ≈ control_zero_lincost[]
+    end
+
+    @testset "Linear Cost Simulation" begin
+        # Test simulation with linear cost trajectory
+        A = [0 -0.37; 0.37 0.74]
+        B = [0.37; 0.26]
+        C = [1.0 0; 0 1.0]
+        mpc = LinearMPC.MPC(A, B; C, Np=5, Nc=3)
+        set_bounds!(mpc; umin=[-2.0], umax=[2.0])
+        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1])
+        set_terminal_cost!(mpc)
+        mpc.settings.linear_cost = true
+        setup!(mpc)
+
+        N_sim = 20
+        r_traj = zeros(2, N_sim)
+
+        l_traj = zeros(1, N_sim)
+        l_traj[1, :] .= -0.5
+
+        # Simulation with linear cost
+        sim_with_l = LinearMPC.Simulation(mpc; x0=[1.0, 0.0], N=N_sim, r=r_traj, l=l_traj)
+        @test size(sim_with_l.xs) == (2, N_sim)
+        @test size(sim_with_l.us) == (1, N_sim)
+
+        # Simulation without linear cost
+        sim_no_l = LinearMPC.Simulation(mpc; x0=[1.0, 0.0], N=N_sim, r=r_traj)
+
+        # Compute cost of trajectories and verify that the cost of the controller optimizing linear cost is smaller
+        cost_l = sum(abs2, sim_with_l.xs) +
+            0.1*sum(abs2, sim_with_l.us) +
+            dot(sim_with_l.us, l_traj) +
+            dot(sim_with_l.xs[:, end], mpc.weights.Qf, sim_with_l.xs[:, end])
+
+        cost_no_l = sum(abs2, sim_no_l.xs) +
+            0.1*sum(abs2, sim_no_l.us) +
+            dot(sim_no_l.us, l_traj) +
+            dot(sim_no_l.xs[:, end], mpc.weights.Qf, sim_no_l.xs[:, end])
+        @test cost_l < cost_no_l
+
+        # Since linear cost is negative, we should have a positive steady-state control
+        @test sim_with_l.us[end] > 0.1
+    end
+
+    @testset "Linear Cost Codegen" begin
+        # Test code generation with linear cost enabled
+        A = [1 1; 0 1]
+        B = [0; 1]
+        C = [1.0 0; 0 1.0]
+        mpc = LinearMPC.MPC(A, B; C, Np=5, Nc=3)
+        set_bounds!(mpc; umin=[-2.0], umax=[2.0])
+        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1])
+        mpc.settings.linear_cost = true
+        setup!(mpc)
+
+        x = [0.5, 0.1]
+        r = [0.0, 0.0]
+        l_vec = [0.5, 0.3, 0.1]  # nu × Nc = 1 × 3
+
+        u_julia = compute_control(mpc, x; r=r, l=l_vec)
+
+        # Generate C code
+        srcdir = tempname()
+        LinearMPC.codegen(mpc; dir=srcdir)
+        src = [f for f in readdir(srcdir) if last(f,1) == "c"]
+        @test !isempty(src)
+
+        if(!isnothing(Sys.which("gcc")))
+            testlib = "mpctest."* Base.Libc.Libdl.dlext
+            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+
+            u = zeros(1)
+            d = zeros(0)
+
+            global templib = joinpath(srcdir, testlib)
+            ccall(("mpc_compute_control", templib), Cint,
+                  (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}),
+                  u, x, r, d, l_vec)
+
+            # Test that Julia and C implementations give same result
+            @test norm(u - u_julia) < 1e-10
+        end
+    end
 end

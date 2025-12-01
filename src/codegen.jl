@@ -48,10 +48,15 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
     @printf(fh, "#define N_REFERENCE %d\n",mpc.nr);
     @printf(fh, "#define N_DISTURBANCE %d\n",mpc.model.nd);
     @printf(fh, "#define N_CONTROL_PREV %d\n",mpc.nuprev);
+    @printf(fh, "#define N_LINEAR_COST %d\n",mpc.nl);
 
     @printf(fh, "extern c_float mpc_parameter[%d];\n", nth);
 
-    @printf(fh, "int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* disturbance); \n");
+    if mpc.nl > 0
+        @printf(fh, "int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* disturbance, c_float* linear_cost);\n");
+    else
+        @printf(fh, "int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* disturbance);\n");
+    end
 
     # SOURCE
     fsrc = open(joinpath(dir,"mpc_compute_control.c"), "w")
@@ -68,7 +73,21 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
     close(fmpc_para)
 
     # Compute control
-    write(fsrc, """
+    if mpc.nl > 0
+        write(fsrc, """
+int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* disturbance, c_float* linear_cost){
+    c_float mpc_parameter[$nth];
+    // update parameter
+    mpc_update_parameter(mpc_parameter,control,state,reference,disturbance,linear_cost);
+
+    // Get the solution at the parameter
+    $(fname)_evaluate(mpc_parameter,control);
+
+    return 1;
+}
+          """)
+    else
+        write(fsrc, """
 int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* disturbance){
     c_float mpc_parameter[$nth];
     // update parameter
@@ -80,6 +99,7 @@ int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_
     return 1;
 }
           """)
+    end
 
     if !isnothing(mpc.state_observer)
         @printf(fh, "#define N_CONTROL %d\n",mpc.model.nu);
@@ -113,6 +133,7 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
     @printf(fh, "#define N_REFERENCE %d\n",mpc.nr);
     @printf(fh, "#define N_DISTURBANCE %d\n",mpc.model.nd);
     @printf(fh, "#define N_CONTROL_PREV %d\n",mpc.nuprev);
+    @printf(fh, "#define N_LINEAR_COST %d\n",mpc.nl);
 
     @printf(fh, "#define N_CONTROL %d\n\n",mpc.model.nu);
 
