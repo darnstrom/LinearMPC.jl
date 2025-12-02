@@ -1,6 +1,7 @@
 using LinearMPC
 using Test
 using LinearAlgebra
+using Statistics
 global templib
 
 @testset verbose = true "LinearMPC.jl" begin
@@ -657,21 +658,30 @@ global templib
     end
 
     @testset "Linear Cost Codegen" begin
-        # Test code generation with linear cost enabled
+        # Test code generation with linear cost and move blocking
         A = [1 1; 0 1]
         B = [0; 1]
         C = [1.0 0; 0 1.0]
-        mpc = LinearMPC.MPC(A, B; C, Np=5, Nc=3)
+        mpc = LinearMPC.MPC(A, B; C, Np=10, Nc=10)
         set_bounds!(mpc; umin=[-2.0], umax=[2.0])
         set_objective!(mpc; Q=[1.0, 1.0], R=[0.1])
         mpc.settings.linear_cost = true
+
+        # Add move blocking: [2,3,3,2] → 4 blocked moves covering 10 steps
+        move_block!(mpc, [2, 3, 3, 2])
         setup!(mpc)
 
         x = [0.5, 0.1]
         r = [0.0, 0.0]
-        l_vec = [0.5, 0.3, 0.1]  # nu × Nc = 1 × 3
+        # Full Np trajectory (nu × Np = 1 × 10) - mean will be computed per block
+        l_traj = reshape(collect(range(0.1, 1.0, length=10)), 1, 10)
 
-        u_julia = compute_control(mpc, x; r=r, l=l_vec)
+        u_julia = compute_control(mpc, x; r=r, l=l_traj)
+
+        # If we preblock the cost trajectory by computing averages over move blocks and then repeating those averages over the blocks, we should get the same result
+        l_preblocked = [fill(mean(l_traj[1:2]), 2); fill(mean(l_traj[3:5]), 3); fill(mean(l_traj[6:8]), 3); fill(mean(l_traj[9:10]), 2)]'
+        u_preblocked = compute_control(mpc, x; r=r, l=l_preblocked)
+        @test u_preblocked ≈ u_julia
 
         # Generate C code
         srcdir = tempname()
@@ -687,12 +697,13 @@ global templib
             d = zeros(0)
 
             global templib = joinpath(srcdir, testlib)
+            # C code receives full l_traj and computes mean per block internally
             ccall(("mpc_compute_control", templib), Cint,
                   (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}),
-                  u, x, r, d, l_vec)
+                  u, x, r, d, l_traj)
 
             # Test that Julia and C implementations give same result
-            @test norm(u - u_julia) < 1e-10
+            @test u ≈ u_julia
         end
     end
 end

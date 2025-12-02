@@ -6,6 +6,7 @@ mutable struct ExplicitMPC
     nl::Int
     Np::Int
     Nc::Int
+    move_blocks::Vector{Int}
 
     solution::ParametricDAQP.Solution
     mpQP
@@ -36,7 +37,7 @@ function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false, opts=ParametricD
     opts.daqp_settings = merge(Dict(:sing_tol => 1e-11),opts.daqp_settings)
     sol,info = ParametricDAQP.mpsolve(mpQP, TH;opts)
     nx,nr,nd,nuprev,nl = get_parameter_dims(mpc)
-    empc = ExplicitMPC(mpc.model, nr, nuprev, nl, mpc.Np, mpc.Nc, sol, mpQP, TH,
+    empc = ExplicitMPC(mpc.model, nr, nuprev, nl, mpc.Np, mpc.Nc, mpc.move_blocks, sol, mpQP, TH,
                        nothing, mpc.settings, mpc.K, zeros(mpc.model.nu), mpc.traj2setpoint, mpc.state_observer)
 
     # Build binary search tree

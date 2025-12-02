@@ -50,6 +50,13 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
     @printf(fh, "#define N_CONTROL_PREV %d\n",mpc.nuprev);
     @printf(fh, "#define N_LINEAR_COST %d\n",mpc.nl);
 
+    # Generate move blocking data for linear cost averaging
+    if mpc.nl > 0 && !isempty(mpc.move_blocks)
+        @printf(fh, "#define N_MOVE_BLOCKS %d\n", length(mpc.move_blocks))
+        @printf(fh, "#define N_PREDICTION_HORIZON %d\n", mpc.Np)
+        @printf(fh, "extern int move_blocks[%d];\n", length(mpc.move_blocks))
+    end
+
     @printf(fh, "extern c_float mpc_parameter[%d];\n", nth);
 
     if mpc.nl > 0
@@ -65,6 +72,12 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
     if(mpc.settings.reference_condensation)
         @printf(fsrc, "#define N_PREVIEW_HORIZON %d\n",mpc.Np)
         write_float_array(fsrc,mpc.traj2setpoint[:],"traj2setpoint");
+    end
+
+    # Generate move_blocks array for linear cost averaging
+    if mpc.nl > 0 && !isempty(mpc.move_blocks)
+        @printf(fsrc, "#define N_CONTROL %d\n", mpc.model.nu)
+        write_int_array(fsrc, mpc.move_blocks, "move_blocks")
     end
 
     # Update parameter
@@ -163,6 +176,14 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
         write_float_array(fsrc,mpc.traj2setpoint[:],"traj2setpoint");
     end
 
+    # Generate move blocking data for linear cost averaging
+    if mpc.nl > 0 && !isempty(mpc.move_blocks)
+        @printf(fh, "#define N_MOVE_BLOCKS %d\n", length(mpc.move_blocks))
+        @printf(fh, "#define N_PREDICTION_HORIZON %d\n", mpc.Np)
+        @printf(fh, "extern int move_blocks[%d];\n", length(mpc.move_blocks))
+        write_int_array(fsrc, mpc.move_blocks, "move_blocks")
+    end
+
     fmpc_h = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_update_qp.h"), "r");
     write(fh, read(fmpc_h))
     close(fmpc_h)
@@ -188,8 +209,17 @@ end
 function write_float_array(f,a::Vector{<:Real},name::String)
     N = length(a)
     @printf(f, "c_float %s[%d] = {\n", name, N);
-    for el in a 
+    for el in a
         @printf(f, "(c_float)%.20f,\n", el);
+    end
+    @printf(f, "};\n");
+end
+
+function write_int_array(f,a::Vector{<:Integer},name::String)
+    N = length(a)
+    @printf(f, "int %s[%d] = {\n", name, N);
+    for el in a
+        @printf(f, "%d,\n", el);
     end
     @printf(f, "};\n");
 end

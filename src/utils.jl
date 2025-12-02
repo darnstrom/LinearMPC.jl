@@ -9,9 +9,10 @@ Optional arguments:
   - Matrix of size `(ny, Np)` for reference preview (when `mpc.settings.reference_preview = true`)
 * `d` - measured disturbance
 * `uprev` - previous control action
-* `l` - linear cost on control. Can be:
+* `l` - linear cost on control (requires `mpc.settings.linear_cost = true`). Can be:
   - Vector of length `nu` for constant linear cost across horizon
-  - Matrix of size `(nu, Nc)` for time-varying linear cost
+  - Matrix of size `(nu, Np)` for time-varying linear cost (mean computed per move block)
+  - Matrix of size `(nu, Nc)` for pre-blocked linear cost
   - Nothing (default) for no linear cost
 
 All arguments default to zero.
@@ -30,7 +31,7 @@ u = compute_control(mpc, x; r=r_trajectory)
 u = compute_control(mpc, x; l=[1.0])  # Constant cost
 
 # Time-varying linear cost
-l_trajectory = [1.0 0.5 0.0 -0.5 -1.0]  # nu × Nc matrix
+l_trajectory = [1.0 0.5 0.0 -0.5 -1.0]  # nu × Np matrix
 u = compute_control(mpc, x; l=l_trajectory)
 ```
 """
@@ -138,16 +139,16 @@ end
 """
     format_linear_cost(mpc, l)
 
-Format linear cost input for MPC controller. Handles both single vector
-and time-varying scenarios.
+Format linear cost input for MPC controller.
 
 # Arguments
 - `mpc`: MPC or ExplicitMPC controller
 - `l`: Linear cost input. Can be:
-  - `nothing`: Returns zero vector of length `nl`
+  - `nothing`: Returns zero vector
   - Vector of length `nu`: Broadcast across control horizon
-  - Vector of length `nl=nu*Nc`: Used directly
-  - Matrix of size `(nu, Nc)`: Flattened and used directly
+  - Vector of length `nl`: Used directly (already blocked)
+  - Matrix of size `(nu, Np)`: Mean computed over each move block
+  - Matrix of size `(nu, Nc)`: Used directly
 """
 function format_linear_cost(mpc::Union{MPC,ExplicitMPC}, l)
     # Use stored mpc.nl (set during setup!) to ensure consistency with the QP
@@ -155,29 +156,57 @@ function format_linear_cost(mpc::Union{MPC,ExplicitMPC}, l)
     isnothing(l) && return zeros(mpc.nl)
 
     nu = mpc.model.nu
-    Nc_eff = mpc.nl ÷ nu  # Effective Nc (handles move blocking)
+    Nc_blocked = mpc.nl ÷ nu  # Number of blocked control moves
+    move_blocks = mpc.move_blocks
+    Np = mpc.Np
 
-    if l isa AbstractVector
-        if length(l) == nu
-            # Single vector - broadcast across control horizon
-            return repeat(l, Nc_eff)
-        elseif length(l) == mpc.nl
-            # Already correct length
-            return l
+    # Handle single vector (constant linear cost)
+    if l isa AbstractVector && length(l) == nu
+        return repeat(l, Nc_blocked)
+    end
+
+    # Handle already-blocked input
+    if l isa AbstractVector && length(l) == mpc.nl
+        return l
+    end
+
+    # Matrix input
+    if l isa AbstractMatrix
+        size(l, 1) != nu && error("Linear cost matrix must have $nu rows")
+        ncols = size(l, 2)
+
+        if ncols == Nc_blocked
+            # Already blocked size - use directly
+            return vec(l)
+        elseif ncols >= Np || !isempty(move_blocks)
+            # Full Np horizon (or longer) - apply move blocking
+            l_mat = ncols >= Np ? l[:, 1:Np] : begin
+                # Pad with last column
+                tmp = zeros(nu, Np)
+                tmp[:, 1:ncols] = l
+                tmp[:, ncols+1:end] .= l[:, end]
+                tmp
+            end
+
+            if isempty(move_blocks)
+                # No blocking - use first Nc_blocked columns
+                return vec(l_mat[:, 1:Nc_blocked])
+            end
+
+            # Apply move blocking via direct mean computation
+            l_blocked = zeros(mpc.nl)
+            offset = 0
+            for (k, mb) in enumerate(move_blocks)
+                block_inds = (offset + 1):min(offset + mb, Np)
+                l_blocked[(k-1)*nu+1:k*nu] = vec(mean(l_mat[:, block_inds], dims=2))
+                offset += mb
+            end
+            return l_blocked
         else
-            error("Linear cost vector length ($(length(l))) must match nu ($nu) or nl ($(mpc.nl))")
-        end
-    elseif l isa AbstractMatrix
-        if size(l, 1) != nu
-            error("Linear cost matrix must have $nu rows (number of controls)")
-        end
-        if size(l, 2) >= Nc_eff
-            return vec(l[:, 1:Nc_eff])
-        else
-            # Pad with last column
-            l_ext = zeros(nu, Nc_eff)
-            l_ext[:, 1:size(l, 2)] = l
-            l_ext[:, size(l, 2)+1:end] .= l[:, end]
+            # Smaller than Np but not Nc_blocked - pad to Nc_blocked
+            l_ext = zeros(nu, Nc_blocked)
+            l_ext[:, 1:ncols] = l
+            l_ext[:, ncols+1:end] .= l[:, end]
             return vec(l_ext)
         end
     else
