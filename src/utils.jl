@@ -29,7 +29,7 @@ u = compute_control(mpc, x; r=r_trajectory)
     # mpc.uprev = udaqp[1:mpc.model.nu]-mpc.K*θ[1:mpc.model.nx]
     mpc.uprev .= udaqp[1:mpc.model.nu]
     mul!(mpc.uprev, mpc.K, θ[1:mpc.model.nx], -1, 1)
-    return mpc.uprev
+    return copy(mpc.uprev)
 end
 
 function compute_control(empc::ExplicitMPC,x;r=nothing,d=nothing,uprev=nothing, check=true)
