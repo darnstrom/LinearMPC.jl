@@ -15,13 +15,6 @@ function setup!(mpc::MPC)
         # Set up soft weight
         DAQP.settings(mpc.opt_model,Dict(:rho_soft=>1/mpc.settings.soft_weight))
         mpc.mpqp_issetup = true
-        # Initialize workspace arrays for solve()
-        m = length(mpc.mpQP.bu)
-        nU = length(mpc.mpQP.f)
-        resize!(mpc._bth, m)
-        resize!(mpc._bu, m)
-        resize!(mpc._bl, m)
-        resize!(mpc._f, nU)
     end
 end
 

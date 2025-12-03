@@ -232,15 +232,15 @@ end
 # The function below is a "function barrier" to work around mpQP and opt_model being
 # type unstable
 function _inner_solve(mpc, mpQP, opt_model, θ)
-    mul!(mpc._bth, mpQP.W, θ)
-    mpc._bu .= mpQP.bu .+ mpc._bth
-    mpc._bl .= mpQP.bl .+ mpc._bth
-    mul!(mpc._f, mpQP.f_theta, θ)
-    mpc._f .+= mpQP.f
+    mul!(mpQP._bth, mpQP.W, θ)
+    mpQP._bu .= mpQP.bu .+ mpQP._bth
+    mpQP._bl .= mpQP.bl .+ mpQP._bth
+    mul!(mpQP._f, mpQP.f_theta, θ)
+    mpQP._f .+= mpQP.f
     if mpQP.has_binaries # Make sure workspace is clean
         ccall(("node_cleanup_workspace", DAQP.libdaqp),Cvoid,(Cint,Ptr{DAQP.Workspace}),0, opt_model.work)
     end
-    DAQP.update(opt_model,nothing,mpc._f,nothing,mpc._bu,mpc._bl,nothing)
+    DAQP.update(opt_model,nothing,mpQP._f,nothing,mpQP._bu,mpQP._bl,nothing)
     return DAQP.solve(opt_model)
 end
 

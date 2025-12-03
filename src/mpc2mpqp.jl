@@ -451,9 +451,11 @@ Consider instead to:
     clamp!(bu,-1e30,1e30)
     clamp!(bl,-1e30,1e30)
 
+    m,n = length(bu),length(f)
     mpQP = MPQP(H,f[:],H_theta,f_theta,
                 A,bu,bl,W,senses,Cint.(prio),break_points,
-                any(isbinary))
+                any(isbinary),
+                zeros(m),zeros(m),zeros(m),zeros(n))
 
     return mpQP
 end
