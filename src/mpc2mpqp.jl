@@ -190,6 +190,9 @@ function create_constraints(mpc,Φ,Γ)
         isbinary_single = falses(mpc.model.nu) 
         isbinary_single[mpc.binary_controls] .= true;
         isbinary = repeat(isbinary_single,mpc.Nc)
+        if mpc.Nc_binary >= 0
+            isbinary[mpc.Nc_binary*mpc.model.nu+1:end].=false
+        end
     else
         A = zeros(0,n);
         bu,bl,W = zeros(0),zeros(0),zeros(0,nth);

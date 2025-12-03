@@ -52,6 +52,8 @@ set_objective!(mpc;Q=[0.5e4, 1e-2, 1e-1], R = [10,10,10], Rr = 0)
 mpc.settings.reference_preview = true
 nothing # hide
 ```
+!!! note "Binary control horizon"
+    `set_binary_controls!` takes in a third argument which specifies for how many time step the control should be binary (by default, this is equal to the control horizon.) After the binary control horizon, the control is allowed to take continuous values, which can reduce the computational time significantly, with minor effect on the solution.
 
 We simulate the controller with an attitude reference change to 0.5 after 5 time steps with the following code
 

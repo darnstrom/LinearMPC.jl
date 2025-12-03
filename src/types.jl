@@ -71,6 +71,7 @@ mutable struct MPC
     umin::Vector{Float64}
     umax::Vector{Float64}
     binary_controls::Vector{Int64}
+    Nc_binary::Int
 
     # General constraints 
     constraints::Vector{Constraint}
@@ -104,7 +105,7 @@ end
 function MPC(model::Model;Np=10,Nc=Np)
     MPC(model,0,0,Np,Nc,
         MPCWeights(model.nu,model.nx,model.ny),
-        zeros(0),zeros(0),zeros(0),
+        zeros(0),zeros(0),zeros(0),-1,
         Constraint[],MPCSettings(),nothing,
         DAQP.Model(),zeros(model.nu,model.nx),Int[],false, zeros(model.nu),zeros(0,0),
        nothing,zeros(model.nx))
