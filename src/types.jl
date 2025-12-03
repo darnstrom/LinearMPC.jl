@@ -99,6 +99,12 @@ mutable struct MPC
     state_observer
 
     Δx0::Vector{Float64}
+
+    # Workspace arrays for solve() to avoid allocations
+    _bth::Vector{Float64}
+    _bu::Vector{Float64}
+    _bl::Vector{Float64}
+    _f::Vector{Float64}
 end
 
 function MPC(model::Model;Np=10,Nc=Np)
@@ -107,7 +113,8 @@ function MPC(model::Model;Np=10,Nc=Np)
         zeros(0),zeros(0),zeros(0),
         Constraint[],MPCSettings(),nothing,
         DAQP.Model(),zeros(model.nu,model.nx),Int[],false, zeros(model.nu),zeros(0,0),
-       nothing,zeros(model.nx))
+        nothing,zeros(model.nx),
+        Float64[],Float64[],Float64[],Float64[])
 end
 
 function MPC(F,G;Gd=zeros(0,0), C=zeros(0,0), Dd= zeros(0,0), offset=zeros(0), Ts= -1.0, Np=10, Nc = Np)
