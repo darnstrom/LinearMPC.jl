@@ -107,7 +107,7 @@ mutable struct MPC
     settings::MPCSettings
 
     #Optimization problem
-    mpQP
+    mpQP::MPQP
 
     # DAQP optimization model
     opt_model::DAQPBase.Model
@@ -139,7 +139,7 @@ function MPC(model::Model;Np=10,Nc=Np)
     MPC(model,0,0,0,Np,Nc,
         MPCWeights(model.nu,model.nx,model.ny),
         zeros(0),zeros(0),zeros(0),-1,
-        Constraint[],MPCSettings(),nothing,
+        Constraint[],MPCSettings(),MPQP(),
         DAQP.Model(),zeros(model.nu,model.nx),Int[],false, zeros(model.nu),zeros(0,0),
         nothing,zeros(model.nx),
         Float64[],Float64[],Float64[],Float64[])
