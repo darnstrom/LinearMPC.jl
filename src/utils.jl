@@ -39,8 +39,10 @@ function compute_control(mpc::MPC,x;r=nothing,d=nothing,uprev=nothing,l=nothing,
     θ = form_parameter(mpc,x,r,d,uprev,l)
     udaqp,fval,exitflag,info = solve(mpc,θ)
     check && @assert(exitflag>=1)
-    mpc.uprev = udaqp[1:mpc.model.nu]-mpc.K*θ[1:mpc.model.nx]
-    return mpc.uprev
+    # mpc.uprev = udaqp[1:mpc.model.nu]-mpc.K*θ[1:mpc.model.nx]
+    mpc.uprev .= udaqp[1:mpc.model.nu]
+    mul!(mpc.uprev, mpc.K, θ[1:mpc.model.nx], -1, 1)
+    return copy(mpc.uprev)
 end
 
 function compute_control(empc::ExplicitMPC,x;r=nothing,d=nothing,uprev=nothing,l=nothing, check=true)
@@ -55,7 +57,9 @@ function compute_control_trajectory(mpc::MPC,x;r=nothing,d=nothing,uprev=nothing
     θ = form_parameter(mpc,x,r,d,uprev,l)
     udaqp,_,exitflag,_ = solve(mpc,θ)
     check && @assert(exitflag>=1)
-    mpc.uprev = udaqp[1:mpc.model.nu]-mpc.K*θ[1:mpc.model.nx]
+    # mpc.uprev = udaqp[1:mpc.model.nu]-mpc.K*θ[1:mpc.model.nx]
+    mpc.uprev .= udaqp[1:mpc.model.nu]
+    mul!(mpc.uprev, mpc.K, θ[1:mpc.model.nx], -1, 1)
     return udaqp
 end
 
@@ -222,15 +226,22 @@ Solve corresponding QP given the parameter θ
 function solve(mpc::MPC,θ)
     mpc.mpqp_issetup || setup!(mpc) # ensure mpQP is setup
     mpc.mpqp_issetup || throw("Could not setup optimization problem")
-    bth = mpc.mpQP.W*θ
-    bu = mpc.mpQP.bu + bth
-    bl = mpc.mpQP.bl + bth
-    f = mpc.mpQP.f +mpc.mpQP.f_theta*θ
-    if mpc.mpQP.has_binaries # Make sure workspace is clean
-        ccall(("node_cleanup_workspace", DAQP.libdaqp),Cvoid,(Cint,Ptr{DAQP.Workspace}),0, mpc.opt_model.work)
+    _inner_solve(mpc, mpc.mpQP, mpc.opt_model, θ)
+end
+
+# The function below is a "function barrier" to work around mpQP and opt_model being
+# type unstable
+function _inner_solve(mpc, mpQP, opt_model, θ)
+    mul!(mpc._bth, mpQP.W, θ)
+    mpc._bu .= mpQP.bu .+ mpc._bth
+    mpc._bl .= mpQP.bl .+ mpc._bth
+    mul!(mpc._f, mpQP.f_theta, θ)
+    mpc._f .+= mpQP.f
+    if mpQP.has_binaries # Make sure workspace is clean
+        ccall(("node_cleanup_workspace", DAQP.libdaqp),Cvoid,(Cint,Ptr{DAQP.Workspace}),0, opt_model.work)
     end
-    DAQP.update(mpc.opt_model,nothing,f,nothing,bu,bl,nothing)
-    return DAQP.solve(mpc.opt_model)
+    DAQP.update(opt_model,nothing,mpc._f,nothing,mpc._bu,mpc._bl,nothing)
+    return DAQP.solve(opt_model)
 end
 
 function range2region(range)
