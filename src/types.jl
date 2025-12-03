@@ -66,6 +66,15 @@ struct MPQP
     senses::Vector{Cint}
     prio::Vector{Cint}
     break_points::Vector{Cint}
+
+    has_binaries::Bool
+
+end
+
+function MPQP()
+    return MPQP(Matrix{Float64}(undef, 0, 0),Float64[],Matrix{Float64}(undef, 0, 0), Matrix{Float64}(undef, 0, 0),
+                Matrix{Float64}(undef, 0, 0),Float64[],Float64[], Matrix{Float64}(undef, 0, 0),
+                Cint[],Cint[],Cint[],false)
 end
 
 # MPC controller
