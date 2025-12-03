@@ -52,6 +52,22 @@ Base.@kwdef mutable struct MPCSettings
     traj2setpoint::Matrix{Float64} = zeros(0,0)
 end
 
+struct MPQP
+    H::Matrix{Float64}
+    f::Vector{Float64}
+    H_theta::Matrix{Float64}
+    f_theta::Matrix{Float64}
+
+    A::Matrix{Float64}
+    bu::Vector{Float64}
+    bl::Vector{Float64}
+    W::Matrix{Float64}
+
+    senses::Vector{Cint}
+    prio::Vector{Cint}
+    break_points::Vector{Cint}
+end
+
 # MPC controller
 mutable struct MPC
 
