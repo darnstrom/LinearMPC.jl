@@ -1,7 +1,7 @@
 # [Objective function](@id man_objective)
-The basic objective for computing a control action in the MPC controller is of the form 
+The basic objective for computing a control action in the MPC controller is of the form
 ```math
-\sum_{k=0}^{N-1} {\left((Cx_{k}-r)^T Q (C x_{k}-r) + u_{k}^T R u_{k} + \Delta u_{k}^T R_r \Delta u_k\right)},
+\sum_{k=0}^{N-1} {\left((Cx_{k}-r)^T Q (C x_{k}-r) + u_{k}^T R u_{k} + \Delta u_{k}^T R_r \Delta u_k + l_k^T u_k\right)},
 ```
 where $N$ is the prediction horizon of the controller.
 
@@ -48,7 +48,27 @@ setup!(mpc)
 Then provide a reference trajectory matrix of size `(ny, Np)` to `compute_control`:
 ```julia
 r_trajectory = [1.0 1.5 2.0 2.0 2.0;   # Reference for output 1
-                0.0 0.0 0.5 1.0 1.0]   # Reference for output 2  
+                0.0 0.0 0.5 1.0 1.0]   # Reference for output 2
 u = compute_control(mpc, x; r=r_trajectory)
 ```
+
+## Linear control cost
+The term $l_k^T u_k$ adds an optional linear cost on the control signal. This is useful in economic MPC where control actions have time-varying costs (e.g., electricity prices).
+
+Enable linear cost with:
+```julia
+mpc.settings.linear_cost = true
+setup!(mpc)
+```
+
+Then provide the linear cost to `compute_control`:
+```julia
+# Constant linear cost across horizon
+u = compute_control(mpc, x; l=[0.5])
+
+# Time-varying linear cost (nu × Np matrix)
+l_trajectory = [0.1 0.2 0.5 0.8 1.0]  # Cost varies over prediction horizon
+u = compute_control(mpc, x; l=l_trajectory)
+```
+
 
