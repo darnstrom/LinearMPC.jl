@@ -48,10 +48,22 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
     @printf(fh, "#define N_REFERENCE %d\n",mpc.nr);
     @printf(fh, "#define N_DISTURBANCE %d\n",mpc.model.nd);
     @printf(fh, "#define N_CONTROL_PREV %d\n",mpc.nuprev);
+    @printf(fh, "#define N_LINEAR_COST %d\n",mpc.nl);
+
+    # Generate move blocking data for linear cost averaging
+    if mpc.nl > 0 && !isempty(mpc.move_blocks)
+        @printf(fh, "#define N_MOVE_BLOCKS %d\n", length(mpc.move_blocks))
+        @printf(fh, "#define N_PREDICTION_HORIZON %d\n", mpc.Np)
+        @printf(fh, "extern int move_blocks[%d];\n", length(mpc.move_blocks))
+    end
 
     @printf(fh, "extern c_float mpc_parameter[%d];\n", nth);
 
-    @printf(fh, "int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* disturbance); \n");
+    if mpc.nl > 0
+        @printf(fh, "int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* disturbance, c_float* linear_cost);\n");
+    else
+        @printf(fh, "int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* disturbance);\n");
+    end
 
     # SOURCE
     fsrc = open(joinpath(dir,"mpc_compute_control.c"), "w")
@@ -62,13 +74,33 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
         write_float_array(fsrc,mpc.traj2setpoint[:],"traj2setpoint");
     end
 
+    # Generate move_blocks array for linear cost averaging
+    if mpc.nl > 0 && !isempty(mpc.move_blocks)
+        @printf(fsrc, "#define N_CONTROL %d\n", mpc.model.nu)
+        write_int_array(fsrc, mpc.move_blocks, "move_blocks")
+    end
+
     # Update parameter
     fmpc_para = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_update_parameter.c"), "r");
     write(fsrc, read(fmpc_para))
     close(fmpc_para)
 
     # Compute control
-    write(fsrc, """
+    if mpc.nl > 0
+        write(fsrc, """
+int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* disturbance, c_float* linear_cost){
+    c_float mpc_parameter[$nth];
+    // update parameter
+    mpc_update_parameter(mpc_parameter,control,state,reference,disturbance,linear_cost);
+
+    // Get the solution at the parameter
+    $(fname)_evaluate(mpc_parameter,control);
+
+    return 1;
+}
+          """)
+    else
+        write(fsrc, """
 int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* disturbance){
     c_float mpc_parameter[$nth];
     // update parameter
@@ -80,6 +112,7 @@ int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_
     return 1;
 }
           """)
+    end
 
     if !isnothing(mpc.state_observer)
         @printf(fh, "#define N_CONTROL %d\n",mpc.model.nu);
@@ -113,6 +146,7 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
     @printf(fh, "#define N_REFERENCE %d\n",mpc.nr);
     @printf(fh, "#define N_DISTURBANCE %d\n",mpc.model.nd);
     @printf(fh, "#define N_CONTROL_PREV %d\n",mpc.nuprev);
+    @printf(fh, "#define N_LINEAR_COST %d\n",mpc.nl);
 
     @printf(fh, "#define N_CONTROL %d\n\n",mpc.model.nu);
 
@@ -142,6 +176,14 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
         write_float_array(fsrc,mpc.traj2setpoint[:],"traj2setpoint");
     end
 
+    # Generate move blocking data for linear cost averaging
+    if mpc.nl > 0 && !isempty(mpc.move_blocks)
+        @printf(fh, "#define N_MOVE_BLOCKS %d\n", length(mpc.move_blocks))
+        @printf(fh, "#define N_PREDICTION_HORIZON %d\n", mpc.Np)
+        @printf(fh, "extern int move_blocks[%d];\n", length(mpc.move_blocks))
+        write_int_array(fsrc, mpc.move_blocks, "move_blocks")
+    end
+
     fmpc_h = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_update_qp.h"), "r");
     write(fh, read(fmpc_h))
     close(fmpc_h)
@@ -167,8 +209,17 @@ end
 function write_float_array(f,a::Vector{<:Real},name::String)
     N = length(a)
     @printf(f, "c_float %s[%d] = {\n", name, N);
-    for el in a 
+    for el in a
         @printf(f, "(c_float)%.20f,\n", el);
+    end
+    @printf(f, "};\n");
+end
+
+function write_int_array(f,a::Vector{<:Integer},name::String)
+    N = length(a)
+    @printf(f, "int %s[%d] = {\n", name, N);
+    for el in a
+        @printf(f, "%d,\n", el);
     end
     @printf(f, "};\n");
 end

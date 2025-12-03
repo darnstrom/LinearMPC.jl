@@ -12,7 +12,7 @@ struct Simulation
     mpc::Union{MPC,ExplicitMPC}
 end
 
-function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx),N=1000, r=nothing,d=nothing, callback=(x,u,d,k)->nothing, get_measurement= nothing)
+function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx),N=1000, r=nothing,d=nothing, l=nothing, callback=(x,u,d,k)->nothing, get_measurement= nothing)
 
     # Check if MPC has observer
     has_observer = !isnothing(mpc.state_observer)
@@ -26,11 +26,12 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
     end
 
     x,u = x0,zeros(mpc.model.nu)
-    
+
     xs = zeros(mpc.model.nx,N);
     ys = zeros(ny,N);
     rs = repeat(mpc.model.C*mpc.model.xo,1,N)
     ds = zeros(mpc.model.nd,N);
+    ls = zeros(mpc.model.nu,N);
     us = zeros(mpc.model.nu,N)
     xhats = zeros(mpc.model.nx,N);
 
@@ -46,6 +47,13 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
     if(!isnothing(d))
         ds[:,1:size(d,2)].= d
         ds[:,size(d,2)+1:end] .= d[:,end] # hold last
+    end
+
+    # Setup linear cost trajectory
+    if(!isnothing(l))
+        Nl = min(N,size(l,2))
+        ls[:,1:Nl].= l[:,1:Nl]
+        ls[:,size(l,2)+1:end] .= l[:,end] # hold last
     end
 
     # Start the simulation
@@ -64,10 +72,16 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
             r = rs[:,k]
         end
 
-        solve_times[k] = @elapsed u = compute_control(mpc,xhat;r,d=ds[:,k])
+        # Get linear cost preview
+        l_k = nothing
+        if mpc.settings.linear_cost && !isnothing(l)
+            l_k = get_linear_cost_preview(ls, k, mpc.Nc)
+        end
+
+        solve_times[k] = @elapsed u = compute_control(mpc,xhat;r,d=ds[:,k],l=l_k)
 
         has_observer && predict_state!(mpc,u)
-        
+
         x = dynamics(x,u,ds[:,k])
         callback(x,u,ds[:,k],k)
         us[:,k] = u
@@ -82,19 +96,30 @@ end
 Extract reference preview from reference trajectory starting at time step k.
 """
 function get_reference_preview(rs, k, Np)
-    ny, N = size(rs)
+    ny = size(rs, 1)
     r_preview = zeros(ny, Np)
-    
+
     @views for i in 1:Np
-        if k + i <= N
-            r_preview[:, i] .= rs[:, k + i]
-        else
-            # Use last available reference
-            r_preview[:, i] .= rs[:, end]
-        end
+        r_preview[:, i] .= rs[:, min(k + i, end)]
     end
-    
+
     return r_preview
+end
+
+"""
+    get_linear_cost_preview(ls, k, Nc)
+
+Extract linear cost preview from linear cost trajectory starting at time step k.
+"""
+function get_linear_cost_preview(ls, k, Nc)
+    nu = size(ls, 1)
+    l_preview = zeros(nu, Nc)
+
+    @views for i in 1:Nc
+        l_preview[:, i] .= ls[:, min(k + i - 1, end)]
+    end
+
+    return l_preview
 end
 
 function Simulation(mpc::Union{MPC,ExplicitMPC}; kwargs...)
