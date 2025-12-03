@@ -5,6 +5,7 @@ Sets up the `mpc` given its current parameters and settings
 Internally, this means generating an mpQP, and setting up a DAQP workspace.
 """
 function setup!(mpc::MPC)
+    mpc.mpqp_issetup = false  # Reset so get_parameter_dims computes from settings
     mpc.mpQP = mpc2mpqp(mpc)
     bu,bl = mpc.mpQP.bu[:],mpc.mpQP.bl[:]
     setup_flag,_ = DAQP.setup(mpc.opt_model, mpc.mpQP.H,mpc.mpQP.f[:],mpc.mpQP.A,bu,bl,mpc.mpQP.senses;break_points=mpc.mpQP.break_points)
@@ -210,18 +211,21 @@ end
     set_horizon!(mpc,Np)
 Sets the prediction horizon `Np`
 """
-function set_horizon!(mpc,Np, Nc = Np)
+function set_horizon!(mpc,Np, Nc = Np, Nc_binary = mpc.Nc_binary)
     mpc.Np = Np
     mpc.Nc = Nc
+    mpc.Nc_binary= Nc_binary
     mpc.mpqp_issetup = false
 end
 """
-    set_binary_controls!(mpc,bin_ids)
+    set_binary_controls!(mpc,bin_ids, Nc_binary=nothing)
 
-Makes the controls in bin_ids to binary controls 
+Makes the controls in bin_ids to binary controls.
+Nc_binary is the "binary control horizon" (default = control horizon) 
 """
-function set_binary_controls!(mpc,bin_ids)
+function set_binary_controls!(mpc,bin_ids,Nc_binary=-1)
     mpc.binary_controls = Int.(copy(bin_ids))
+    mpc.Nc_binary = Nc_binary
     mpc.mpqp_issetup = false
 end
 """
