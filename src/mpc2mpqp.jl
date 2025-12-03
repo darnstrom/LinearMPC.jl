@@ -358,7 +358,7 @@ end
 For a given MPC structure `mpc`, form the multi-parametric QP `mpQP`. 
 
 """
-function mpc2mpqp(mpc::MPC; singlesided=false, single_soft=false)
+function mpc2mpqp(mpc::MPC)
     if(mpc.settings.reference_tracking && !iszero(mpc.model.uo) && !iszero(mpc.weights.R))
         @warn("Tracking and a direct penalty on u can yield steady-state error. 
 Consider instead to:
@@ -455,9 +455,6 @@ Consider instead to:
                 A,bu,bl,W,senses,Cint.(prio),break_points,
                 any(isbinary))
 
-    if(singlesided)
-        mpQP = make_singlesided(mpQP;single_soft,soft_weight=mpc.settings.soft_weight)
-    end
     return mpQP
 end
 
