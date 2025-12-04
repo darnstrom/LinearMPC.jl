@@ -1,4 +1,4 @@
-function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=nothing, src=true, float_type="double")
+function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=nothing, src=true, float_type="double",warm_start=false)
     length(dir)==0 && (dir="codegen")
     dir[end] != '/' && (dir*="/") ## Make sure it is a correct directory path
     ## Generate mpQP
@@ -23,7 +23,7 @@ function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=not
     end
 
     # Append MPC-specific data/functions
-    render_mpc_workspace(mpc;fname,dir,float_type, fmode="a")
+    render_mpc_workspace(mpc;fname,dir,float_type, fmode="a",warm_start)
 
     @info "Generated code for MPC controller" dir fname
 end
@@ -126,7 +126,7 @@ int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_
     @info "Generated code for EMPC controller" dir fname
 end
 
-function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_type="double")
+function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_type="double", warm_start=false)
     mpLDP = qp2ldp(mpc.mpQP,mpc.model.nu) 
     mpLDP.Uth_offset[1:mpc.model.nx,:] -= mpc.K' #Account for prestabilizing feedback
     # Get dimensions
@@ -149,6 +149,10 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
     @printf(fh, "#define N_LINEAR_COST %d\n",mpc.nl);
 
     @printf(fh, "#define N_CONTROL %d\n\n",mpc.model.nu);
+
+    if warm_start
+        @printf(fh, "#define DAQP_WARMSTART %d\n\n")
+    end
 
     @printf(fh, "extern c_float mpc_parameter[%d];\n", nth);
 
