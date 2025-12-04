@@ -61,6 +61,40 @@ global templib
         end
     end
 
+    @testset "Codegen IMPC warm start" begin
+        mpc,range = LinearMPC.mpc_examples("invpend")
+        srcdir = tempname()
+        LinearMPC.codegen(mpc;dir=srcdir)
+        src = [f for f in readdir(srcdir) if last(f,1) == "c"]
+        @test !isempty(src)
+        if(!isnothing(Sys.which("gcc")))
+            # Cold start
+            testlib = "mpctest."* Base.Libc.Libdl.dlext
+            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+            u,x,r,d = zeros(1), [5.0;5;0;0], zeros(2), zeros(0)
+            global templib = joinpath(srcdir,testlib)
+            Us_cold =  zeros(1,100)
+            for i in 1:100 
+                ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble},Ptr{Cdouble},Ptr{Cdouble}), u,x,r,d)
+                Us_cold[:,i] .= u
+                x = mpc.model.true_dynamics(x,u,d)
+            end
+            # Cold start
+            testlib = "mpctest_warm."* Base.Libc.Libdl.dlext
+            run(Cmd(`gcc -lm -fPIC -O3 -DDAQP_WARMSTART -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+            u,x,r,d = zeros(1), [5.0;5;0;0], zeros(2), zeros(0)
+            global templib = joinpath(srcdir,testlib)
+            Us_warm =  zeros(1,100)
+            for i in 1:100 
+                ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble},Ptr{Cdouble},Ptr{Cdouble}), u,x,r,d)
+                Us_warm[:,i] .= u
+                x = mpc.model.true_dynamics(x,u,d)
+            end
+
+            @test all(abs.(Us_cold - Us_warm) .< 1e-9)
+        end
+    end
+
     @testset "Prestabilizing feedback" begin
         A,B = [0 1; 10 0], [0;1]
         mpc = LinearMPC.MPC(A,B,0.1;Np = 30)
