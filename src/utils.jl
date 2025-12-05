@@ -226,22 +226,17 @@ Solve corresponding QP given the parameter θ
 function solve(mpc::MPC,θ)
     mpc.mpqp_issetup || setup!(mpc) # ensure mpQP is setup
     mpc.mpqp_issetup || throw("Could not setup optimization problem")
-    _inner_solve(mpc, mpc.mpQP, mpc.opt_model, θ)
-end
 
-# The function below is a "function barrier" to work around mpQP and opt_model being
-# type unstable
-function _inner_solve(mpc, mpQP, opt_model, θ)
-    mul!(mpc._bth, mpQP.W, θ)
-    mpc._bu .= mpQP.bu .+ mpc._bth
-    mpc._bl .= mpQP.bl .+ mpc._bth
-    mul!(mpc._f, mpQP.f_theta, θ)
-    mpc._f .+= mpQP.f
-    if mpQP.has_binaries # Make sure workspace is clean
-        ccall(("node_cleanup_workspace", DAQP.libdaqp),Cvoid,(Cint,Ptr{DAQP.Workspace}),0, opt_model.work)
+    mul!(mpc.mpQP._bth, mpc.mpQP.W, θ)
+    mpc.mpQP._bu .= mpc.mpQP.bu .+ mpc.mpQP._bth
+    mpc.mpQP._bl .= mpc.mpQP.bl .+ mpc.mpQP._bth
+    mul!(mpc.mpQP._f, mpc.mpQP.f_theta, θ)
+    mpc.mpQP._f .+= mpc.mpQP.f
+    if mpc.mpQP.has_binaries # Make sure workspace is clean
+        ccall(("node_cleanup_workspace", DAQP.libdaqp),Cvoid,(Cint,Ptr{DAQP.Workspace}),0, mpc.opt_model.work)
     end
-    DAQP.update(opt_model,nothing,mpc._f,nothing,mpc._bu,mpc._bl,nothing)
-    return DAQP.solve(opt_model)
+    DAQP.update(mpc.opt_model,nothing,mpc.mpQP._f,nothing,mpc.mpQP._bu,mpc.mpQP._bl,nothing)
+    return DAQP.solve(mpc.opt_model)
 end
 
 function range2region(range)

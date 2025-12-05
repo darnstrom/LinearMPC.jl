@@ -358,7 +358,7 @@ end
 For a given MPC structure `mpc`, form the multi-parametric QP `mpQP`. 
 
 """
-function mpc2mpqp(mpc::MPC; singlesided=false, single_soft=false)
+function mpc2mpqp(mpc::MPC)
     if(mpc.settings.reference_tracking && !iszero(mpc.model.uo) && !iszero(mpc.weights.R))
         @warn("Tracking and a direct penalty on u can yield steady-state error. 
 Consider instead to:
@@ -451,14 +451,12 @@ Consider instead to:
     clamp!(bu,-1e30,1e30)
     clamp!(bl,-1e30,1e30)
 
-    # Stack constraints in case of QP is assumed to be single sided. 
-    mpQP = (H=H,f=f, H_theta = H_theta, f_theta=f_theta,
-            A=Matrix{Float64}(A), bu=bu, bl=bl, W=W, senses=senses,
-            prio=prio, has_binaries=any(isbinary), break_points=break_points)
+    m,n = length(bu),length(f)
+    mpQP = MPQP(H,f[:],H_theta,f_theta,
+                A,bu,bl,W,senses,Cint.(prio),break_points,
+                any(isbinary),
+                zeros(m),zeros(m),zeros(m),zeros(n))
 
-    if(singlesided)
-        mpQP = make_singlesided(mpQP;single_soft,soft_weight=mpc.settings.soft_weight)
-    end
     return mpQP
 end
 

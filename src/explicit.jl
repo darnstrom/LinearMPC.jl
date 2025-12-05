@@ -20,7 +20,7 @@ mutable struct ExplicitMPC
 end
 
 function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false, opts=ParametricDAQP.Settings(), single_soft=true)
-    mpQP =  mpc2mpqp(mpc;singlesided=true,single_soft)
+    mpQP = make_singlesided(mpc2mpqp(mpc);single_soft,soft_weight=mpc.settings.soft_weight)
     if mpQP.has_binaries
         @warn("Explicit controllers currently not supported for hybrid systems")
         return nothing

@@ -16,7 +16,7 @@ Provide certificates on the iteration complexity of DAQP for solving the resulti
 * `settings` the settings used in the certification (see ASCertain.CertSettings()) 
 """
 function certify(mpc::MPC; range=nothing, AS0 = Int[], settings = ASCertain.CertSettings(), single_soft=true)
-    mpQP = mpc2mpqp(mpc; singlesided=true, single_soft)
+    mpQP = make_singlesided(mpc2mpqp(mpc);single_soft,soft_weight=mpc.settings.soft_weight)
     if isnothing(range)
         @warn("No parameter range defined. Using default limits [-100 and 100]."* 
               "If you want a bigger/smaller region, create a ParameterRange")

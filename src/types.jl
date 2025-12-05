@@ -52,6 +52,37 @@ Base.@kwdef mutable struct MPCSettings
     traj2setpoint::Matrix{Float64} = zeros(0,0)
 end
 
+struct MPQP
+    H::Matrix{Float64}
+    f::Vector{Float64}
+    H_theta::Matrix{Float64}
+    f_theta::Matrix{Float64}
+
+    A::Matrix{Float64}
+    bu::Vector{Float64}
+    bl::Vector{Float64}
+    W::Matrix{Float64}
+
+    senses::Vector{Cint}
+    prio::Vector{Cint}
+    break_points::Vector{Cint}
+
+    has_binaries::Bool
+
+    # Workspace arrays for solve() to avoid allocations
+    _bth::Vector{Float64}
+    _bu::Vector{Float64}
+    _bl::Vector{Float64}
+    _f::Vector{Float64}
+end
+
+function MPQP()
+    return MPQP(Matrix{Float64}(undef, 0, 0),Float64[],Matrix{Float64}(undef, 0, 0), Matrix{Float64}(undef, 0, 0),
+                Matrix{Float64}(undef, 0, 0),Float64[],Float64[], Matrix{Float64}(undef, 0, 0),
+                Cint[],Cint[],Cint[],false,
+                Float64[],Float64[],Float64[],Float64[])
+end
+
 # MPC controller
 mutable struct MPC
 
@@ -82,7 +113,7 @@ mutable struct MPC
     settings::MPCSettings
 
     #Optimization problem
-    mpQP
+    mpQP::MPQP
 
     # DAQP optimization model
     opt_model::DAQPBase.Model
@@ -102,22 +133,15 @@ mutable struct MPC
     state_observer
 
     Δx0::Vector{Float64}
-
-    # Workspace arrays for solve() to avoid allocations
-    _bth::Vector{Float64}
-    _bu::Vector{Float64}
-    _bl::Vector{Float64}
-    _f::Vector{Float64}
 end
 
 function MPC(model::Model;Np=10,Nc=Np)
     MPC(model,0,0,0,Np,Nc,
         MPCWeights(model.nu,model.nx,model.ny),
         zeros(0),zeros(0),zeros(0),-1,
-        Constraint[],MPCSettings(),nothing,
+        Constraint[],MPCSettings(),MPQP(),
         DAQP.Model(),zeros(model.nu,model.nx),Int[],false, zeros(model.nu),zeros(0,0),
-        nothing,zeros(model.nx),
-        Float64[],Float64[],Float64[],Float64[])
+        nothing,zeros(model.nx))
 end
 
 function MPC(F,G;Gd=zeros(0,0), C=zeros(0,0), Dd= zeros(0,0), offset=zeros(0), Ts= -1.0, Np=10, Nc = Np)
