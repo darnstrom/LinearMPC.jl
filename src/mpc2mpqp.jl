@@ -130,7 +130,8 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
 
     for c in mpc.constraints 
         mi = size(c.Au,1);
-        ks = [k for k in c.ks if k<= Np]
+        kmax = iszero(c.Au) ? Np+1 : Np
+        ks = [k for k in c.ks if k<= kmax]
         Ni = length(ks);
 
         Ax = c.Ax-c.Au*mpc.K
