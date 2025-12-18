@@ -392,11 +392,12 @@ Consider instead to:
     if(!isempty(mpc.move_blocks))
         keep_bounds = Int[] 
         nu = mpc.model.nu
+        nu_bounds = length(mpc.umax)
         if(!mpc.settings.move_block_foh)
             T= zeros(0,0)
             for (k,mb) in enumerate([mpc.move_blocks[1:end-1];1])
                 T = cat(T,repeat(I(nu),mb,1),dims=(1,2))
-                keep_bounds = keep_bounds ∪ collect((k-1)*nu+1:k*nu)
+                keep_bounds = keep_bounds ∪ collect((k-1)*nu+1:(k-1)*nu+nu_bounds)
             end
         else
             T = zeros(length(f),length(mpc.move_blocks)*nu)
