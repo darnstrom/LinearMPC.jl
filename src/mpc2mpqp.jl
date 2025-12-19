@@ -414,7 +414,7 @@ Consider instead to:
         A, H, f, f_theta = A*T, T'*H*T, T'*f, T'*f_theta
 
         # remove superfluous control bounds
-        keep = keep_bounds ∪ collect(nu*mpc.Nc+1:length(bu))
+        keep = keep_bounds ∪ collect(nu_bounds*mpc.Nc+1:length(bu))
         bu,bl,W = bu[keep],bl[keep], W[keep,:]
         issoft,isbinary,prio = issoft[keep],isbinary[keep],prio[keep]
         if (!iszero(mpc.K)) # prestab feedback -> A rows for bounds
@@ -433,7 +433,7 @@ Consider instead to:
     end
 
     # Resort based on priorities
-    ns = length(mpc.umax)
+    ns = length(prio)-size(A,1)
     prio_order = sortperm(prio[ns+1:end])
     A = A[prio_order,:]
     prio_order = [1:ns; prio_order .+ ns] # Offset correctly
