@@ -433,7 +433,7 @@ Consider instead to:
     end
 
     # Resort based on priorities
-    ns = length(prio)-size(A,1)
+    ns = length(mpc.umax)
     prio_order = sortperm(prio[ns+1:end])
     A = A[prio_order,:]
     prio_order = [1:ns; prio_order .+ ns] # Offset correctly
