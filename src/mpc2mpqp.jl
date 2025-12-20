@@ -414,7 +414,7 @@ Consider instead to:
         A, H, f, f_theta = A*T, T'*H*T, T'*f, T'*f_theta
 
         # remove superfluous control bounds
-        keep = keep_bounds ∪ collect(nu*mpc.Nc+1:length(bu))
+        keep = keep_bounds ∪ collect(nu_bounds*mpc.Nc+1:length(bu))
         bu,bl,W = bu[keep],bl[keep], W[keep,:]
         issoft,isbinary,prio = issoft[keep],isbinary[keep],prio[keep]
         if (!iszero(mpc.K)) # prestab feedback -> A rows for bounds
