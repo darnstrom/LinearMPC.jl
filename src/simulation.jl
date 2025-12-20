@@ -6,6 +6,7 @@ struct Simulation
     rs::Matrix{Float64}
     ds::Matrix{Float64}
     xhats::Matrix{Float64}
+    yms::Matrix{Float64}
 
     solve_times ::Vector{Float64}
 
@@ -16,10 +17,9 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
 
     # Check if MPC has observer
     has_observer = !isnothing(mpc.state_observer)
-    ny = has_observer ? size(mpc.state_observer.C,1) : mpc.model.ny
     if isnothing(get_measurement)
         if has_observer 
-            get_measurement = (x,d) -> mpc.state_observer.C*x+mpc.model.Dd*d
+            get_measurement = (x,d) -> mpc.state_observer.C*x
         else
             get_measurement = (x,d) -> mpc.model.C*x+mpc.model.Dd*d
         end
@@ -28,12 +28,14 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
     x,u = x0,zeros(mpc.model.nu)
 
     xs = zeros(mpc.model.nx,N);
-    ys = zeros(ny,N);
+    ys = zeros(mpc.model.ny,N);
     rs = repeat(mpc.model.C*mpc.model.xo,1,N)
     ds = zeros(mpc.model.nd,N);
     ls = zeros(mpc.model.nu,N);
     us = zeros(mpc.model.nu,N)
     xhats = zeros(mpc.model.nx,N);
+    # ys = yms if no observer
+    yms = has_observer ? zeros(size(mpc.state_observer.C,1),N) : zeros(mpc.model.ny,N)
 
     solve_times = zeros(N)
     # Setup reference 
@@ -59,10 +61,11 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
     # Start the simulation
     has_observer && set_state!(mpc,x0)
     for k = 1:N
-        xs[:,k], ys[:,k] = x, get_measurement(x,ds[:,k])
+        xs[:,k], yms[:,k] = x, get_measurement(x,ds[:,k])
+        ys[:,k] = has_observer ? mpc.model.C*x + mpc.model.Dd*ds[:,k] : yms[:,k]
 
         # Get state estimate
-        xhat = has_observer ? correct_state!(mpc,ys[:,k]) : x
+        xhat = has_observer ? correct_state!(mpc,yms[:,k]) : x
         xhats[:,k] = xhat
         # Get reference
         if mpc.settings.reference_preview && !isnothing(r)
@@ -87,7 +90,7 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
         us[:,k] = u
     end
     Ts = mpc.model.Ts < 0.0 ? 1.0 : mpc.model.Ts
-    return Simulation(collect(Ts*(0:1:N-1)),ys,us,xs,rs,ds,xhats,solve_times,mpc)
+    return Simulation(collect(Ts*(0:1:N-1)),ys,us,xs,rs,ds,xhats,yms,solve_times,mpc)
 end
 
 """
