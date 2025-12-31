@@ -1,7 +1,9 @@
 module LinearMPC
 using LinearAlgebra
+using Statistics
 using DAQPBase
 const DAQP = DAQPBase
+export DAQP
 
 include("model.jl")
 include("types.jl");

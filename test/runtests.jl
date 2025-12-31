@@ -1,6 +1,7 @@
 using LinearMPC
 using Test
 using LinearAlgebra
+using Statistics
 global templib
 
 @testset verbose = true "LinearMPC.jl" begin
@@ -35,6 +36,10 @@ global templib
         LinearMPC.mpc2mpqp(mpc)
         mpc,range = LinearMPC.mpc_examples("invpend_contact",6,6, params=Dict(:nwalls=>1));
         LinearMPC.mpc2mpqp(mpc)
+        mpc,range = LinearMPC.mpc_examples("satellite");
+        LinearMPC.mpc2mpqp(mpc)
+        mpc,range = LinearMPC.mpc_examples("ballplate");
+        LinearMPC.mpc2mpqp(mpc)
     end
  
     @testset "Compute control" begin
@@ -57,6 +62,40 @@ global templib
             global templib = joinpath(srcdir,testlib)
             ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble},Ptr{Cdouble},Ptr{Cdouble}), u,x,r,d)
             @test norm(u.-1.7612519326) < 1e-6
+        end
+    end
+
+    @testset "Codegen IMPC warm start" begin
+        mpc,range = LinearMPC.mpc_examples("invpend")
+        srcdir = tempname()
+        LinearMPC.codegen(mpc;dir=srcdir)
+        src = [f for f in readdir(srcdir) if last(f,1) == "c"]
+        @test !isempty(src)
+        if(!isnothing(Sys.which("gcc")))
+            # Cold start
+            testlib = "mpctest."* Base.Libc.Libdl.dlext
+            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+            u,x,r,d = zeros(1), [5.0;5;0;0], zeros(2), zeros(0)
+            global templib = joinpath(srcdir,testlib)
+            Us_cold =  zeros(1,100)
+            for i in 1:100 
+                ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble},Ptr{Cdouble},Ptr{Cdouble}), u,x,r,d)
+                Us_cold[:,i] .= u
+                x = mpc.model.true_dynamics(x,u,d)
+            end
+            # Cold start
+            testlib = "mpctest_warm."* Base.Libc.Libdl.dlext
+            run(Cmd(`gcc -lm -fPIC -O3 -DDAQP_WARMSTART -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+            u,x,r,d = zeros(1), [5.0;5;0;0], zeros(2), zeros(0)
+            global templib = joinpath(srcdir,testlib)
+            Us_warm =  zeros(1,100)
+            for i in 1:100 
+                ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble},Ptr{Cdouble},Ptr{Cdouble}), u,x,r,d)
+                Us_warm[:,i] .= u
+                x = mpc.model.true_dynamics(x,u,d)
+            end
+
+            @test all(abs.(Us_cold - Us_warm) .< 1e-9)
         end
     end
 
@@ -566,5 +605,143 @@ global templib
         set_operating_point!(mpc;xo=xo,uo=uo)
         sim = LinearMPC.Simulation(mpc;x0 = [0.1;0], N = 100)
         @test norm(sim.xs[:,end]-xo) < 1e-4
+    end
+
+    @testset "Linear Cost" begin
+        # Test basic linear cost functionality
+        A = [1 1; 0 1]
+        B = [0; 1]
+        C = [1.0 0; 0 1.0]
+        mpc = LinearMPC.MPC(A, B; C, Np=5, Nc=3)
+        set_bounds!(mpc; umin=[0.0], umax=[2.0])
+        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1])
+
+        # Test with linear cost disabled (default)
+        @test mpc.settings.linear_cost == false
+        control_no_lincost = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0])
+        @test length(control_no_lincost) == 1
+
+        # Enable linear cost
+        mpc.settings.linear_cost = true
+        setup!(mpc)
+
+        # Test parameter dimensions with linear cost
+        nx, nr, nd, nuprev, nl = LinearMPC.get_parameter_dims(mpc)
+        @test nx == 2  # State dimension
+        @test nr == 2  # Reference dimension (no preview)
+        @test nd == 0  # No disturbance
+        @test nuprev == 0  # No rate penalty
+        @test nl == 1 * 3  # nu × Nc = 1 × 3
+
+        # Test that linear cost affects control
+        control_zero_lincost = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0], l=zeros(1))
+        control_pos_lincost = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0], l=[1.0])
+        control_neg_lincost = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0], l=[-1.0])
+
+        # Linear cost should affect the control differently for positive vs negative
+        @test control_zero_lincost ≈ control_no_lincost
+        # The linear cost should decrease on increase the control action depending on the sign
+        @test control_pos_lincost[1] < control_zero_lincost[] < control_neg_lincost[1]
+
+        # Test with linear cost trajectory matrix (nu × Nc)
+        l_traj = [1.0 1.0 1.0]  # Different cost at each time step
+        control_traj = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0], l=l_traj)
+        @test control_traj[] ≈ control_pos_lincost[] # A trajectory of ones should give same result as a single 1
+
+        # Test that omitting linear cost gives same as zero linear cost
+        control_omit = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0])
+        @test control_omit[] ≈ control_zero_lincost[]
+    end
+
+    @testset "Linear Cost Simulation" begin
+        # Test simulation with linear cost trajectory
+        A = [0 -0.37; 0.37 0.74]
+        B = [0.37; 0.26]
+        C = [1.0 0; 0 1.0]
+        mpc = LinearMPC.MPC(A, B; C, Np=5, Nc=3)
+        set_bounds!(mpc; umin=[-2.0], umax=[2.0])
+        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1])
+        set_terminal_cost!(mpc)
+        mpc.settings.linear_cost = true
+        setup!(mpc)
+
+        N_sim = 20
+        r_traj = zeros(2, N_sim)
+
+        l_traj = zeros(1, N_sim)
+        l_traj[1, :] .= -0.5
+
+        # Simulation with linear cost
+        sim_with_l = LinearMPC.Simulation(mpc; x0=[1.0, 0.0], N=N_sim, r=r_traj, l=l_traj)
+        @test size(sim_with_l.xs) == (2, N_sim)
+        @test size(sim_with_l.us) == (1, N_sim)
+
+        # Simulation without linear cost
+        sim_no_l = LinearMPC.Simulation(mpc; x0=[1.0, 0.0], N=N_sim, r=r_traj)
+
+        # Compute cost of trajectories and verify that the cost of the controller optimizing linear cost is smaller
+        cost_l = sum(abs2, sim_with_l.xs) +
+            0.1*sum(abs2, sim_with_l.us) +
+            dot(sim_with_l.us, l_traj) +
+            dot(sim_with_l.xs[:, end], mpc.weights.Qf, sim_with_l.xs[:, end])
+
+        cost_no_l = sum(abs2, sim_no_l.xs) +
+            0.1*sum(abs2, sim_no_l.us) +
+            dot(sim_no_l.us, l_traj) +
+            dot(sim_no_l.xs[:, end], mpc.weights.Qf, sim_no_l.xs[:, end])
+        @test cost_l < cost_no_l
+
+        # Since linear cost is negative, we should have a positive steady-state control
+        @test sim_with_l.us[end] > 0.1
+    end
+
+    @testset "Linear Cost Codegen" begin
+        # Test code generation with linear cost and move blocking
+        A = [1 1; 0 1]
+        B = [0; 1]
+        C = [1.0 0; 0 1.0]
+        mpc = LinearMPC.MPC(A, B; C, Np=10, Nc=10)
+        set_bounds!(mpc; umin=[-2.0], umax=[2.0])
+        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1])
+        mpc.settings.linear_cost = true
+
+        # Add move blocking: [2,3,3,2] → 4 blocked moves covering 10 steps
+        move_block!(mpc, [2, 3, 3, 2])
+        setup!(mpc)
+
+        x = [0.5, 0.1]
+        r = [0.0, 0.0]
+        # Full Np trajectory (nu × Np = 1 × 10) - mean will be computed per block
+        l_traj = reshape(collect(range(0.1, 1.0, length=10)), 1, 10)
+
+        u_julia = compute_control(mpc, x; r=r, l=l_traj)
+
+        # If we preblock the cost trajectory by computing averages over move blocks and then repeating those averages over the blocks, we should get the same result
+        l_preblocked = [fill(mean(l_traj[1:2]), 2); fill(mean(l_traj[3:5]), 3); fill(mean(l_traj[6:8]), 3); fill(mean(l_traj[9:10]), 2)]'
+        u_preblocked = compute_control(mpc, x; r=r, l=l_preblocked)
+        @test u_preblocked ≈ u_julia
+
+        # Generate C code
+        srcdir = tempname()
+        LinearMPC.codegen(mpc; dir=srcdir)
+        src = [f for f in readdir(srcdir) if last(f,1) == "c"]
+        @test !isempty(src)
+
+        if(!isnothing(Sys.which("gcc")))
+            testlib = "mpctest."* Base.Libc.Libdl.dlext
+            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+
+            u = zeros(1)
+            d = zeros(0)
+
+            global templib = joinpath(srcdir, testlib)
+            # C code receives full l_traj and computes mean per block internally
+            ccall(("mpc_compute_control", templib), Cint,
+                  (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}),
+                  u, x, r, d, l_traj)
+
+            # Test that Julia and C implementations give same result
+            @test u ≈ u_julia
+        end
     end
 end

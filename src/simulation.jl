@@ -6,6 +6,7 @@ struct Simulation
     rs::Matrix{Float64}
     ds::Matrix{Float64}
     xhats::Matrix{Float64}
+    yms::Matrix{Float64}
 
     solve_times ::Vector{Float64}
 
@@ -37,7 +38,7 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
     ny = has_observer ? size(mpc.state_observer.C,1) : mpc.model.ny
     if isnothing(scenario.get_measurement)
         if has_observer 
-            get_measurement = (x,d) -> mpc.state_observer.C*x+mpc.model.Dd*d
+            get_measurement = (x,d) -> mpc.state_observer.C*x
         else
             get_measurement = (x,d) -> mpc.model.C*x+mpc.model.Dd*d
         end
@@ -48,11 +49,14 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
     x,u = scenario.x0,zeros(mpc.model.nu)
     
     xs = zeros(mpc.model.nx,N);
-    ys = zeros(ny,N);
+    ys = zeros(mpc.model.ny,N);
     rs = repeat(mpc.model.C*mpc.model.xo,1,N)
     ds = zeros(mpc.model.nd,N);
+    ls = zeros(mpc.model.nu,N);
     us = zeros(mpc.model.nu,N)
     xhats = zeros(mpc.model.nx,N);
+    # ys = yms if no observer
+    yms = has_observer ? zeros(size(mpc.state_observer.C,1),N) : zeros(mpc.model.ny,N)
 
     solve_times = zeros(N)
     # Setup reference 
@@ -68,13 +72,21 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
         ds[:,size(d,2)+1:end] .= d[:,end] # hold last
     end
 
+    # Setup linear cost trajectory
+    if(!isnothing(l))
+        Nl = min(N,size(l,2))
+        ls[:,1:Nl].= l[:,1:Nl]
+        ls[:,size(l,2)+1:end] .= l[:,end] # hold last
+    end
+
     # Start the simulation
     has_observer && set_state!(mpc,scenario.x0)
     for k = 1:N
-        xs[:,k], ys[:,k] = x, get_measurement(x,ds[:,k])
+        xs[:,k], yms[:,k] = x, get_measurement(x,ds[:,k])
+        ys[:,k] = has_observer ? mpc.model.C*x + mpc.model.Dd*ds[:,k] : yms[:,k]
 
         # Get state estimate
-        xhat = has_observer ? correct_state!(mpc,ys[:,k]) : x
+        xhat = has_observer ? correct_state!(mpc,yms[:,k]) : x
         xhats[:,k] = xhat
         # Get reference
         if mpc.settings.reference_preview && !isnothing(scenario.r)
@@ -84,16 +96,22 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
             r = rs[:,k]
         end
 
-        solve_times[k] = @elapsed u = compute_control(mpc,xhat;r,d=ds[:,k])
+        # Get linear cost preview
+        l_k = nothing
+        if mpc.settings.linear_cost && !isnothing(l)
+            l_k = get_linear_cost_preview(ls, k, mpc.Nc)
+        end
+
+        solve_times[k] = @elapsed u = compute_control(mpc,xhat;r,d=ds[:,k],l=l_k)
 
         has_observer && predict_state!(mpc,u)
-        
+
         x = dynamics(x,u,ds[:,k])
         scenario.callback(x,u,ds[:,k],k)
         us[:,k] = u
     end
     Ts = mpc.model.Ts < 0.0 ? 1.0 : mpc.model.Ts
-    return Simulation(collect(Ts*(0:1:N-1)),ys,us,xs,rs,ds,xhats,solve_times,mpc)
+    return Simulation(collect(Ts*(0:1:N-1)),ys,us,xs,rs,ds,xhats,yms,solve_times,mpc)
 end
 
 function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC};x0=zeros(mpc.model.nx),T=-1.0, N=1000, r=nothing,d=nothing, callback=(x,u,d,k)->nothing, get_measurement= nothing)
@@ -107,19 +125,30 @@ end
 Extract reference preview from reference trajectory starting at time step k.
 """
 function get_reference_preview(rs, k, Np)
-    ny, N = size(rs)
+    ny = size(rs, 1)
     r_preview = zeros(ny, Np)
-    
+
     @views for i in 1:Np
-        if k + i <= N
-            r_preview[:, i] .= rs[:, k + i]
-        else
-            # Use last available reference
-            r_preview[:, i] .= rs[:, end]
-        end
+        r_preview[:, i] .= rs[:, min(k + i, end)]
     end
-    
+
     return r_preview
+end
+
+"""
+    get_linear_cost_preview(ls, k, Nc)
+
+Extract linear cost preview from linear cost trajectory starting at time step k.
+"""
+function get_linear_cost_preview(ls, k, Nc)
+    nu = size(ls, 1)
+    l_preview = zeros(nu, Nc)
+
+    @views for i in 1:Nc
+        l_preview[:, i] .= ls[:, min(k + i - 1, end)]
+    end
+
+    return l_preview
 end
 
 function Simulation(mpc::Union{MPC,ExplicitMPC}; kwargs...)
