@@ -36,6 +36,10 @@ global templib
         LinearMPC.mpc2mpqp(mpc)
         mpc,range = LinearMPC.mpc_examples("invpend_contact",6,6, params=Dict(:nwalls=>1));
         LinearMPC.mpc2mpqp(mpc)
+        mpc,range = LinearMPC.mpc_examples("satellite");
+        LinearMPC.mpc2mpqp(mpc)
+        mpc,range = LinearMPC.mpc_examples("ballplate");
+        LinearMPC.mpc2mpqp(mpc)
     end
  
     @testset "Compute control" begin
