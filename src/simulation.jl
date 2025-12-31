@@ -19,12 +19,13 @@ struct Scenario
     N::Int
     r::Union{Vector{Float64},Matrix{Float64},Nothing}
     d::Union{Vector{Float64},Matrix{Float64},Nothing}
+    l::Union{Vector{Float64},Matrix{Float64},Nothing}
     callback::Function
     dynamics::Union{Function,Nothing}
     get_measurement::Union{Function,Nothing}
 end
 
-function Scenario(x0;T=-1.0,N=1000,r=nothing,d=nothing,
+function Scenario(x0;T=-1.0,N=1000,r=nothing,d=nothing,l=nothing,
         callback = (x,u,d,k)->nothing, get_measurement=nothing, dynamics = nothing)
     return Scenario(x0,T,N,r,d,callback,dynamics,get_measurement)
 end
@@ -73,10 +74,11 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
     end
 
     # Setup linear cost trajectory
-    if(!isnothing(l))
-        Nl = min(N,size(l,2))
-        ls[:,1:Nl].= l[:,1:Nl]
-        ls[:,size(l,2)+1:end] .= l[:,end] # hold last
+    if(!isnothing(scenario.l))
+        nl = size(scenario.l,2)
+        Nl = min(N,nl)
+        ls[:,1:Nl].= scenario.l[:,1:Nl]
+        ls[:,nl+1:end] .= scenario.l[:,end] # hold last
     end
 
     # Start the simulation
@@ -98,7 +100,7 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
 
         # Get linear cost preview
         l_k = nothing
-        if mpc.settings.linear_cost && !isnothing(l)
+        if mpc.settings.linear_cost && !isnothing(scenario.l)
             l_k = get_linear_cost_preview(ls, k, mpc.Nc)
         end
 
@@ -114,8 +116,8 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
     return Simulation(collect(Ts*(0:1:N-1)),ys,us,xs,rs,ds,xhats,yms,solve_times,mpc)
 end
 
-function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC};x0=zeros(mpc.model.nx),T=-1.0, N=1000, r=nothing,d=nothing, callback=(x,u,d,k)->nothing, get_measurement= nothing)
-    return Simulation(mpc,Scenario(x0,T,N,r,d,callback,dynamics,get_measurement))
+function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC};x0=zeros(mpc.model.nx),T=-1.0, N=1000, r=nothing,d=nothing, l=nothing, callback=(x,u,d,k)->nothing, get_measurement= nothing)
+    return Simulation(mpc,Scenario(x0,T,N,r,d,l,callback,dynamics,get_measurement))
 end
 
 
@@ -151,9 +153,7 @@ function get_linear_cost_preview(ls, k, Nc)
     return l_preview
 end
 
-function Simulation(mpc::Union{MPC,ExplicitMPC}; kwargs...)
-    return Simulation(mpc.model.true_dynamics, mpc; kwargs...)
-end
+Simulation(mpc::Union{MPC,ExplicitMPC}; kwargs...) = Simulation(mpc.model.true_dynamics, mpc; kwargs...)
 
 using RecipesBase
 
