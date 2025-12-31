@@ -1,18 +1,3 @@
-struct Simulation
-    ts::Vector{Float64}
-    ys::Matrix{Float64}
-    us::Matrix{Float64}
-    xs::Matrix{Float64}
-    rs::Matrix{Float64}
-    ds::Matrix{Float64}
-    xhats::Matrix{Float64}
-    yms::Matrix{Float64}
-
-    solve_times ::Vector{Float64}
-
-    mpc::Union{MPC,ExplicitMPC}
-end
-
 struct Scenario
     x0::Vector{Float64}
     T::Float64
@@ -23,6 +8,22 @@ struct Scenario
     callback::Function
     dynamics::Union{Function,Nothing}
     get_measurement::Union{Function,Nothing}
+end
+
+struct Simulation
+    ts::Vector{Float64}
+    ys::Matrix{Float64}
+    us::Matrix{Float64}
+    xs::Matrix{Float64}
+    rs::Matrix{Float64}
+    ds::Matrix{Float64}
+    xhats::Matrix{Float64}
+    yms::Matrix{Float64}
+
+    solve_times::Vector{Float64}
+
+    mpc::Union{MPC,ExplicitMPC}
+    scenario::Scenario
 end
 
 function Scenario(x0;T=-1.0,N=1000,r=nothing,d=nothing,l=nothing,
@@ -106,7 +107,7 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
         us[:,k] = u
     end
     Ts = mpc.model.Ts < 0.0 ? 1.0 : mpc.model.Ts
-    return Simulation(collect(Ts*(0:1:N-1)),ys,us,xs,rs,ds,xhats,yms,solve_times,mpc)
+    return Simulation(collect(Ts*(0:1:N-1)),ys,us,xs,rs,ds,xhats,yms,solve_times,mpc,scenario)
 end
 
 function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC};x0=zeros(mpc.model.nx),T=-1.0, N=1000, r=nothing,d=nothing, l=nothing, callback=(x,u,d,k)->nothing, get_measurement= nothing)
