@@ -322,7 +322,7 @@ function mpc_examples(s, Np, Nc=Np;params = Dict(),settings=nothing)
              0 0 700 0;
              0 0 0 1;
              0 0 0 -34.69]
-        B = [0;0;0;3.1119]
+        B = [0;0;0;3.1119;;]
         Ts = 0.03
         C = [1.0 0 0 0]
 
@@ -382,6 +382,8 @@ function mpc_examples(s, Np, Nc=Np;params = Dict(),settings=nothing)
         set_bounds!(mpc;umin=[-Inf;0;-1],umax=[Inf;1;0])
         set_binary_controls!(mpc,[2,3])
         range = ParameterRange(mpc)
+    else
+        @error("There is currently no example `$s`.")
     end
     return mpc,range
 end
@@ -399,5 +401,9 @@ function mpc_examples(s;settings=nothing)
         mpc_examples(s,10,2;settings)
     elseif(s=="quad" || s=="quadcopter" || s=="crazyflie")
         mpc_examples(s,10,10;settings)
+    elseif(s=="satellite")
+        mpc_examples(s,20;settings)
+    else
+        mpc_examples(s,10;settings)
     end
 end
