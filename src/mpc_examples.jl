@@ -1,22 +1,23 @@
 function mpc_examples(s, Np, Nc=Np;params = Dict(),settings=nothing)
-    if(s=="inv_pend"||s=="invpend")
-        # Inverted pendulum
-        A = [0 1 0 0; 
-             0 -10 9.81 0; 
-             0 0 0 1; 
-             0 -20 39.24 0]; 
-        B = 100*[0;1.0;0;2.0;;];
-        C = [1.0 0 0 0; 0 0 1.0 0];
-        D = [0;0];
+    if(s=="inv_pend"||s=="invpend" || s=="invpendcart")
+        # Inverted pendulum on a cart
+        M,m,g,l,damp = 1.0, 1.0, 9.81, 0.5, 10.0;
+        scale, Mm = 100,M+m
+
+        f=(x,u,d)->[x[2];
+                    (scale*u[1]-damp*x[2]-m*l*x[4]^2*sin(x[3])+m*g*sin(x[3])*cos(x[3]))/(M+m*sin(x[3])^2);
+                    x[4];
+                    (g*sin(x[3])+(scale*u[1]-damp*x[2]-m*l*x[4]^2*sin(x[3]))*cos(x[3])/Mm)/(l-m*l*cos(x[3])^2/Mm)];
+        h = (x,u,d) -> [x[1];x[3]] 
+
         Ts = 0.01;
+        xo,uo = zeros(4),zeros(1)
+        model = LinearMPC.Model(f,h,xo,uo,Ts)
 
-        mpc = MPC(A,B,Ts;C,Nc,Np);
+        mpc = MPC(model;Nc,Np);
 
-        Q,R,Rr= [1.2^2,1], [0.0], [1.0]
-        set_objective!(mpc;Q,R,Rr)
-
-        umin,umax = [-2.0], [2.0]
-        set_bounds!(mpc; umin,umax)
+        set_objective!(mpc;Q=[1.2^2,1],R=[0.0],Rr=[1.0])
+        set_bounds!(mpc; umin=[-2.0],umax=[2.0])
 
         if(!isnothing(settings))
             mpc.settings=settings
