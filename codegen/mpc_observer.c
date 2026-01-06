@@ -10,7 +10,7 @@ void mpc_predict_state(c_float* state, c_float* control){
 }
 
 void mpc_correct_state(c_float* state, c_float* measurement){
-    int i,j,disp_C,disp_K=0;
+    int i,j,disp_C=0,disp_K=0;
     c_float innovation, state_old[N_STATE];
     for(i=0;i<N_STATE;i++) state_old[i] = state[i];
     for(j=0;j<N_MEASUREMENT;j++){
