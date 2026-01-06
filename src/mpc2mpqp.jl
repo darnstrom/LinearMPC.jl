@@ -404,44 +404,14 @@ Consider instead to:
     Φ,Γ=state_predictor(F,G,mpc.Np,mpc.Nc);
 
     objective  = create_objective(Φ,Γ,C,Q,R,S,Qf,mpc.Np,mpc.Nc,nue,nxe,mpc)
-    H,f,f_theta,H_theta = objective.H, objective.f, objective.f_theta, objective.H_theta
-
     c = create_constraints(mpc,Φ,Γ)
-    A,bu,bl,W,issoft,isbinary,prio = c.A, c.bu, c.bl, c.W, c.issoft, c.isbinary, c.prio
 
-
-    # Apply move blocking
     if(!isempty(mpc.move_blocks))
-        keep_bounds = Int[] 
-        nu = mpc.model.nu
-        nu_bounds = length(mpc.umax)
-        if(!mpc.settings.move_block_foh)
-            T= zeros(0,0)
-            for (k,mb) in enumerate([mpc.move_blocks[1:end-1];1])
-                T = cat(T,repeat(I(nu),mb,1),dims=(1,2))
-                keep_bounds = keep_bounds ∪ collect((k-1)*nu+1:(k-1)*nu+nu_bounds)
-            end
-        else
-            T = zeros(length(f),length(mpc.move_blocks)*nu)
-            offset = 0
-            for (k,mb) in enumerate(mpc.move_blocks[1:end-1])
-                block = [[(mb-i)/mb for i in 0:mb-1] [i/mb for i in 0:mb-1]]
-                T[offset*nu+1:(offset+mb)*nu,(k-1)*nu+1:(k+1)*nu] = kron(block,I(nu))
-                keep_bounds = keep_bounds ∪ collect((k-1)*nu+1:k*nu)
-                offset += mb
-            end
-            T[end-nu+1:end,end-nu+1:end] = I(nu)
-        end
-        A, H, f, f_theta = A*T, T'*H*T, T'*f, T'*f_theta
-
-        # remove superfluous control bounds
-        keep = keep_bounds ∪ collect(nu_bounds*mpc.Nc+1:length(bu))
-        bu,bl,W = bu[keep],bl[keep], W[keep,:]
-        issoft,isbinary,prio = issoft[keep],isbinary[keep],prio[keep]
-        if (!iszero(mpc.K)) # prestab feedback -> A rows for bounds
-            A = A[keep,:] 
-        end
+        objective,c = apply_move_block(mpc,objective,c)
     end
+
+    H,f,f_theta,H_theta = objective.H, objective.f, objective.f_theta, objective.H_theta
+    A,bu,bl,W,issoft,isbinary,prio = c.A, c.bu, c.bl, c.W, c.issoft, c.isbinary, c.prio
 
     # Resort based on priorities
     ns = length(prio)-size(A,1)
@@ -641,4 +611,33 @@ function remove_duplicate(A,bu,bl,W,issoft,isbinary,prio)
     end
 
     return A_new,bu_new,bl_new,W_new,issoft_new,isbinary_new,prio_new
+end
+
+function apply_move_block(mpc::MPC, obj::DenseObjective, c::DenseConstraints)
+    nu = mpc.model.nu
+    nu_bounds = length(mpc.umax)
+    keep = collect(nu_bounds*mpc.Nc+1:length(c.bu))
+    if(!mpc.settings.move_block_foh)
+        T= zeros(0,0)
+        for (k,mb) in enumerate([mpc.move_blocks[1:end-1];1])
+            T = cat(T,repeat(I(nu),mb,1),dims=(1,2))
+            append!(keep,(k-1)*nu+1:(k-1)*nu+nu_bounds)
+        end
+    else
+        T = zeros(length(obj.f),length(mpc.move_blocks)*nu)
+        offset = 0
+        for (k,mb) in enumerate(mpc.move_blocks[1:end-1])
+            block = [[(mb-i)/mb for i in 0:mb-1] [i/mb for i in 0:mb-1]]
+            T[offset*nu+1:(offset+mb)*nu,(k-1)*nu+1:(k+1)*nu] = kron(block,I(nu))
+            append!(keep= (k-1)*nu+1:k*nu)
+            offset += mb
+        end
+        T[end-nu+1:end,end-nu+1:end] = I(nu)
+    end
+    new_obj = DenseObjective(T'*obj.H*T, T'*obj.f, T'*obj.f_theta, obj.H_theta)
+
+    # Remove superfluous control bounds
+    Anew = !iszero(mpc.K) ? c.A[keep,:]*T : c.A*T # control bounds are in A if prestabilizing feedback
+    new_c = DenseConstraints(Anew, c.bu[keep], c.bl[keep], c.W[keep,:], c.issoft[keep], c.isbinary[keep], c.prio[keep])
+    return new_obj,new_c
 end
