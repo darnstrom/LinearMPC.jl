@@ -410,20 +410,11 @@ Consider instead to:
         objective,c = apply_move_block(mpc,objective,c)
     end
 
+    # Resort based on priorities
+    c = sort_constraints(c)
+    
     H,f,f_theta,H_theta = objective.H, objective.f, objective.f_theta, objective.H_theta
     A,bu,bl,W,issoft,isbinary,prio = c.A, c.bu, c.bl, c.W, c.issoft, c.isbinary, c.prio
-
-    # Resort based on priorities
-    ns = length(prio)-size(A,1)
-    prio_order = sortperm(prio[ns+1:end])
-    A = A[prio_order,:]
-    prio_order = [1:ns; prio_order .+ ns] # Offset correctly
-    bu,bl,W = bu[prio_order], bl[prio_order], W[prio_order,:]
-    issoft,isbinary,prio = issoft[prio_order],isbinary[prio_order], prio[prio_order]
-    break_points = unique(i->prio[i], eachindex(prio))[2:end].-1;
-    break_points = Cint.(break_points)
-    isempty(break_points) || push!(break_points,length(prio))
-    
     # Remove redundant constraints
     if(mpc.settings.preprocess_mpqp)
         A,bu,bl,W,issoft,isbinary,prio = remove_redundant(A,bu,bl,W,issoft,isbinary,prio)
@@ -448,6 +439,10 @@ Consider instead to:
     # Replace Infs for codegen
     clamp!(bu,-1e30,1e30)
     clamp!(bl,-1e30,1e30)
+
+    break_points = unique(i->prio[i], eachindex(prio))[2:end].-1;
+    break_points = Cint.(break_points)
+    isempty(break_points) || push!(break_points,length(prio))
 
     m,n = length(bu),length(f)
     mpQP = MPQP(H,f[:],H_theta,f_theta,
@@ -640,4 +635,13 @@ function apply_move_block(mpc::MPC, obj::DenseObjective, c::DenseConstraints)
     Anew = !iszero(mpc.K) ? c.A[keep,:]*T : c.A*T # control bounds are in A if prestabilizing feedback
     new_c = DenseConstraints(Anew, c.bu[keep], c.bl[keep], c.W[keep,:], c.issoft[keep], c.isbinary[keep], c.prio[keep])
     return new_obj,new_c
+end
+
+function sort_constraints(c::DenseConstraints)
+    ns = length(c.prio)-size(c.A,1)
+    order = sortperm(c.prio[ns+1:end])
+    Anew = c.A[order,:]
+    order = [1:ns; order .+ ns] # Offset correctly
+    return DenseConstraints(Anew, c.bu[order], c.bl[order], c.W[order,:], 
+                            c.issoft[order], c.isbinary[order], c.prio[order])
 end
