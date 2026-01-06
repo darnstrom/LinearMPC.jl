@@ -42,6 +42,7 @@ MPC controller settings.
 - `solver_opts::Dict{Symbol,Any}`: Additional solver options
 """
 Base.@kwdef mutable struct MPCSettings
+    preprocess_mpqp::Bool=true
     move_block_foh::Bool= false
     reference_condensation::Bool= false
     reference_tracking::Bool= true
