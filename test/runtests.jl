@@ -744,4 +744,17 @@ global templib
             @test u ≈ u_julia
         end
     end
+    @testset "MPQP preprocessing" begin
+        A = [0 1; 10 0]
+        B = [0; 1]
+        C = [1.0 0; 0 1.0]
+        mpc = LinearMPC.MPC(A, B, 0.1)
+        set_bounds!(mpc;umin=-1,umax=1)
+        add_constraint!(mpc;Au=[-1.0;;],lb=[-0.9],ub=[1.5],ks=1:10)
+        add_constraint!(mpc;Au=[1.0;;],lb=[-0.5],ub=[2.0],ks=1:10)
+        setup!(mpc)
+        @test isempty(mpc.mpQP.A)
+        @test all(mpc.mpQP.bu .== 0.9*ones(10))
+        @test all(mpc.mpQP.bl .== -0.5*ones(10))
+    end
 end

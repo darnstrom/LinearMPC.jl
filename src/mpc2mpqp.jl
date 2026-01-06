@@ -453,6 +453,12 @@ Consider instead to:
     clamp!(bu,-1e30,1e30)
     clamp!(bl,-1e30,1e30)
 
+    # Remove redundant constraints
+    if(mpc.settings.preprocess_mpqp)
+        A,bu,bl,W,senses,issoft,isbinary,prio = remove_redundant(A,bu,bl,W,senses,issoft,isbinary,prio)
+        A,bu,bl,W,senses,issoft,isbinary,prio = remove_duplicate(A,bu,bl,W,senses,issoft,isbinary,prio)
+    end
+
     m,n = length(bu),length(f)
     mpQP = MPQP(H,f[:],H_theta,f_theta,
                 A,bu,bl,W,senses,Cint.(prio),break_points,
@@ -524,4 +530,95 @@ function create_extended_system_and_cost(mpc::MPC)
     end
 
     return F,G,C,Q,R,S,Qf 
+end
+function remove_redundant(A,bu,bl,W,sense,issoft,isbinary,prio)
+    nsimple = length(bu) - size(A,1)
+    keep = collect(1:nsimple) # Don't remove simple bounds
+    norm_factors = ones(nsimple)
+    for (i,a) in enumerate(eachrow(A))
+        id = nsimple+i
+        sense[id] == DAQP.IMMUTABLE  && continue # Flag to be ignored
+        norm_factor = norm(a)
+        if norm_factor > 1e-10
+            nz_id = findfirst(x -> abs(x) > 1e-12, a)
+            if sign(a[nz_id]) < 0 # To ensure unique half planes, make sure first nonzero is zero 
+                a.=-a.+0.0 #+0.0 to avoid -0.0
+                bui = bu[id]
+                bu[id] = -bl[id]
+                bl[id] = -bui
+                W[id,:] .=-W[id,:] .+ 0.0
+            end
+            if count(x -> abs(x) > 1e-12, a) == 1 # check if bound is a simple bound
+                if nz_id <= nsimple && sense[nz_id] == sense[id] && prio[nz_id] == prio[id]
+                    if iszero(W[id,:]-W[nz_id,:])
+                        bu[nz_id] = min(bu[nz_id],bu[id]/norm_factor)
+                        bl[nz_id] = max(bl[nz_id],bl[id]/norm_factor)
+                        continue
+                    end
+                end
+            end
+            push!(keep,nsimple+i) # Only add nonzero rows
+            push!(norm_factors,1/norm_factor)
+        end
+    end
+    if length(keep) < length(bu)
+        keepA = keep[nsimple+1:end].-nsimple
+        A = A[keepA,:].*norm_factors[nsimple+1:end]
+        bu,bl,W=bu[keep].*norm_factors,bl[keep].*norm_factors,W[keep,:].*norm_factors
+        sense,issoft,isbinary,prio = sense[keep], issoft[keep],isbinary[keep],prio[keep]
+    end
+    return A,bu,bl,W,sense,issoft,isbinary,prio
+end
+
+function find_duplicate_rows(A::AbstractMatrix; digits=6)
+    # Group by rounded values
+    row_groups = Dict{Vector{Float64}, Vector{Int}}()
+    order = Vector{Float64}[]
+    for i in 1:size(A, 1)
+        # Round the row to handle floating point jitter
+        row = round.(A[i, :], digits=digits)
+
+        if haskey(row_groups, row)
+            push!(row_groups[row], i)
+        else
+            row_groups[row] = [i]
+            push!(order,row)
+        end
+    end
+    return [row_groups[row] for row in order]
+end
+
+function remove_duplicate(A,bu,bl,W,sense,issoft,isbinary,prio)
+    nsimple = length(bu) - size(A,1)
+    Aext = [A W[nsimple+1:end,:] sense[nsimple+1:end] prio[nsimple+1:end]]
+    duplicate_map = find_duplicate_rows(Aext)
+
+    if(length(duplicate_map) == size(A,1)) # No duplicates
+        return A,bu,bl,W,sense,issoft,isbinary,prio
+    end
+
+    A_new = zeros(length(duplicate_map),size(A,2))
+    bu_new = [bu[1:nsimple];zeros(length(duplicate_map))]
+    bl_new = [bl[1:nsimple];zeros(length(duplicate_map))]
+    W_new = [W[1:nsimple,:];zeros(length(duplicate_map),size(W,2))]
+    issoft_new = [issoft[1:nsimple];falses(length(duplicate_map))]
+    isbinary_new = [isbinary[1:nsimple];falses(length(duplicate_map))]
+    prio_new = [prio[1:nsimple];zeros(Cint,length(duplicate_map))]
+    sense_new = [sense[1:nsimple];zeros(Cint,length(duplicate_map))]
+    for i in 1:length(duplicate_map)
+        # TODO, correctly handle prios
+        id =  duplicate_map[i][1]
+        A_new[i,:] = A[id,:]
+        ids = duplicate_map[i].+nsimple
+        id+=nsimple # To go account for simple bounds
+        bu_new[nsimple+i]= minimum(bu[ids])
+        bl_new[nsimple+i] = maximum(bl[ids])
+        W_new[nsimple+i,:] = W[id,:]
+        issoft_new[nsimple+i] = issoft[id]
+        isbinary_new[nsimple+i] = isbinary[id]
+        prio_new[nsimple+i] = prio[id]
+        sense_new[nsimple+i] = sense[id]
+    end
+
+    return A_new,bu_new,bl_new,W_new,sense_new,issoft_new,isbinary_new,prio_new
 end
