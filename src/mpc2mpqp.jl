@@ -1,3 +1,20 @@
+struct DenseObjective
+    H::Matrix{Float64}
+    f::Vector{Float64}
+    f_theta::Matrix{Float64}
+    H_theta::Matrix{Float64}
+end
+
+struct DenseConstraints
+    A::Matrix{Float64}
+    bu::Vector{Float64}
+    bl::Vector{Float64}
+    W::Matrix{Float64}
+    issoft::BitVector
+    isbinary::BitVector
+    prio::Vector{Cint}
+end
+
 # Create Φ and Γ such that 
 # X = Φ x0 + Γ U  (where X and U contains xi and ui stacked..)
 function state_predictor(F,G,Np,Nc)
@@ -232,13 +249,20 @@ function create_constraints(mpc,Φ,Γ)
         W = [W;Wg];
     end
 
-    return A,bu,bl,W,issoft,isbinary,prios
+    # Collapse constant term in constraints 
+    if(!iszero(mpc.model.offset))
+        bu += W[:,end]
+        bl += W[:,end]
+        W = W[:,1:end-1]
+    end
+
+    return DenseConstraints(A,bu[:],bl[:],W,issoft,isbinary,prios)
 end
 
 # Create H, f_theta, H_theta such that the objective function for a given
 # MPC problem is formulated as 0.5 U' H U+th'F_theta' U + 0.5 th' H_theta th
 # (where th contains x0, r and u(k-1))
-function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
+function create_objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
 
     ny = mpc.model.ny
     Q_full,Qf_full = Q[1:ny,1:ny],Qf[1:ny,1:ny]
@@ -350,7 +374,14 @@ function objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
     f -= fbin
     H += diagm(fbin .!= 0)
 
-    return (H+H')/2,f,f_theta,H_theta
+    # Collapse constant term in objective
+    if(!iszero(mpc.model.offset))
+        f += f_theta[:,end]
+        f_theta = f_theta[:,1:end-1]
+        H_theta = H_theta[1:end-1,1:end-1]
+    end
+
+    return DenseObjective((H+H')/2,f[:],f_theta,H_theta)
 end
 
 """
@@ -368,26 +399,16 @@ Consider instead to:
     end
 
     F,G,C,Q,R,S,Qf = create_extended_system_and_cost(mpc) 
+    nxe,nue= size(G) 
 
     Φ,Γ=state_predictor(F,G,mpc.Np,mpc.Nc);
 
-    # Create objective function 
-    nxe,nue= size(G) 
-    H,f,f_theta,H_theta = objective(Φ,Γ,C,
-                                    Q,R,S,Qf,
-                                    mpc.Np,mpc.Nc,nue,nxe,mpc)
-    # Create Constraints 
-    A, bu, bl, W, issoft, isbinary, prio = create_constraints(mpc,Φ,Γ)
+    objective  = create_objective(Φ,Γ,C,Q,R,S,Qf,mpc.Np,mpc.Nc,nue,nxe,mpc)
+    H,f,f_theta,H_theta = objective.H, objective.f, objective.f_theta, objective.H_theta
 
-    # Collapse constant term in dynamics
-    if(!iszero(mpc.model.offset))
-        f += f_theta[:,end]
-        f_theta = f_theta[:,1:end-1]
-        H_theta = H_theta[1:end-1,1:end-1]
-        bu += W[:,end]
-        bl += W[:,end]
-        W = W[:,1:end-1]
-    end
+    c = create_constraints(mpc,Φ,Γ)
+    A,bu,bl,W,issoft,isbinary,prio = c.A, c.bu, c.bl, c.W, c.issoft, c.isbinary, c.prio
+
 
     # Apply move blocking
     if(!isempty(mpc.move_blocks))
@@ -422,16 +443,6 @@ Consider instead to:
         end
     end
 
-    # Setup sense
-    senses = zeros(Cint,length(bu)); 
-
-    # ignore constraints which have inf bounds
-    for i in 1:length(bu)
-        if(bu[i] > 1e20 && bl[i] < -1e20)
-            senses[i] += DAQP.IMMUTABLE
-        end
-    end
-
     # Resort based on priorities
     ns = length(prio)-size(A,1)
     prio_order = sortperm(prio[ns+1:end])
@@ -442,7 +453,22 @@ Consider instead to:
     break_points = unique(i->prio[i], eachindex(prio))[2:end].-1;
     break_points = Cint.(break_points)
     isempty(break_points) || push!(break_points,length(prio))
-                                                
+    
+    # Remove redundant constraints
+    if(mpc.settings.preprocess_mpqp)
+        A,bu,bl,W,issoft,isbinary,prio = remove_redundant(A,bu,bl,W,issoft,isbinary,prio)
+        A,bu,bl,W,issoft,isbinary,prio = remove_duplicate(A,bu,bl,W,issoft,isbinary,prio)
+    end
+
+    # Setup sense
+    senses = zeros(Cint,length(bu)); 
+
+    # ignore constraints which have inf bounds
+    for i in 1:length(bu)
+        if(bu[i] > 1e20 && bl[i] < -1e20)
+            senses[i] += DAQP.IMMUTABLE
+        end
+    end
     # Mark soft constrints  
     senses[issoft[:]].+=DAQP.SOFT
 
@@ -452,12 +478,6 @@ Consider instead to:
     # Replace Infs for codegen
     clamp!(bu,-1e30,1e30)
     clamp!(bl,-1e30,1e30)
-
-    # Remove redundant constraints
-    if(mpc.settings.preprocess_mpqp)
-        A,bu,bl,W,senses,issoft,isbinary,prio = remove_redundant(A,bu,bl,W,senses,issoft,isbinary,prio)
-        A,bu,bl,W,senses,issoft,isbinary,prio = remove_duplicate(A,bu,bl,W,senses,issoft,isbinary,prio)
-    end
 
     m,n = length(bu),length(f)
     mpQP = MPQP(H,f[:],H_theta,f_theta,
@@ -531,13 +551,12 @@ function create_extended_system_and_cost(mpc::MPC)
 
     return F,G,C,Q,R,S,Qf 
 end
-function remove_redundant(A,bu,bl,W,sense,issoft,isbinary,prio)
+function remove_redundant(A,bu,bl,W,issoft,isbinary,prio)
     nsimple = length(bu) - size(A,1)
     keep = collect(1:nsimple) # Don't remove simple bounds
     norm_factors = ones(nsimple)
     for (i,a) in enumerate(eachrow(A))
         id = nsimple+i
-        sense[id] == DAQP.IMMUTABLE  && continue # Flag to be ignored
         norm_factor = norm(a)
         if norm_factor > 1e-10
             nz_id = findfirst(x -> abs(x) > 1e-12, a)
@@ -549,11 +568,13 @@ function remove_redundant(A,bu,bl,W,sense,issoft,isbinary,prio)
                 W[id,:] .=-W[id,:] .+ 0.0
             end
             if count(x -> abs(x) > 1e-12, a) == 1 # check if bound is a simple bound
-                if nz_id <= nsimple && sense[nz_id] == sense[id] && prio[nz_id] == prio[id]
-                    if iszero(W[id,:]-W[nz_id,:])
-                        bu[nz_id] = min(bu[nz_id],bu[id]/norm_factor)
-                        bl[nz_id] = max(bl[nz_id],bl[id]/norm_factor)
-                        continue
+                if nz_id <= nsimple  && prio[nz_id] == prio[id]
+                    if issoft[nz_id] == issoft[id] && isbinary[nz_id] == isbinary[id]
+                        if iszero(W[id,:]-W[nz_id,:])
+                            bu[nz_id] = min(bu[nz_id],bu[id]/norm_factor)
+                            bl[nz_id] = max(bl[nz_id],bl[id]/norm_factor)
+                            continue
+                        end
                     end
                 end
             end
@@ -565,9 +586,9 @@ function remove_redundant(A,bu,bl,W,sense,issoft,isbinary,prio)
         keepA = keep[nsimple+1:end].-nsimple
         A = A[keepA,:].*norm_factors[nsimple+1:end]
         bu,bl,W=bu[keep].*norm_factors,bl[keep].*norm_factors,W[keep,:].*norm_factors
-        sense,issoft,isbinary,prio = sense[keep], issoft[keep],isbinary[keep],prio[keep]
+        issoft,isbinary,prio = issoft[keep],isbinary[keep],prio[keep]
     end
-    return A,bu,bl,W,sense,issoft,isbinary,prio
+    return A,bu,bl,W,issoft,isbinary,prio
 end
 
 function find_duplicate_rows(A::AbstractMatrix; digits=6)
@@ -588,13 +609,14 @@ function find_duplicate_rows(A::AbstractMatrix; digits=6)
     return [row_groups[row] for row in order]
 end
 
-function remove_duplicate(A,bu,bl,W,sense,issoft,isbinary,prio)
+function remove_duplicate(A,bu,bl,W,issoft,isbinary,prio)
     nsimple = length(bu) - size(A,1)
-    Aext = [A W[nsimple+1:end,:] sense[nsimple+1:end] prio[nsimple+1:end]]
+    idsA = nsimple+1:length(bu)
+    Aext = [A W[idsA,:] issoft[idsA] isbinary[idsA] prio[idsA]]
     duplicate_map = find_duplicate_rows(Aext)
 
     if(length(duplicate_map) == size(A,1)) # No duplicates
-        return A,bu,bl,W,sense,issoft,isbinary,prio
+        return A,bu,bl,W,issoft,isbinary,prio
     end
 
     A_new = zeros(length(duplicate_map),size(A,2))
@@ -604,7 +626,6 @@ function remove_duplicate(A,bu,bl,W,sense,issoft,isbinary,prio)
     issoft_new = [issoft[1:nsimple];falses(length(duplicate_map))]
     isbinary_new = [isbinary[1:nsimple];falses(length(duplicate_map))]
     prio_new = [prio[1:nsimple];zeros(Cint,length(duplicate_map))]
-    sense_new = [sense[1:nsimple];zeros(Cint,length(duplicate_map))]
     for i in 1:length(duplicate_map)
         # TODO, correctly handle prios
         id =  duplicate_map[i][1]
@@ -617,8 +638,7 @@ function remove_duplicate(A,bu,bl,W,sense,issoft,isbinary,prio)
         issoft_new[nsimple+i] = issoft[id]
         isbinary_new[nsimple+i] = isbinary[id]
         prio_new[nsimple+i] = prio[id]
-        sense_new[nsimple+i] = sense[id]
     end
 
-    return A_new,bu_new,bl_new,W_new,sense_new,issoft_new,isbinary_new,prio_new
+    return A_new,bu_new,bl_new,W_new,issoft_new,isbinary_new,prio_new
 end
