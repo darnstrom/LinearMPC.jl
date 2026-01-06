@@ -42,7 +42,7 @@ function state_predictor(F,G,Np,Nc)
 
         Φ[i*nx+1:(i+1)*nx,:] = F*Φ[nx*(i-1)+1:nx*i,:]
     end
-    return Φ,Γ
+    return Φ::Matrix{Float64},Γ::Matrix{Float64}
 end
 
 function get_parameter_dims(mpc::MPC)
@@ -213,7 +213,7 @@ end
 
 # Compute A,b,W such that the constraints for a given MPC structure
 # are on the form A U<=b W th
-function create_constraints(mpc,Φ,Γ)
+function create_constraints(mpc::MPC,Φ,Γ)
 
     n = size(Γ,2);
     nth = sum(get_parameter_dims(mpc))
@@ -262,9 +262,12 @@ end
 # Create H, f_theta, H_theta such that the objective function for a given
 # MPC problem is formulated as 0.5 U' H U+th'F_theta' U + 0.5 th' H_theta th
 # (where th contains x0, r and u(k-1))
-function create_objective(Φ,Γ,C,Q,R,S,Qf,N,Nc,nu,nx,mpc)
+function create_objective(mpc::MPC,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
 
+    Q,R,S,Qf = w.Q, w.R, w.S, w.Qf
+    N,Nc = mpc.Np,mpc.Nc
     ny = mpc.model.ny
+
     Q_full,Qf_full = Q[1:ny,1:ny],Qf[1:ny,1:ny]
     C_full = C[1:ny,:]
 
@@ -398,12 +401,12 @@ Consider instead to:
 2) Setting reference_tracking = false →  regulation to the operating point.")
     end
 
-    F,G,C,Q,R,S,Qf = create_extended_system_and_cost(mpc) 
+    F,G,C,weights = create_extended_system_and_cost(mpc) 
     nxe,nue= size(G) 
 
     Φ,Γ=state_predictor(F,G,mpc.Np,mpc.Nc);
 
-    objective  = create_objective(Φ,Γ,C,Q,R,S,Qf,mpc.Np,mpc.Nc,nue,nxe,mpc)
+    objective  = create_objective(mpc,Φ,Γ,C,weights,nue,nxe)
     constraints = create_constraints(mpc,Φ,Γ)
 
     if(!isempty(mpc.move_blocks))
@@ -483,7 +486,8 @@ function create_extended_system_and_cost(mpc::MPC)
         C = [C zeros(size(C,1),1)]
     end
 
-    return F,G,C,Q,R,S,Qf 
+    return (F::Matrix{Float64},G::Matrix{Float64},
+            C::Matrix{Float64},MPCWeights(Q,R,zeros(0,0),S,Qf,zeros(0,0)))
 end
 function remove_redundant(c::DenseConstraints)
     A,bu,bl,W = c.A, c.bu, c.bl, c.W
