@@ -404,53 +404,22 @@ Consider instead to:
     Φ,Γ=state_predictor(F,G,mpc.Np,mpc.Nc);
 
     objective  = create_objective(Φ,Γ,C,Q,R,S,Qf,mpc.Np,mpc.Nc,nue,nxe,mpc)
-    c = create_constraints(mpc,Φ,Γ)
+    constraints = create_constraints(mpc,Φ,Γ)
 
     if(!isempty(mpc.move_blocks))
-        objective,c = apply_move_block(mpc,objective,c)
+        objective,constraints = apply_move_block(mpc,objective,constraints)
     end
 
     # Resort based on priorities
-    c = sort_constraints(c)
+    constraints = sort_constraints(constraints)
     
-    H,f,f_theta,H_theta = objective.H, objective.f, objective.f_theta, objective.H_theta
-    A,bu,bl,W,issoft,isbinary,prio = c.A, c.bu, c.bl, c.W, c.issoft, c.isbinary, c.prio
     # Remove redundant constraints
     if(mpc.settings.preprocess_mpqp)
-        A,bu,bl,W,issoft,isbinary,prio = remove_redundant(A,bu,bl,W,issoft,isbinary,prio)
-        A,bu,bl,W,issoft,isbinary,prio = remove_duplicate(A,bu,bl,W,issoft,isbinary,prio)
+        constraints = remove_redundant(constraints)
+        constraints = remove_duplicate(constraints)
     end
 
-    # Setup sense
-    senses = zeros(Cint,length(bu)); 
-
-    # ignore constraints which have inf bounds
-    for i in 1:length(bu)
-        if(bu[i] > 1e20 && bl[i] < -1e20)
-            senses[i] += DAQP.IMMUTABLE
-        end
-    end
-    # Mark soft constrints  
-    senses[issoft[:]].+=DAQP.SOFT
-
-    # Mark binary constraints
-    senses[isbinary[:]].+=DAQP.BINARY
-
-    # Replace Infs for codegen
-    clamp!(bu,-1e30,1e30)
-    clamp!(bl,-1e30,1e30)
-
-    break_points = unique(i->prio[i], eachindex(prio))[2:end].-1;
-    break_points = Cint.(break_points)
-    isempty(break_points) || push!(break_points,length(prio))
-
-    m,n = length(bu),length(f)
-    mpQP = MPQP(H,f[:],H_theta,f_theta,
-                A,bu,bl,W,senses,Cint.(prio),break_points,
-                any(isbinary),
-                zeros(m),zeros(m),zeros(m),zeros(n))
-
-    return mpQP
+    return MPQP(objective,constraints)
 end
 
 function create_extended_system_and_cost(mpc::MPC)
@@ -516,7 +485,9 @@ function create_extended_system_and_cost(mpc::MPC)
 
     return F,G,C,Q,R,S,Qf 
 end
-function remove_redundant(A,bu,bl,W,issoft,isbinary,prio)
+function remove_redundant(c::DenseConstraints)
+    A,bu,bl,W = c.A, c.bu, c.bl, c.W
+    issoft,isbinary,prio = c.issoft, c.isbinary, c.prio
     nsimple = length(bu) - size(A,1)
     keep = collect(1:nsimple) # Don't remove simple bounds
     norm_factors = ones(nsimple)
@@ -553,7 +524,7 @@ function remove_redundant(A,bu,bl,W,issoft,isbinary,prio)
         bu,bl,W=bu[keep].*norm_factors,bl[keep].*norm_factors,W[keep,:].*norm_factors
         issoft,isbinary,prio = issoft[keep],isbinary[keep],prio[keep]
     end
-    return A,bu,bl,W,issoft,isbinary,prio
+    return DenseConstraints(A,bu,bl,W,issoft,isbinary,prio)
 end
 
 function find_duplicate_rows(A::AbstractMatrix; digits=6)
@@ -574,14 +545,17 @@ function find_duplicate_rows(A::AbstractMatrix; digits=6)
     return [row_groups[row] for row in order]
 end
 
-function remove_duplicate(A,bu,bl,W,issoft,isbinary,prio)
+function remove_duplicate(c::DenseConstraints)
+    A,bu,bl,W = c.A, c.bu, c.bl, c.W
+    issoft,isbinary,prio = c.issoft, c.isbinary, c.prio
+
     nsimple = length(bu) - size(A,1)
     idsA = nsimple+1:length(bu)
     Aext = [A W[idsA,:] issoft[idsA] isbinary[idsA] prio[idsA]]
     duplicate_map = find_duplicate_rows(Aext)
 
     if(length(duplicate_map) == size(A,1)) # No duplicates
-        return A,bu,bl,W,issoft,isbinary,prio
+        return c 
     end
 
     A_new = zeros(length(duplicate_map),size(A,2))
@@ -605,7 +579,7 @@ function remove_duplicate(A,bu,bl,W,issoft,isbinary,prio)
         prio_new[nsimple+i] = prio[id]
     end
 
-    return A_new,bu_new,bl_new,W_new,issoft_new,isbinary_new,prio_new
+    return DenseConstraints(A_new,bu_new,bl_new,W_new,issoft_new,isbinary_new,prio_new)
 end
 
 function apply_move_block(mpc::MPC, obj::DenseObjective, c::DenseConstraints)
@@ -644,4 +618,35 @@ function sort_constraints(c::DenseConstraints)
     order = [1:ns; order .+ ns] # Offset correctly
     return DenseConstraints(Anew, c.bu[order], c.bl[order], c.W[order,:], 
                             c.issoft[order], c.isbinary[order], c.prio[order])
+end
+
+function MPQP(obj::DenseObjective, c::DenseConstraints)
+    # Setup sense
+    senses = zeros(Cint,length(c.bu)); 
+
+    # ignore constraints which have inf bounds
+    for i in 1:length(c.bu)
+        if(c.bu[i] > 1e20 && c.bl[i] < -1e20)
+            senses[i] += DAQP.IMMUTABLE
+        end
+    end
+    # Mark soft constrints  
+    senses[c.issoft[:]].+=DAQP.SOFT
+
+    # Mark binary constraints
+    senses[c.isbinary[:]].+=DAQP.BINARY
+
+    # Replace Infs for codegen
+    clamp!(c.bu,-1e30,1e30)
+    clamp!(c.bl,-1e30,1e30)
+
+    break_points = unique(i->c.prio[i], eachindex(c.prio))[2:end].-1;
+    break_points = Cint.(break_points)
+    isempty(break_points) || push!(break_points,length(c.prio))
+
+    m,n = length(c.bu),length(obj.f)
+    mpQP = MPQP(obj.H,obj.f,obj.H_theta,obj.f_theta,
+                c.A,c.bu,c.bl,c.W, senses, c.prio, break_points,
+                any(c.isbinary),
+                zeros(m),zeros(m),zeros(m),zeros(n))
 end
