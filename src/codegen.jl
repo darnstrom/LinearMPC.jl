@@ -52,9 +52,12 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
 
     # Generate move blocking data for linear cost averaging
     if mpc.nl > 0 && !isempty(mpc.move_blocks)
-        @printf(fh, "#define N_MOVE_BLOCKS %d\n", length(mpc.move_blocks))
+        if any(x -> x != mpcmove_blocks[1], mpc.move_blocks)
+            throw(ArgumentError("Codegeneration not supported for parametric linear cost + varying move blocks."))
+        end
+        @printf(fh, "#define N_MOVE_BLOCKS %d\n", length(mpc.move_blocks[1]))
         @printf(fh, "#define N_PREDICTION_HORIZON %d\n", mpc.Np)
-        @printf(fh, "extern int move_blocks[%d];\n", length(mpc.move_blocks))
+        @printf(fh, "extern int move_blocks[%d];\n", length(mpc.move_blocks[1]))
     end
 
     @printf(fh, "extern c_float mpc_parameter[%d];\n", nth);
@@ -77,7 +80,7 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
     # Generate move_blocks array for linear cost averaging
     if mpc.nl > 0 && !isempty(mpc.move_blocks)
         @printf(fsrc, "#define N_CONTROL %d\n", mpc.model.nu)
-        write_int_array(fsrc, mpc.move_blocks, "move_blocks")
+        write_int_array(fsrc, mpc.move_blocks[1], "move_blocks")
     end
 
     # Update parameter
@@ -182,10 +185,13 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
 
     # Generate move blocking data for linear cost averaging
     if mpc.nl > 0 && !isempty(mpc.move_blocks)
-        @printf(fh, "#define N_MOVE_BLOCKS %d\n", length(mpc.move_blocks))
+        if any(x -> x != mpc.move_blocks[1], mpc.move_blocks)
+            throw(ArgumentError("Codegeneration not supported for parametric linear cost + varying move blocks."))
+        end
+        @printf(fh, "#define N_MOVE_BLOCKS %d\n", length(mpc.move_blocks[1]))
         @printf(fh, "#define N_PREDICTION_HORIZON %d\n", mpc.Np)
-        @printf(fh, "extern int move_blocks[%d];\n", length(mpc.move_blocks))
-        write_int_array(fsrc, mpc.move_blocks, "move_blocks")
+        @printf(fh, "extern int move_blocks[%d];\n", length(mpc.move_blocks[1]))
+        write_int_array(fsrc, mpc.move_blocks[1], "move_blocks")
     end
 
     fmpc_h = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_update_qp.h"), "r");

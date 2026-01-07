@@ -6,7 +6,7 @@ mutable struct ExplicitMPC
     nl::Int
     Np::Int
     Nc::Int
-    move_blocks::Vector{Int}
+    move_blocks::Vector{Vector{Int}}
 
     solution::ParametricDAQP.Solution
     mpQP

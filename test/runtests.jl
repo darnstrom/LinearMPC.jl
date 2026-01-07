@@ -134,20 +134,28 @@ global templib
         # Pad
         move_block!(mpc,[1,1])
         mpqp = LinearMPC.mpc2mpqp(mpc)
-        @test mpc.move_blocks == [1,9]
+        @test mpc.move_blocks == [[1,9],[1,9]]
 
         # Clip
         move_block!(mpc,[2,3,3,6,8,9])
         mpqp = LinearMPC.mpc2mpqp(mpc)
-        @test mpc.move_blocks == [2,3,3,2]
+        @test mpc.move_blocks == [[2,3,3,2],[2,3,3,2]]
 
         move_block!(mpc,2)
         mpqp = LinearMPC.mpc2mpqp(mpc)
-        @test mpc.move_blocks == [2,2,2,2,2]
+        @test mpc.move_blocks == [[2,2,2,2,2],[2,2,2,2,2]]
 
         move_block!(mpc,3)
         mpqp = LinearMPC.mpc2mpqp(mpc)
-        @test mpc.move_blocks == [3,3,3,1]
+        @test mpc.move_blocks == [[3,3,3,1],[3,3,3,1]]
+
+        move_block!(mpc,[[1,2,3],[4,2]])
+        mpqp = LinearMPC.mpc2mpqp(mpc)
+        @test mpc.move_blocks == [[1,2,7],[4,6]]
+
+        move_block!(mpc,[[1,2,3,15,20],[2]])
+        mpqp = LinearMPC.mpc2mpqp(mpc)
+        @test mpc.move_blocks == [[1,2,3,4],[10]]
     end
 
     @testset "Explicit MPC" begin

@@ -198,9 +198,12 @@ function format_linear_cost(mpc::Union{MPC,ExplicitMPC}, l)
             end
 
             # Apply move blocking via direct mean computation
+            if any(x -> x != move_blocks[1], move_blocks)
+                throw(ArgumentError("Parametric linear cost + varying move blocks not supported."))
+            end
             l_blocked = zeros(mpc.nl)
             offset = 0
-            for (k, mb) in enumerate(move_blocks)
+            for (k, mb) in enumerate(move_blocks[1])
                 block_inds = (offset + 1):min(offset + mb, Np)
                 l_blocked[(k-1)*nu+1:k*nu] = vec(mean(l_mat[:, block_inds], dims=2))
                 offset += mb
