@@ -615,13 +615,13 @@ function apply_move_block(mpc::MPC, obj::DenseObjective, c::DenseConstraints)
     #    end
     #    T[end-nu+1:end,end-nu+1:end] = I(nu)
     #end
-    move_blocks = [mpc.move_blocks for _ in 1:nu]
+    #move_blocks = [mpc.move_blocks for _ in 1:nu]
     nUold = nu*mpc.Nc 
-    nUnew = sum(length(mb) for mb in move_blocks)
+    nUnew = sum(length(mb) for mb in mpc.move_blocks)
 
     new_id,T,counter,keep = 1,zeros(nUold,nUnew),collect(1:nu),Int[]
-    for pass in 1:maximum(length,move_blocks)
-        for (iu,mb) in enumerate(move_blocks)
+    for pass in 1:maximum(length,mpc.move_blocks)
+        for (iu,mb) in enumerate(mpc.move_blocks)
             length(mb) < pass  && continue # No more blocks for control iu
             block = length(mb) != pass ? mb[pass] : 1 # clipping since the end will be superfluous...
             T[counter[iu]:nu:counter[iu]+nu*(block-1),new_id] .= 1

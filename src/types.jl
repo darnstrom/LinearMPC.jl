@@ -123,7 +123,7 @@ mutable struct MPC
     K::Matrix{Float64}
 
     # Move blocks
-    move_blocks::Vector{Int}
+    move_blocks::Vector{Vector{Int}}
 
     mpqp_issetup::Bool
 
@@ -141,7 +141,7 @@ function MPC(model::Model;Np=10,Nc=Np)
         MPCWeights(model.nu,model.nx,model.ny),
         zeros(0),zeros(0),zeros(0),-1,
         Constraint[],MPCSettings(),MPQP(),
-        DAQP.Model(),zeros(model.nu,model.nx),Int[],false, zeros(model.nu),zeros(0,0),
+        DAQP.Model(),zeros(model.nu,model.nx),Vector{Int}[],false, zeros(model.nu),zeros(0,0),
         nothing,zeros(model.nx))
 end
 

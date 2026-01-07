@@ -159,14 +159,29 @@ For example, `block`=[2,1,3] keeps the control constant for 2 time-steps, 1 time
 * if sum(block) ≠ mpc.Np, the resulting block will be padded or clipped
 * if `block` is an Int, a vector with constant block size is created
 """
+function move_block!(mpc,block::Nothing)
+    mpc.move_blocks = Vector{Int}[]
+    mpc.Nc = mpc.Np
+    mpc.mpqp_issetup=false
+end
+
 function move_block!(mpc,block::Number)
     block = block <= 0 ? Int[] : fill(Int(block),mpc.Np ÷ block +1)
     move_block!(mpc,block)
 end
 
 function move_block!(mpc,block::AbstractVector{<:Number})
-    mpc.move_blocks = format_move_block(block,mpc.Np)
-    mpc.Nc = isempty(mpc.move_blocks) ? mpc.Np : sum(mpc.move_blocks[1:end-1])+1
+    isempty(block) && return move_block!(mpc,nothing)
+    return move_block!(mpc,[block for _ in 1:mpc.model.nu])
+end
+
+function move_block!(mpc,blocks::Vector{<:AbstractVector{<:Number}})
+    length(blocks) == mpc.model.nu || ArgumentError("Need to have blocks for every control input")
+    blocks_formated = [format_move_block(mb,mpc.Np) for mb in blocks]
+    any(isempty(mb) for mb in blocks_formated) && ArgumentError("One block is empty")
+
+    mpc.move_blocks = blocks_formated 
+    mpc.Nc = maximum(sum(mb[1:end-1]) for mb in mpc.move_blocks)+1
     mpc.mpqp_issetup = false
 end
 
