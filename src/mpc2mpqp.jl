@@ -89,7 +89,7 @@ function create_controlbounds(mpc::MPC, Γ, Φ)
     nu,nx,Nb = mpc.model.nu, mpc.model.nx, mpc.Nc
     _,_,_,_,nl = get_parameter_dims(mpc)
     nth = sum(get_parameter_dims(mpc)) - nl  # Exclude linear cost from state-related dimensions
-    !iszero(mpc.model.offset) && (nth+=1); # constant offset in dynamics
+    !iszero(mpc.model.f_offset) && (nth+=1); # constant offset in dynamics
 
     #-K*X + V = -K*(Γ V + Φ x0) + V 
     #         = (I-K*Γ)V -K Φ x0
@@ -133,7 +133,7 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
         nxe = sum(get_parameter_dims(mpc))-nl
         nrx = mpc.nr
     end
-    !iszero(mpc.model.offset) && (nxe+=1); # constant offset in dynamics
+    !iszero(mpc.model.f_offset) && (nxe+=1); # constant offset in dynamics
 
     ubtot,lbtot = zeros(0,1),zeros(0,1);
     Axtot,Autot = zeros(0,nxe*(Np+1)), zeros(0,nu*Nc);
@@ -155,7 +155,7 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
         Ar = isempty(c.Ar) || nrx == 0 ? zeros(mi,nrx) : c.Ar
         Ad = isempty(c.Ad) ? zeros(mi,mpc.model.nd) : c.Ad
         Aup = isempty(c.Aup) ? zeros(mi,mpc.nuprev) : c.Auip
-        Ah = iszero(mpc.model.offset) ? zeros(mi,0) : zeros(mi,1)
+        Ah = iszero(mpc.model.f_offset) ? zeros(mi,0) : zeros(mi,1)
 
         Autot = [Autot; kron(eyeU[ks,:],c.Au)]
         Axtot = [Axtot; kron(eyeX[ks,:],[Ax Ar Ad Aup Ah])]
@@ -217,7 +217,7 @@ function create_constraints(mpc::MPC,Φ,Γ)
 
     n = size(Γ,2);
     nth = sum(get_parameter_dims(mpc))
-    !iszero(mpc.model.offset) && (nth +=1); # constant offset in dynamics
+    !iszero(mpc.model.f_offset) && (nth +=1); # constant offset in dynamics
     # Control bounds
     if(!isempty(mpc.umax))
         A,bu,bl,W = create_controlbounds(mpc,Γ,Φ)
@@ -250,7 +250,7 @@ function create_constraints(mpc::MPC,Φ,Γ)
     end
 
     # Collapse constant term in constraints 
-    if(!iszero(mpc.model.offset))
+    if(!iszero(mpc.model.f_offset))
         bu += W[:,end]
         bl += W[:,end]
         W = W[:,1:end-1]
@@ -378,10 +378,18 @@ function create_objective(mpc::MPC,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
     H += diagm(fbin .!= 0)
 
     # Collapse constant term in objective
-    if(!iszero(mpc.model.offset))
+    if(!iszero(mpc.model.f_offset))
         f += f_theta[:,end]
         f_theta = f_theta[:,1:end-1]
         H_theta = H_theta[1:end-1,1:end-1]
+    end
+    # Contant offset in h enters similar to as reference (can be seen as reference r + h_offset)
+    if(nrp > 0 && !iszero(mpc.model.h_offset))
+        if mpc.settings.reference_preview && !mpc.settings.reference_condensation
+            f .+= f_theta[:,nxp+1:nxp+nrp]*repeat(mpc.model.h_offset,mpc.Np)
+        else
+            f .+= f_theta[:,nxp+1:nxp+nrp]*mpc.model.h_offset
+        end
     end
 
     return DenseObjective((H+H')/2,f[:],f_theta,H_theta)
@@ -478,9 +486,9 @@ function create_extended_system_and_cost(mpc::MPC)
         S[1:nx,:] -=mpc.K'*mpc.weights.R
     end
 
-    if(!iszero(mpc.model.offset))
+    if(!iszero(mpc.model.f_offset))
         F = cat(F,1,dims=(1,2))
-        F[1:nx,end] .= mpc.model.offset
+        F[1:nx,end] .= mpc.model.f_offset
         G = [G;zeros(1,nu)]
         S = [S;zeros(1,nu)]
         C = [C zeros(size(C,1),1)]

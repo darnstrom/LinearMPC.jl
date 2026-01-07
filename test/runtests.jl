@@ -579,7 +579,7 @@ global templib
     end
     @testset "Constant offset" begin
         F,G = [1 0.1; 0 1], [0.005;0.1;;] # double integrator with Ts=0.1
-        mpc= LinearMPC.MPC(F,G;Ts=0.1,Np=25,C=[1 0;], offset = [0.1;0.1])
+        mpc= LinearMPC.MPC(F,G;Ts=0.1,Np=25,C=[1 0;], f_offset = [0.1;0.1])
         set_objective!(mpc,R=0,Rr=1,Q=1)
         set_bounds!(mpc;umin=[-2],umax=[2],ymin=[-0.5],ymax=[0.5])
         LinearMPC.set_state_observer!(mpc;Q=1e-3)
@@ -756,5 +756,13 @@ global templib
         @test isempty(mpc.mpQP.A)
         @test all(mpc.mpQP.bu .== 0.9*ones(10))
         @test all(mpc.mpQP.bl .== -0.5*ones(10))
+    end
+
+    @testset "Set offset" begin
+        mpc = LinearMPC.MPC([0.778800783;;],[1.0;;];C=[0.44239843385;;])
+        LinearMPC.set_objective!(mpc; Q=[1.0], R=[0.0], Rr=[0.1])
+        LinearMPC.set_offset!(mpc; uo=[10.0])
+        sim = LinearMPC.Simulation(mpc; x0=[0.0], r=[1.0], N=50)
+        @test sim.us[end] ≈ 10.5
     end
 end

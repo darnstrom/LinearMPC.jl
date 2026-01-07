@@ -268,26 +268,56 @@ Creates a steady-state Kalman filter for estimating the sate.
 If `F`,`G`, and `C` are not provided, the model used in `mpc` is used in the filter
 """
 function set_state_observer!(mpc::Union{MPC,ExplicitMPC};
-        F=nothing,G=nothing,C=nothing,offset=nothing, Q=nothing,R=nothing,x0=nothing)
+        F=nothing,G=nothing,C=nothing,f_offset=nothing, h_offset=nothing,
+        Q=nothing,R=nothing,x0=nothing)
     F = isnothing(F) ? mpc.model.F : F
     G = isnothing(G) ? mpc.model.G : G
     C = isnothing(C) ? mpc.model.C : C
-    offset = isnothing(offset) ? mpc.model.offset : offset 
-    mpc.state_observer = KalmanFilter(F,G,C;offset,Q,R,x0)
+    f_offset = isnothing(f_offset) ? mpc.model.f_offset : f_offset 
+    h_offset = isnothing(h_offset) ? mpc.model.h_offset : h_offset 
+    mpc.state_observer = KalmanFilter(F,G,C;f_offset,h_offset,Q,R,x0)
 end
 
 """
-    set_operating_point!(mpc;xo,uo,relinearize=true)
-Sets the operating point to the state xo and control uo.
-If relinearize is set to true, the original model will be relinearized around xo and uo.
+    set_operating_point!(mpc;xo,uo)
+Sets the operating point to the state xo and control uo and linearize
 """
 function set_operating_point!(mpc;xo=nothing,uo=nothing,relinearize=true)
     !isnothing(xo) && (mpc.model.xo[:] = xo)
     !isnothing(uo) && (mpc.model.uo[:] = uo)
 
-    if(relinearize)
-        # XXX will not relinearize measurement function (for that, need to store true_measure)
-        mpc.model = LinearMPC.Model(mpc.model.true_dynamics,(x,u,d)->mpc.model.C*x,xo,uo)
+    if !isnothing(xo) || !isnothing(uo)
+        mpc.model = LinearMPC.Model(mpc.model.true_dynamics,mpc.model.true_h,
+                                    mpc.model.xo,mpc.model.uo)
+        mpc.mpqp_issetup = false
     end
-    mpc.mpqp_issetup = false
+end
+
+
+"""
+    set_offset!(mpc;xo,uo,doff,fo,ho)
+Set bias terms in dynamics and measurements.
+
+Concretely we have that
+`f_offet = fo - F * xo - G * uo - Gd * doff` and
+`h_offet = ho - C * xo - Dd * doff`,
+which adds a constant term to the dynamics and measurement function, respectively.
+Note that if the system is linearized, these offsets are set automatically.
+If some of the offset are not entered, they are interpreted as zero.
+"""
+function set_offset!(mpc;xo=zeros(0),uo=zeros(0),doff=zeros(0),fo=zeros(0),ho=zeros(0))
+    isempty(xo) && (xo = zeros(mpc.model.nx))
+    isempty(uo) && (uo= zeros(mpc.model.nu))
+    isempty(fo) && (fo = zeros(mpc.model.nx))
+    isempty(ho) && (ho = zeros(mpc.model.ny))
+    isempty(doff) && (doff = zeros(mpc.model.nd))
+
+    mpc.model.xo .= xo
+    mpc.model.uo .= uo
+    mpc.uprev .= uo
+
+    mpc.model.f_offset .= fo - mpc.model.F*xo - mpc.model.G*uo - mpc.model.Gd*doff
+    mpc.model.h_offset .= ho - mpc.model.C*xo - mpc.model.Dd*doff
+
+    mpc.mpqp_issetup=false
 end

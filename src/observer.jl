@@ -1,25 +1,27 @@
 struct KalmanFilter
     F::Matrix{Float64}
     G::Matrix{Float64}
-    offset::Vector{Float64}
+    f_offset::Vector{Float64}
     C::Matrix{Float64}
+    h_offset::Vector{Float64}
     K::Matrix{Float64}
     x::Vector{Float64} 
 end
 
-function KalmanFilter(F,G,C;offset=nothing, x0=nothing, Q=nothing,R=nothing)
+function KalmanFilter(F,G,C;f_offset=nothing, h_offset=nothing, x0=nothing, Q=nothing,R=nothing)
     # Solve equation 
     ny,nx = size(C) 
     nu = size(G,2)
 
-    offset = isnothing(offset) ? zeros(nx) : offset;
+    f_offset = isnothing(f_offset) ? zeros(nx) : f_offset;
+    h_offset = isnothing(h_offset) ? zeros(ny) : h_offset;
     x0 = isnothing(x0) ? zeros(nx) : x0;
     Q = isnothing(Q) ? Matrix{Float64}(I,nx,nx) : matrixify(Q,nx);
     R = isnothing(R) ? Matrix{Float64}(I,ny,ny) : matrixify(R,nu);
 
     P,_ = ared(F',C',R,Q);
     K = P*C'/(C*P*C'+R) 
-    return KalmanFilter(F,G,offset,C,K,x0)
+    return KalmanFilter(F,G,f_offset,C,h_offset,K,x0)
 
 end
 
@@ -27,11 +29,11 @@ function set_state!(kf::KalmanFilter,x)
     kf.x[:] = x
 end
 function predict!(kf::KalmanFilter,u)
-    kf.x[:] = kf.F*kf.x + kf.G*u +kf.offset
+    kf.x[:] = kf.F*kf.x + kf.G*u +kf.f_offset
 end
 
 function correct!(kf::KalmanFilter,y)
-    inov = y - kf.C*kf.x
+    inov = y - kf.C*kf.x - kf.h_offset
     kf.x[:] += kf.K*inov
 end
 
@@ -40,14 +42,14 @@ function codegen(kf::KalmanFilter,fh,fsrc)
     nu = size(kf.G,2)
     @printf(fh, "#define N_MEASUREMENT %d\n",ny);
     @printf(fh, "extern c_float MPC_PLANT_DYNAMICS[%d];\n",nx*(1+nx+nu));
-    @printf(fh, "extern c_float C_OBSERVER[%d];\n",ny*nx);
+    @printf(fh, "extern c_float C_OBSERVER[%d];\n",ny*(nx+1));
     @printf(fh, "extern c_float K_TRANSPOSE_OBSERVER[%d];\n",ny*nx);
     fmpc_h = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_observer.h"), "r");
     write(fh, read(fmpc_h))
     close(fmpc_h)
 
-    write_float_array(fsrc,[kf.offset kf.F kf.G]'[:],"MPC_PLANT_DYNAMICS");
-    write_float_array(fsrc,kf.C'[:],"C_OBSERVER");
+    write_float_array(fsrc,[kf.f_offset kf.F kf.G]'[:],"MPC_PLANT_DYNAMICS");
+    write_float_array(fsrc,[kf.h_offset kf.C]'[:],"C_OBSERVER");
     write_float_array(fsrc,kf.K[:],"K_TRANSPOSE_OBSERVER");
     fmpc_src = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_observer.c"), "r");
     write(fsrc, read(fmpc_src))
