@@ -279,17 +279,16 @@ function set_state_observer!(mpc::Union{MPC,ExplicitMPC};
 end
 
 """
-    set_operating_point!(mpc;xo,uo,relinearize=true)
-Sets the operating point to the state xo and control uo.
-If relinearize is set to true, the original model will be relinearized around xo and uo.
+    set_operating_point!(mpc;xo,uo)
+Sets the operating point to the state xo and control uo and linearize
 """
 function set_operating_point!(mpc;xo=nothing,uo=nothing,relinearize=true)
     !isnothing(xo) && (mpc.model.xo[:] = xo)
     !isnothing(uo) && (mpc.model.uo[:] = uo)
 
-    if(relinearize)
-        # XXX will not relinearize measurement function (for that, need to store true_measure)
-        mpc.model = LinearMPC.Model(mpc.model.true_dynamics,(x,u,d)->mpc.model.C*x,xo,uo)
+    if !isnothing(xo) || !isnothing(u0)
+        mpc.model = LinearMPC.Model(mpc.model.true_dynamics,mpc.model.true_h,
+                                    mpc.model.xo,mpc.model.uo)
+        mpc.mpqp_issetup = false
     end
-    mpc.mpqp_issetup = false
 end
