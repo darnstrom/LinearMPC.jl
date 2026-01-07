@@ -295,14 +295,14 @@ end
 
 
 """
-    set_offset!(mpc;fo,uo,xo,yo)
+    set_offset!(mpc;xo,uo,fo,ho)
 Set bias terms in dynamics and measurements.
 
 Concretely we have that
 `f_offet = fo - F * xo - G * uo` and 
 `h_offet = ho - C * xo`,
 which adds a constant term to the dynamics and measurement function, respectively.
-Note that if the system is linearized, these suitable offsets are set automatically.
+Note that if the system is linearized, these offsets are set automatically.
 If some of the offset are not entered, they are interpreted as zero.
 """
 function set_offset!(mpc;xo=zeros(0),uo=zeros(0),fo=zeros(0),ho=zeros(0))
