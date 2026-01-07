@@ -22,6 +22,8 @@ move_block!(mpc,[3,2,1,4])
 
 One can also enter a set of evenly spaces blocks that covers the entire horizon. For example, if `Np=10`, the call `move_block!(mpc,2)` will result in the move blocks `[2,2,2,2,2]`.
 
+Finally, it is possible to define different move blocks for different control signals. For two control signals, for example, we can block the first with the move block `[1,2,2,5]` and the second one with the move block `[4,6]` with `move_block!(mpc,[[1,2,2,5],[4,6]])`.
+
 ## Example
 
 Consider the example of the control of an inverted pendulum on a cart, which is predefined as one of the examples in **LinearMPC.jl** and can be accessed with the call `mpc_examples`. We consider the case when we want the first output (the position of the cart) to reach a certain value (1 m to be specific.) Below we create three different MPC controllers with different prediction horizons and show the resulting step responses.   
