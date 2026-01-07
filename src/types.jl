@@ -43,7 +43,6 @@ MPC controller settings.
 """
 Base.@kwdef mutable struct MPCSettings
     preprocess_mpqp::Bool=true
-    move_block_foh::Bool= false
     reference_condensation::Bool= false
     reference_tracking::Bool= true
     reference_preview::Bool = false

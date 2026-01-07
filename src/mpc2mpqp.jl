@@ -598,24 +598,7 @@ function apply_move_block(mpc::MPC, obj::DenseObjective, c::DenseConstraints)
     nu = mpc.model.nu
     nu_bounds = length(mpc.umax)
     keep = collect(nu_bounds*mpc.Nc+1:length(c.bu))
-    #if(!mpc.settings.move_block_foh)
-    #    T= zeros(0,0)
-    #    for (k,mb) in enumerate([mpc.move_blocks[1:end-1];1])
-    #        T = cat(T,repeat(I(nu),mb,1),dims=(1,2))
-    #        append!(keep,(k-1)*nu+1:(k-1)*nu+nu_bounds)
-    #    end
-    #else
-    #    T = zeros(length(obj.f),length(mpc.move_blocks)*nu)
-    #    offset = 0
-    #    for (k,mb) in enumerate(mpc.move_blocks[1:end-1])
-    #        block = [[(mb-i)/mb for i in 0:mb-1] [i/mb for i in 0:mb-1]]
-    #        T[offset*nu+1:(offset+mb)*nu,(k-1)*nu+1:(k+1)*nu] = kron(block,I(nu))
-    #        append!(keep= (k-1)*nu+1:k*nu)
-    #        offset += mb
-    #    end
-    #    T[end-nu+1:end,end-nu+1:end] = I(nu)
-    #end
-    #move_blocks = [mpc.move_blocks for _ in 1:nu]
+
     nUold = nu*mpc.Nc 
     nUnew = sum(length(mb) for mb in mpc.move_blocks)
 
