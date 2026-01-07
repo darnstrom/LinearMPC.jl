@@ -286,7 +286,7 @@ function set_operating_point!(mpc;xo=nothing,uo=nothing,relinearize=true)
     !isnothing(xo) && (mpc.model.xo[:] = xo)
     !isnothing(uo) && (mpc.model.uo[:] = uo)
 
-    if !isnothing(xo) || !isnothing(u0)
+    if !isnothing(xo) || !isnothing(uo)
         mpc.model = LinearMPC.Model(mpc.model.true_dynamics,mpc.model.true_h,
                                     mpc.model.xo,mpc.model.uo)
         mpc.mpqp_issetup = false
