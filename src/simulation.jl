@@ -1,3 +1,15 @@
+struct Scenario
+    x0::Vector{Float64}
+    T::Float64
+    N::Int
+    r::Union{Vector{Float64},Matrix{Float64},Nothing}
+    d::Union{Vector{Float64},Matrix{Float64},Nothing}
+    l::Union{Vector{Float64},Matrix{Float64},Nothing}
+    callback::Function
+    dynamics::Union{Function,Nothing}
+    get_measurement::Union{Function,Nothing}
+end
+
 struct Simulation
     ts::Vector{Float64}
     ys::Matrix{Float64}
@@ -8,25 +20,36 @@ struct Simulation
     xhats::Matrix{Float64}
     yms::Matrix{Float64}
 
-    solve_times ::Vector{Float64}
+    solve_times::Vector{Float64}
 
     mpc::Union{MPC,ExplicitMPC}
+    scenario::Scenario
 end
 
-function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx),N=1000, r=nothing,d=nothing, l=nothing, callback=(x,u,d,k)->nothing, get_measurement= nothing)
+function Scenario(x0;T=-1.0,N=1000,r=nothing,d=nothing,l=nothing,
+        callback = (x,u,d,k)->nothing, get_measurement=nothing, dynamics = nothing)
+    return Scenario(x0,T,N,r,d,callback,dynamics,get_measurement)
+end
 
+function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
+    # Get number of time steps (prioritize T if it is entered)
+    N = scenario.T < 0 ? scenario.N : Int(abs(ceil(scenario.T/mpc.model.Ts)))
+    dynamics = isnothing(scenario.dynamics) ? mpc.model.true_dynamics : scenario.dynamics
     # Check if MPC has observer
     has_observer = !isnothing(mpc.state_observer)
-    if isnothing(get_measurement)
+    ny = has_observer ? size(mpc.state_observer.C,1) : mpc.model.ny
+    if isnothing(scenario.get_measurement)
         if has_observer 
             get_measurement = (x,d) -> mpc.state_observer.C*x
         else
             get_measurement = (x,d) -> mpc.model.C*x+mpc.model.Dd*d
         end
+    else
+        get_measurement = scenario.get_measurement
     end
 
-    x,u = x0,zeros(mpc.model.nu)
-
+    x,u = scenario.x0,zeros(mpc.model.nu)
+    
     xs = zeros(mpc.model.nx,N);
     ys = zeros(mpc.model.ny,N);
     rs = repeat(mpc.model.C*mpc.model.xo,1,N)
@@ -39,27 +62,30 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
 
     solve_times = zeros(N)
     # Setup reference 
-    if(!isnothing(r))
-        Nr = min(N,size(r,2))
-        rs[:,1:Nr].= r[:,1:Nr]
-        rs[:,size(r,2)+1:end] .= r[:,end] # hold last value of reference
+    if(!isnothing(scenario.r))
+        Nr = min(N,size(scenario.r,2))
+        rs[:,1:Nr].= scenario.r[:,1:Nr]
+        rs[:,size(scenario.r,2)+1:end] .= scenario.r[:,end] # hold last value
     end
+    r_preview = mpc.settings.reference_preview && !isnothing(scenario.r)
 
     # Setup disturbance
-    if(!isnothing(d))
+    if(!isnothing(scenario.d))
         ds[:,1:size(d,2)].= d
         ds[:,size(d,2)+1:end] .= d[:,end] # hold last
     end
 
     # Setup linear cost trajectory
-    if(!isnothing(l))
-        Nl = min(N,size(l,2))
-        ls[:,1:Nl].= l[:,1:Nl]
-        ls[:,size(l,2)+1:end] .= l[:,end] # hold last
+    if(!isnothing(scenario.l))
+        nl = size(scenario.l,2)
+        Nl = min(N,nl)
+        ls[:,1:Nl].= scenario.l[:,1:Nl]
+        ls[:,nl+1:end] .= scenario.l[:,end] # hold last
     end
+    l_preview = mpc.settings.linear_cost && !isnothing(scenario.l)
 
     # Start the simulation
-    has_observer && set_state!(mpc,x0)
+    has_observer && set_state!(mpc,scenario.x0)
     for k = 1:N
         xs[:,k], yms[:,k] = x, get_measurement(x,ds[:,k])
         ys[:,k] = has_observer ? mpc.model.C*x + mpc.model.Dd*ds[:,k] : yms[:,k]
@@ -67,67 +93,50 @@ function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC}; x0=zeros(mpc.model.nx
         # Get state estimate
         xhat = has_observer ? correct_state!(mpc,yms[:,k]) : x
         xhats[:,k] = xhat
-        # Get reference
-        if mpc.settings.reference_preview && !isnothing(r)
-            # Reference preview mode: provide future references
-            r = get_reference_preview(rs, k, mpc.Np)
-        else # Standard mode: provide current reference
-            r = rs[:,k]
-        end
 
-        # Get linear cost preview
-        l_k = nothing
-        if mpc.settings.linear_cost && !isnothing(l)
-            l_k = get_linear_cost_preview(ls, k, mpc.Nc)
-        end
+        # Get linear cost and reference preview
+        rk = r_preview ? get_preview(rs, k, mpc.Np) : rs[:,k]
+        lk = l_preview ? get_preview(ls, k, mpc.Nc) : nothing
 
-        solve_times[k] = @elapsed u = compute_control(mpc,xhat;r,d=ds[:,k],l=l_k)
+        solve_times[k] = @elapsed u = compute_control(mpc,xhat;r=rk, d=ds[:,k],l=lk)
 
         has_observer && predict_state!(mpc,u)
 
         x = dynamics(x,u,ds[:,k])
-        callback(x,u,ds[:,k],k)
+        scenario.callback(x,u,ds[:,k],k)
         us[:,k] = u
     end
     Ts = mpc.model.Ts < 0.0 ? 1.0 : mpc.model.Ts
-    return Simulation(collect(Ts*(0:1:N-1)),ys,us,xs,rs,ds,xhats,yms,solve_times,mpc)
+    return Simulation(collect(Ts*(0:1:N-1)),ys,us,xs,rs,ds,xhats,yms,solve_times,mpc,scenario)
 end
 
+function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC};x0=zeros(mpc.model.nx),T=-1.0, N=1000, r=nothing,d=nothing, l=nothing, callback=(x,u,d,k)->nothing, get_measurement= nothing)
+    return Simulation(mpc,Scenario(x0,T,N,r,d,l,callback,dynamics,get_measurement))
+end
+
+Simulation(mpc::Union{MPC,ExplicitMPC}; kwargs...) = Simulation(mpc.model.true_dynamics, mpc; kwargs...)
+
+function get_preview(rs,k,Nc)
+    preview = zeros(size(rs,1), Nc)
+    @views for i in 1:Nc
+        preview[:, i] .= rs[:, min(k + i, end)]
+    end
+    return preview
+end
 """
     get_reference_preview(rs, k, Np)
 
 Extract reference preview from reference trajectory starting at time step k.
 """
-function get_reference_preview(rs, k, Np)
-    ny = size(rs, 1)
-    r_preview = zeros(ny, Np)
-
-    @views for i in 1:Np
-        r_preview[:, i] .= rs[:, min(k + i, end)]
-    end
-
-    return r_preview
-end
+get_reference_preview(rs, k, Np) = get_preview(rs, k , Np)
 
 """
     get_linear_cost_preview(ls, k, Nc)
 
 Extract linear cost preview from linear cost trajectory starting at time step k.
 """
-function get_linear_cost_preview(ls, k, Nc)
-    nu = size(ls, 1)
-    l_preview = zeros(nu, Nc)
+get_linear_cost_preview(ls, k, Nc) = get_prewview(ls,k-1,Nc)
 
-    @views for i in 1:Nc
-        l_preview[:, i] .= ls[:, min(k + i - 1, end)]
-    end
-
-    return l_preview
-end
-
-function Simulation(mpc::Union{MPC,ExplicitMPC}; kwargs...)
-    return Simulation(mpc.model.true_dynamics, mpc; kwargs...)
-end
 
 using RecipesBase
 
