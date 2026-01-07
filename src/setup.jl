@@ -161,7 +161,7 @@ For example, `block`=[2,1,3] keeps the control constant for 2 time-steps, 1 time
 """
 function move_block!(mpc,block::Number)
     block = block <= 0 ? Int[] : fill(Int(block),mpc.Np ÷ block +1)
-    move_block!(mpc,block;type)
+    move_block!(mpc,block)
 end
 
 function move_block!(mpc,block::AbstractVector{<:Number})
