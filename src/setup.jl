@@ -295,28 +295,29 @@ end
 
 
 """
-    set_offset!(mpc;xo,uo,fo,ho)
+    set_offset!(mpc;xo,uo,doff,fo,ho)
 Set bias terms in dynamics and measurements.
 
 Concretely we have that
-`f_offet = fo - F * xo - G * uo` and 
-`h_offet = ho - C * xo`,
+`f_offet = fo - F * xo - G * uo - Gd * doff` and
+`h_offet = ho - C * xo - Dd * doff`,
 which adds a constant term to the dynamics and measurement function, respectively.
 Note that if the system is linearized, these offsets are set automatically.
 If some of the offset are not entered, they are interpreted as zero.
 """
-function set_offset!(mpc;xo=zeros(0),uo=zeros(0),fo=zeros(0),ho=zeros(0))
+function set_offset!(mpc;xo=zeros(0),uo=zeros(0),doff=zeros(0),fo=zeros(0),ho=zeros(0))
     isempty(xo) && (xo = zeros(mpc.model.nx))
     isempty(uo) && (uo= zeros(mpc.model.nu))
     isempty(fo) && (fo = zeros(mpc.model.nx))
     isempty(ho) && (ho = zeros(mpc.model.ny))
+    isempty(doff) && (doff = zeros(mpc.model.nd))
 
     mpc.model.xo .= xo
     mpc.model.uo .= uo
     mpc.uprev .= uo
 
-    mpc.model.f_offset .= fo - mpc.model.F*mpc.model.xo - mpc.model.G*mpc.model.uo
-    mpc.model.h_offset .= ho - mpc.model.C*mpc.model.xo
+    mpc.model.f_offset .= fo - mpc.model.F*xo - mpc.model.G*uo - mpc.model.Gd*doff
+    mpc.model.h_offset .= ho - mpc.model.C*xo - mpc.model.Dd*doff
 
     mpc.mpqp_issetup=false
 end
