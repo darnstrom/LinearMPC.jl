@@ -598,22 +598,37 @@ function apply_move_block(mpc::MPC, obj::DenseObjective, c::DenseConstraints)
     nu = mpc.model.nu
     nu_bounds = length(mpc.umax)
     keep = collect(nu_bounds*mpc.Nc+1:length(c.bu))
-    if(!mpc.settings.move_block_foh)
-        T= zeros(0,0)
-        for (k,mb) in enumerate([mpc.move_blocks[1:end-1];1])
-            T = cat(T,repeat(I(nu),mb,1),dims=(1,2))
-            append!(keep,(k-1)*nu+1:(k-1)*nu+nu_bounds)
+    #if(!mpc.settings.move_block_foh)
+    #    T= zeros(0,0)
+    #    for (k,mb) in enumerate([mpc.move_blocks[1:end-1];1])
+    #        T = cat(T,repeat(I(nu),mb,1),dims=(1,2))
+    #        append!(keep,(k-1)*nu+1:(k-1)*nu+nu_bounds)
+    #    end
+    #else
+    #    T = zeros(length(obj.f),length(mpc.move_blocks)*nu)
+    #    offset = 0
+    #    for (k,mb) in enumerate(mpc.move_blocks[1:end-1])
+    #        block = [[(mb-i)/mb for i in 0:mb-1] [i/mb for i in 0:mb-1]]
+    #        T[offset*nu+1:(offset+mb)*nu,(k-1)*nu+1:(k+1)*nu] = kron(block,I(nu))
+    #        append!(keep= (k-1)*nu+1:k*nu)
+    #        offset += mb
+    #    end
+    #    T[end-nu+1:end,end-nu+1:end] = I(nu)
+    #end
+    move_blocks = [mpc.move_blocks for _ in 1:nu]
+    nUold = nu*mpc.Nc 
+    nUnew = sum(length(mb) for mb in move_blocks)
+
+    new_id,T,counter,keep = 1,zeros(nUold,nUnew),collect(1:nu),Int[]
+    for pass in 1:maximum(length,move_blocks)
+        for (iu,mb) in enumerate(move_blocks)
+            length(mb) < pass  && continue # No more blocks for control iu
+            block = length(mb) != pass ? mb[pass] : 1 # clipping since the end will be superfluous...
+            T[counter[iu]:nu:counter[iu]+nu*(block-1),new_id] .= 1
+            append!(keep,counter[iu])
+            counter[iu]+=nu*block
+            new_id +=1
         end
-    else
-        T = zeros(length(obj.f),length(mpc.move_blocks)*nu)
-        offset = 0
-        for (k,mb) in enumerate(mpc.move_blocks[1:end-1])
-            block = [[(mb-i)/mb for i in 0:mb-1] [i/mb for i in 0:mb-1]]
-            T[offset*nu+1:(offset+mb)*nu,(k-1)*nu+1:(k+1)*nu] = kron(block,I(nu))
-            append!(keep= (k-1)*nu+1:k*nu)
-            offset += mb
-        end
-        T[end-nu+1:end,end-nu+1:end] = I(nu)
     end
     new_obj = DenseObjective(T'*obj.H*T, T'*obj.f, T'*obj.f_theta, obj.H_theta)
 
