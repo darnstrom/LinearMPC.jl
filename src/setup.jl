@@ -152,41 +152,37 @@ function set_prestabilizing_feedback!(mpc)
 end
 
 """
-    move_block!(mpc,block; type=:ZOH)
+    move_block!(mpc,block)
 
 Reduce the number of controls by keeping it constant in blocks.
 For example, `block`=[2,1,3] keeps the control constant for 2 time-steps, 1 time step, and 3 time steps.
 * if sum(block) ≠ mpc.Np, the resulting block will be padded or clipped
 * if `block` is an Int, a vector with constant block size is created
-Supported types are zero-order hold (:ZOH) and first-order hold (:FOH)
 """
-function move_block!(mpc,block; type=:ZOH)
-    block = Int.(copy(block))
-    if block isa Number
-        block = block <= 0  ? Int[] : fill(block,mpc.Np ÷ block +1)
-    end
-    if isempty(block)
-        mpc.move_blocks = Int[]
-        mpc.Nc = mpc.Np
-        mpc.mpqp_issetup = false
-        return
-    end
-    mpc.settings.move_block_foh = type==:FOH # Defaults to ZOH if type =/= :ZOH
-    Nnew = sum(block)
-    if Nnew == mpc.Np
-        mpc.move_blocks = block
-    elseif(Nnew < mpc.Np) # pad
-        mpc.move_blocks = block
-        mpc.move_blocks[end] += mpc.Np-Nnew
-    elseif Nnew > mpc.Np # clip
-        tot,i = 0,1
-        while((tot+=block[i]) < mpc.Np) i += 1 end
-        mpc.move_blocks = block[1:i]
-        mpc.move_blocks[end] += mpc.Np-tot;
-    end
+function move_block!(mpc,block::Number)
+    block = block <= 0 ? Int[] : fill(Int(block),mpc.Np ÷ block +1)
+    move_block!(mpc,block;type)
+end
 
-    mpc.Nc = sum(mpc.move_blocks[1:end-1])+1;
+function move_block!(mpc,block::AbstractVector{<:Number})
+    mpc.move_blocks = format_move_block(block,mpc.Np)
+    mpc.Nc = isempty(mpc.move_blocks) ? mpc.Np : sum(mpc.move_blocks[1:end-1])+1
     mpc.mpqp_issetup = false
+end
+
+function format_move_block(block::AbstractVector{<:Number},Np::Int)
+    block = Int.(copy(block))
+    isempty(block) && return Int[]
+    Nnew = sum(block)
+    if(Nnew < Np) # pad
+        block[end] += Np-Nnew
+    elseif Nnew > Np # clip
+        tot,i = 0,1
+        while((tot+=block[i]) < Np) i += 1 end
+        block = block[1:i]
+        block[end] += Np-tot;
+    end
+    return block
 end
 
 """
