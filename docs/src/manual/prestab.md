@@ -15,11 +15,11 @@ If $K$ is selected such that $F-GK$ is stable, the condensed Quadratic program w
 
 In **LinearMPC.jl** you can set a stabilizing feedback $K$ for an MPC controller `mpc` with
 ```julia
-set_stabilizing_feedback!(mpc,K)
+set_prestabilizing_feedback!(mpc,K)
 ```
 A popular choice of $K$ is as the gain from solving an infinite horizon LQR problem. This gain can be set as the stabilizing feedback with
 ```julia
-set_stabilizing_feedback!(mpc)
+set_prestabilizing_feedback!(mpc)
 ```
 ## Example
 Consider a first-order system with a pole in 10, which has the transfer function  
