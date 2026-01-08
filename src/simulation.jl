@@ -2,9 +2,9 @@ struct Scenario
     x0::Vector{Float64}
     T::Float64
     N::Int
-    r::Union{Vector{Float64},Matrix{Float64},Nothing}
-    d::Union{Vector{Float64},Matrix{Float64},Nothing}
-    l::Union{Vector{Float64},Matrix{Float64},Nothing}
+    r::VecOrMat{Float64}
+    d::VecOrMat{Float64}
+    l::VecOrMat{Float64}
     callback::Function
     dynamics::Union{Function,Nothing}
     get_measurement::Union{Function,Nothing}
@@ -28,7 +28,10 @@ end
 
 function Scenario(x0;T=-1.0,N=1000,r=nothing,d=nothing,l=nothing,
         callback = (x,u,d,k)->nothing, get_measurement=nothing, dynamics = nothing)
-    return Scenario(x0,T,N,r,d,callback,dynamics,get_measurement)
+    r = isnothing(r) ? zeros(0,0) : Array{Float64}(r)
+    d = isnothing(d) ? zeros(0,0) : Array{Float64}(d)
+    l = isnothing(l) ? zeros(0,0) : Array{Float64}(l)
+    return Scenario(Array{Float64}(x0),Float64(T),Int(N),r,d,l,callback,dynamics,get_measurement)
 end
 
 function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
@@ -62,27 +65,27 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
 
     solve_times = zeros(N)
     # Setup reference 
-    if(!isnothing(scenario.r))
+    if(!isempty(scenario.r))
         Nr = min(N,size(scenario.r,2))
         rs[:,1:Nr].= scenario.r[:,1:Nr]
         rs[:,size(scenario.r,2)+1:end] .= scenario.r[:,end] # hold last value
     end
-    r_preview = mpc.settings.reference_preview && !isnothing(scenario.r)
+    r_preview = mpc.settings.reference_preview && !isempty(scenario.r)
 
     # Setup disturbance
-    if(!isnothing(scenario.d))
+    if(!isempty(scenario.d))
         ds[:,1:size(d,2)].= d
         ds[:,size(d,2)+1:end] .= d[:,end] # hold last
     end
 
     # Setup linear cost trajectory
-    if(!isnothing(scenario.l))
+    if(!isempty(scenario.l))
         nl = size(scenario.l,2)
         Nl = min(N,nl)
         ls[:,1:Nl].= scenario.l[:,1:Nl]
         ls[:,nl+1:end] .= scenario.l[:,end] # hold last
     end
-    l_preview = mpc.settings.linear_cost && !isnothing(scenario.l)
+    l_preview = mpc.settings.linear_cost && !isempty(scenario.l)
 
     # Start the simulation
     has_observer && set_state!(mpc,scenario.x0)
@@ -111,7 +114,11 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
 end
 
 function Simulation(dynamics, mpc::Union{MPC,ExplicitMPC};x0=zeros(mpc.model.nx),T=-1.0, N=1000, r=nothing,d=nothing, l=nothing, callback=(x,u,d,k)->nothing, get_measurement= nothing)
-    return Simulation(mpc,Scenario(x0,T,N,r,d,l,callback,dynamics,get_measurement))
+    r = isnothing(r) ? zeros(0,0) : Array{Float64}(r)
+    d = isnothing(d) ? zeros(0,0) : Array{Float64}(d)
+    l = isnothing(l) ? zeros(0,0) : Array{Float64}(l)
+    return Simulation(mpc,Scenario(Array{Float64}(x0),Float64(T),Int(N),r,d,l,
+                                   callback,dynamics,get_measurement))
 end
 
 Simulation(mpc::Union{MPC,ExplicitMPC}; kwargs...) = Simulation(mpc.model.true_dynamics, mpc; kwargs...)
