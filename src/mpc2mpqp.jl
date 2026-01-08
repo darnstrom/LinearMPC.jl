@@ -88,21 +88,26 @@ end
 function create_controlbounds(mpc::MPC, Γ, Φ)
     nu,nx,Nb = mpc.model.nu, mpc.model.nx, mpc.Nc
     _,_,_,_,nl = get_parameter_dims(mpc)
-    nth = sum(get_parameter_dims(mpc)) - nl  # Exclude linear cost from state-related dimensions
-    !iszero(mpc.model.f_offset) && (nth+=1); # constant offset in dynamics
+    nxe = sum(get_parameter_dims(mpc))-nl
+    mpc.settings.reference_preview && (nxe-=mpc.nr) # reference not part of extended state
+    !iszero(mpc.model.f_offset) && (nxe+=1); # constant offset in dynamics
 
     #-K*X + V = -K*(Γ V + Φ x0) + V 
     #         = (I-K*Γ)V -K Φ x0
     if(!iszero(mpc.K))
-        K = kron(I(Nb),[mpc.K zeros(nu,nth-nx)])
-        A = (I-K*Γ[1:Nb*nth, 1:Nb*nu])
-        W = K*Φ[1:Nb*nth,:]
+        K = kron(I(Nb),[mpc.K zeros(nu,nxe-nx)])
+        A = (I-K*Γ[1:Nb*nxe, 1:Nb*nu])
+        W = K*Φ[1:Nb*nxe,:]
+        if mpc.settings.reference_tracking && mpc.settings.reference_preview
+            # append rows to W from reference that are not part of extended state
+            W = [W[:,1:nx] zeros(size(W,1),mpc.nr) W[:,nx+1:end]]
+        end
+        nl > 0 && (W = [W zeros(size(W,1), nl)]) # append zero rows for linear cost
     else
+        nth =  mpc.settings.reference_preview ? nxe+nl+mpc.nr : nxe+nl
         A = zeros(0,mpc.Nc*nu)
         W = zeros(Nb*nu,nth)
     end
-    # Append zero columns for linear cost parameters (they don't affect constraints)
-    nl > 0 && (W = [W zeros(size(W,1), nl)])
     # Create bounds
     ub = repeat(mpc.umax,Nb,1)
     lb = repeat(mpc.umin,Nb,1)
@@ -126,11 +131,11 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
     nu,nx = mpc.model.nu, mpc.model.nx
     _,_,_,_,nl = get_parameter_dims(mpc)
 
+    nxe = sum(get_parameter_dims(mpc))-nl
     if mpc.settings.reference_preview
-        nxe = sum(get_parameter_dims(mpc))-mpc.nr-nl
+        nxe-=mpc.nr # reference not part of extended state
         nrx = 0
     else
-        nxe = sum(get_parameter_dims(mpc))-nl
         nrx = mpc.nr
     end
     !iszero(mpc.model.f_offset) && (nxe+=1); # constant offset in dynamics
