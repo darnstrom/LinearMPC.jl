@@ -607,7 +607,7 @@ function apply_move_block(mpc::MPC, obj::DenseObjective, c::DenseConstraints)
     nUold = nu*mpc.Nc 
     nUnew = sum(length(mb) for mb in mpc.move_blocks)
 
-    new_id,T,counter,keep = 1,zeros(nUold,nUnew),collect(1:nu),Int[]
+    new_id,T,counter = 1,zeros(nUold,nUnew),collect(1:nu)
     for pass in 1:maximum(length,mpc.move_blocks)
         for (iu,mb) in enumerate(mpc.move_blocks)
             length(mb) < pass  && continue # No more blocks for control iu
