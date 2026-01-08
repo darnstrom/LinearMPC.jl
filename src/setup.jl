@@ -82,7 +82,9 @@ Adds the constraints lb ≤ C x  ≤ ub for the time steps k ∈ ks
 * `prio` marks the relative priority of the constraint (default 0)
 """
 function set_output_bounds!(mpc::MPC; ymin=zeros(0), ymax=zeros(0), ks = 2:mpc.Np, soft = true, binary=false, prio = 0)
-    add_constraint!(mpc, Ax = mpc.model.C, Ad = mpc.model.Dd, lb = ymin, ub = ymax;ks,soft,binary,prio)
+    lb = !isempty(ymin) ? ymin-mpc.model.h_offset : zeros(0)
+    ub = !isempty(ymax) ? ymax-mpc.model.h_offset : zeros(0)
+    add_constraint!(mpc, Ax = mpc.model.C, Ad = mpc.model.Dd, lb = lb, ub = ub; ks,soft,binary,prio)
 end
 
 """
