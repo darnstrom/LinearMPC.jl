@@ -792,9 +792,10 @@ global templib
     @testset "Set offset" begin
         mpc = LinearMPC.MPC([0.778800783;;],[1.0;;];C=[0.44239843385;;])
         LinearMPC.set_objective!(mpc; Q=[1.0], R=[0.0], Rr=[0.1])
-        LinearMPC.set_offset!(mpc; uo=[10.0])
-        sim = LinearMPC.Simulation(mpc; x0=[0.0], r=[1.0], N=50)
+        LinearMPC.set_offset!(mpc; uo=[10.0],ho=[0.5])
+        sim = LinearMPC.Simulation(mpc; x0=[0.0], r=[1.5], N=50)
         @test sim.us[end] ≈ 10.5
+        @test sim.ys[end] ≈ 1.5
     end
 
     @testset "Unconstrained" begin
