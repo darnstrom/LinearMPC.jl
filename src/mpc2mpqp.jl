@@ -608,7 +608,7 @@ function apply_move_block(mpc::MPC, obj::DenseObjective, c::DenseConstraints)
             length(mb) < pass  && continue # No more blocks for control iu
             block = length(mb) != pass ? mb[pass] : 1 # clipping since the end will be superfluous...
             T[counter[iu]:nu:counter[iu]+nu*(block-1),new_id] .= 1
-            append!(keep,counter[iu])
+            counter[iu] <= nu_bounds*mpc.Nc && append!(keep,counter[iu])
             counter[iu]+=nu*block
             new_id +=1
         end
