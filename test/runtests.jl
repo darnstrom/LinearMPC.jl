@@ -329,6 +329,29 @@ global templib
         @test_nowarn compute_control(mpc, [1.0, 0.0]; r=[0.0 0.0; 0.0 0.0])  # Correct matrix
     end
 
+    @testset "Reference Preview + Prestabilizing Feedback" begin
+        Ac = diagm(1=>ones(2))
+        Bc = [0.0; 0.0; 1.0]
+        Cc = I(3)
+        mpc = LinearMPC.MPC(Ac, Bc, 1.0; C=Cc, Np=10, Nc=10)
+
+        set_objective!(mpc; Q=1e-9*[10000.0, 1, 1e-4], R=[1e-9], Qf=[1e6, 1e6, 1e6])
+        set_input_bounds!(mpc; umin=[-1], umax=[1])
+        add_constraint!(mpc;Ax=[0.0 1.0 0.0],lb=[-1], ub=[1],soft=true)
+        add_constraint!(mpc;Ax=[0.0 0.0 1.0],lb=[-1], ub=[1],soft=false)
+
+        LinearMPC.set_prestabilizing_feedback!(mpc)
+        mpc.settings.reference_preview = true
+        setup!(mpc)
+
+        rs = zeros(3,100)
+        rs[1,1:50] .= 1.0
+        rs[1,51:end] .= 0.5
+        sim = LinearMPC.Simulation(mpc; x0=zeros(3),r=rs, N=100)
+        @test sim.ys[1,30] ≈ 1.0 atol=1e-5
+        @test sim.ys[1,end] ≈ 0.5 atol=1e-5
+    end
+
     @testset "Codegen Reference Preview - Full" begin
         # Test code generation with reference preview enabled
         A = [1 1; 0 1] 
@@ -781,5 +804,6 @@ global templib
         sim = LinearMPC.Simulation(mpc; x0=zeros(1), r=[5], N=20)
         @test sim.ys[end] ≈ 5.0
     end
+
 
 end
