@@ -388,12 +388,12 @@ function create_objective(mpc::MPC,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
         f_theta = f_theta[:,1:end-1]
         H_theta = H_theta[1:end-1,1:end-1]
     end
-    # Contant offset in h enters similar to as reference (can be seen as reference r + h_offset)
+    # Contant offset in h enters similar to as reference (can be seen as reference r - h_offset)
     if(nrp > 0 && !iszero(mpc.model.h_offset))
         if mpc.settings.reference_preview && !mpc.settings.reference_condensation
-            f .+= f_theta[:,nxp+1:nxp+nrp]*repeat(mpc.model.h_offset,mpc.Np)
+            f .-= f_theta[:,nxp+1:nxp+nrp]*repeat(mpc.model.h_offset,mpc.Np)
         else
-            f .+= f_theta[:,nxp+1:nxp+nrp]*mpc.model.h_offset
+            f .-= f_theta[:,nxp+1:nxp+nrp]*mpc.model.h_offset
         end
     end
 
