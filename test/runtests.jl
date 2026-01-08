@@ -773,4 +773,13 @@ global templib
         sim = LinearMPC.Simulation(mpc; x0=[0.0], r=[1.0], N=50)
         @test sim.us[end] ≈ 10.5
     end
+
+    @testset "Unconstrained" begin
+        mpc = LinearMPC.MPC([0.77880078307;;],[1.0];C=[2.211992169;;],Ts=100)
+        LinearMPC.move_block!(mpc, [2, 2, 2, 24])
+        LinearMPC.set_objective!(mpc; Q=[1], Rr=[0], R=[0])
+        sim = LinearMPC.Simulation(mpc; x0=zeros(1), r=[5], N=20)
+        @test sim.ys[end] ≈ 5.0
+    end
+
 end
