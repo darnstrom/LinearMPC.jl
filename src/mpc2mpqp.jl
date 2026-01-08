@@ -602,12 +602,12 @@ end
 function apply_move_block(mpc::MPC, obj::DenseObjective, c::DenseConstraints)
     nu = mpc.model.nu
     nu_bounds = length(mpc.umax)
-    keep = collect(nu_bounds*mpc.Nc+1:length(c.bu))
 
     nUold = nu*mpc.Nc 
     nUnew = sum(length(mb) for mb in mpc.move_blocks)
 
     new_id,T,counter = 1,zeros(nUold,nUnew),collect(1:nu)
+    keep = Int[]
     for pass in 1:maximum(length,mpc.move_blocks)
         for (iu,mb) in enumerate(mpc.move_blocks)
             length(mb) < pass  && continue # No more blocks for control iu
@@ -619,6 +619,8 @@ function apply_move_block(mpc::MPC, obj::DenseObjective, c::DenseConstraints)
         end
     end
     new_obj = DenseObjective(T'*obj.H*T, T'*obj.f, T'*obj.f_theta, obj.H_theta)
+
+    append!(keep,nu_bounds*mpc.Nc+1:length(c.bu))
 
     # Remove superfluous control bounds
     Anew = !iszero(mpc.K) ? c.A[keep,:]*T : c.A*T # control bounds are in A if prestabilizing feedback
