@@ -159,7 +159,7 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
         Ax = c.Ax-c.Au*mpc.K
         Ar = isempty(c.Ar) || nrx == 0 ? zeros(mi,nrx) : c.Ar
         Ad = isempty(c.Ad) ? zeros(mi,mpc.model.nd) : c.Ad
-        Aup = isempty(c.Aup) ? zeros(mi,mpc.nuprev) : c.Auip
+        Aup = isempty(c.Aup) ? zeros(mi,mpc.nuprev) : c.Aup
         Ah = iszero(mpc.model.f_offset) ? zeros(mi,0) : zeros(mi,1)
 
         Autot = [Autot; kron(eyeU[ks,:],c.Au)]
@@ -644,7 +644,9 @@ function MPQP(obj::DenseObjective, c::DenseConstraints)
     # ignore constraints which have inf bounds
     for i in 1:length(c.bu)
         if(c.bu[i] > 1e20 && c.bl[i] < -1e20)
-            senses[i] += DAQP.IMMUTABLE
+            senses[i] = DAQP.IMMUTABLE
+        elseif abs(c.bu[i]-c.bl[i]) < 1e-12
+            senses[i] = DAQP.EQUALITY
         end
     end
     # Mark soft constrints  
