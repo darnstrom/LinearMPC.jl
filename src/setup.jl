@@ -10,7 +10,15 @@ function setup!(mpc::MPC)
     bu,bl = mpc.mpQP.bu[:],mpc.mpQP.bl[:]
     setup_flag,_ = DAQP.setup(mpc.opt_model, mpc.mpQP.H,mpc.mpQP.f[:],mpc.mpQP.A,bu,bl,mpc.mpQP.senses;break_points=mpc.mpQP.break_points)
     if(setup_flag < 0)
-        @warn " Cannot setup optimization problem " setup_flag
+        if setup_flag == -1
+            @warn " Cannot setup optimization problem - Problem is infeasible"
+        elseif setup_flag == -6
+            @warn " Cannot setup optimization problem - Equality constraints overdetermined"
+        elseif setup_flag == -5
+            @warn " Cannot setup optimization problem - Convonvex objective"
+        else
+            @warn " Cannot setup optimization problem " setup_flag
+        end
     else
         # Set up soft weight
         DAQP.settings(mpc.opt_model,Dict(:rho_soft=>1/mpc.settings.soft_weight))
