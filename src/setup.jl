@@ -284,19 +284,22 @@ function settings!(mpc::MPC, dict)
 end
 
 """
-    set_state_observer!(mpc;F,G,C,Q,R,x0)
+    set_state_observer!(mpc;F,G,Gd,C,Dd,Q,R,x0)
 Creates a steady-state Kalman filter for estimating the sate.
 If `F`,`G`, and `C` are not provided, the model used in `mpc` is used in the filter
 """
 function set_state_observer!(mpc::Union{MPC,ExplicitMPC};
-        F=nothing,G=nothing,C=nothing,f_offset=nothing, h_offset=nothing,
+        F=nothing,G=nothing,Gd=nothing,C=nothing,Dd=nothing,
+        f_offset=nothing, h_offset=nothing,
         Q=nothing,R=nothing,x0=nothing)
     F = isnothing(F) ? mpc.model.F : F
     G = isnothing(G) ? mpc.model.G : G
+    Gd = isnothing(Gd) ? mpc.model.Gd : Gd
     C = isnothing(C) ? mpc.model.C : C
+    Dd = isnothing(Dd) ? mpc.model.Dd : Dd
     f_offset = isnothing(f_offset) ? mpc.model.f_offset : f_offset 
     h_offset = isnothing(h_offset) ? mpc.model.h_offset : h_offset 
-    mpc.state_observer = KalmanFilter(F,G,C;f_offset,h_offset,Q,R,x0)
+    mpc.state_observer = KalmanFilter(F,G,C;Gd,Dd,f_offset,h_offset,Q,R,x0)
 end
 
 """
