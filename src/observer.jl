@@ -1,18 +1,22 @@
 struct KalmanFilter
     F::Matrix{Float64}
     G::Matrix{Float64}
+    Gd::Matrix{Float64}
     f_offset::Vector{Float64}
     C::Matrix{Float64}
+    Dd::Matrix{Float64}
     h_offset::Vector{Float64}
     K::Matrix{Float64}
     x::Vector{Float64} 
 end
 
-function KalmanFilter(F,G,C;f_offset=nothing, h_offset=nothing, x0=nothing, Q=nothing,R=nothing)
+function KalmanFilter(F,G,C;Gd=nothing,Dd=nothing,f_offset=nothing, h_offset=nothing, x0=nothing, Q=nothing,R=nothing)
     # Solve equation 
     ny,nx = size(C) 
     nu = size(G,2)
 
+    Gd = isnothing(Gd) ? zeros(nx,0) : Gd
+    Dd = isnothing(Dd) ? zeros(ny,0) : Dd
     f_offset = isnothing(f_offset) ? zeros(nx) : f_offset;
     h_offset = isnothing(h_offset) ? zeros(ny) : h_offset;
     x0 = isnothing(x0) ? zeros(nx) : x0;
@@ -21,22 +25,25 @@ function KalmanFilter(F,G,C;f_offset=nothing, h_offset=nothing, x0=nothing, Q=no
 
     P,_ = ared(F',C',R,Q);
     K = P*C'/(C*P*C'+R) 
-    return KalmanFilter(F,G,f_offset,C,h_offset,K,x0)
+    return KalmanFilter(F,G,Gd,f_offset,C,Dd,h_offset,K,x0)
 
 end
 
 function set_state!(kf::KalmanFilter,x)
     kf.x[:] = x
 end
-function predict!(kf::KalmanFilter,u)
+function predict!(kf::KalmanFilter,u,d=nothing)
     kf.x[:] = kf.F*kf.x + kf.G*u +kf.f_offset
+    isnothing(d) || (kf.x .+= kf.Gd*d)
 end
 
-function correct!(kf::KalmanFilter,y)
+function correct!(kf::KalmanFilter,y,d=nothing)
     inov = y - kf.C*kf.x - kf.h_offset
+    isnothing(d) || (inov .-= kf.Dd*d)
     kf.x[:] += kf.K*inov
 end
 
+# TODO: add support for disturbance input in codegen here
 function codegen(kf::KalmanFilter,fh,fsrc)
     ny,nx = size(kf.C)
     nu = size(kf.G,2)
@@ -57,21 +64,21 @@ function codegen(kf::KalmanFilter,fh,fsrc)
 end
 
 """
-    predict_state!(mpc,u)
+    predict_state!(mpc,u,d=nothing)
 Predict the state at the next time step if the control `u` is applied.
 This updates the state of `state_observer`
 """
-function predict_state!(mpc::Union{MPC,ExplicitMPC},u)
-    predict!(mpc.state_observer,u)
+function predict_state!(mpc::Union{MPC,ExplicitMPC},u,d=nothing)
+    predict!(mpc.state_observer,u,d)
 end
 
 """
-    set_correct_state!(mpcy)
+    correct_state!(mpc,y,d=nothing)
 Correct the state estimated based on measurement `u`.
 This updates the state of `state_observer`
 """
-function correct_state!(mpc::Union{MPC,ExplicitMPC},y)
-    correct!(mpc.state_observer,y)
+function correct_state!(mpc::Union{MPC,ExplicitMPC},y,d=nothing)
+    correct!(mpc.state_observer,y,d)
 end
 
 """
