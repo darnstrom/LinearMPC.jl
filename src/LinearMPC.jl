@@ -11,7 +11,6 @@ include("types.jl");
 using ParametricDAQP
 include("explicit.jl");
 export ExplicitMPC
-export plot_regions,plot_feedback
 
 include("utils.jl");
 export compute_control
@@ -49,5 +48,8 @@ include("robust.jl");
 include("observer.jl");
 export predict_state!,correct_state!
 export set_state!,get_state,update_state!
+
+include("plot.jl");
+export plot_regions,plot_feedback
 
 end
