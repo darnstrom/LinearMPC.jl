@@ -44,7 +44,6 @@ function correct!(kf::KalmanFilter,y,d=nothing)
     kf.x .+= kf.K*inov
 end
 
-# TODO: add support for disturbance input in codegen here
 function codegen(kf::KalmanFilter,fh,fsrc)
     ny,nx = size(kf.C)
     nu = size(kf.G,2)
