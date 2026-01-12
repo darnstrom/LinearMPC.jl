@@ -55,7 +55,7 @@ function get_parameter_dims(mpc::MPC)
     if mpc.settings.reference_preview && !mpc.settings.reference_condensation && nr > 0
         nr = nr * mpc.Np  # Reference preview uses Np time steps
     end
-    nuprev = iszero(mpc.weights.Rr) ? 0 : mpc.model.nu
+    nuprev = !iszero(mpc.weights.Rr) || any(!iszero(c.Aup) for c in mpc.constraints) ? mpc.model.nu : 0
     nl = mpc.settings.linear_cost ? mpc.model.nu * mpc.Nc : 0
     return mpc.model.nx,nr,mpc.model.nd,nuprev,nl
 end
