@@ -64,43 +64,49 @@ To show some of the functionality, we consider he explicit MPC controller for co
 
 This is an example that is available in `mpc_examples`, so a template for the MPC controller can be created with
 
-```julia
+```@example explicit_mpc 
 using LinearMPC
 mpc,para_range= LinearMPC.mpc_examples("dcmotor")
+nothing #hide
 ```
 Note that `mpc_examples` also provide a template for the parameter range. We do, however, want to ensure that the exlicit MPC controller is computed for $|x_1| \leq 0.3$  and $|x_2| \leq 2$, which we can ensure with
 
-```julia
+```@example explicit_mpc
 para_range.xmin[1:2] = -[0.3;2.0] 
 para_range.xmax[1:2] = [0.3;2.0]
+nothing #hide
 ```
 Next, we compute an explicit controller with 
 
-```julia
+```@example explicit_mpc
 empc = LinearMPC.ExplicitMPC(mpc;range=para_range)
+nothing #hide
 ```
 
-If we want to visualize a slice of the resulting polytopic partition, we can use the function `plot_regions`.
-This takes in the names of the parameters to be plotted as argument. We can also fix other parameter with optional arguments (which are by default fixed at 0.)
+If we want to visualize a slice of the resulting polytopic partition, we can use `plot`.
+This takes in the names of the parameters to be plotted in the optional argument `parameters`. We can also fix the other parameter arguments `x`, `r`, `d`, and `uprev` (which are by default fixed at 0.)
 If we, for example, want to plot a 2D-slice of the partition in the first and second state, when the reference is fixed at $r=[0.5,0.0]$, we run   
 
-```julia
-LinearMPC.plot_regions(empc,:x1,:x2,r=[0.5,0.0])
+```@example explicit_mpc
+using Plots
+plot(empc; parameters=[:x1,:x2],r=[0.5,0.0], title="Critical regions")
 ```
 
-```@raw html
-<p><img src="../../assets/exp_regions.svg" alt="simple_sim1" width=600 style="background-color:white; 
-    border:20px solid white; display: block; margin-left: auto; margin-right: auto;"/></p>
-```
 
-Similarly, if we want to visualize the feedback law, we can do that with `plot_feedback`, where one also has to enter the name of the input to plot (in this case `:u1`). 
+Similarly, if we want to visualize the feedback law, we provide `plot` with the argument `control` of the optimal control we want to plot against the `parameters`. For example, the first control `u1` corresponds to `control=:u1`. 
 
 If we, for example, want to visualize the feedback for the first input for different $x_1$ and $x_2$, when the reference is fixed at $r=[0.5,0.0]$, we run   
-```julia
-LinearMPC.plot_feedback(empc,:u1,:x1,:x2,r=[0.5,0.0])
+
+```@example explicit_mpc
+plot(empc; parameters=[:x1,:x2], control=:u1, r=[0.5,0.0], title= "Feedback law")
 ```
 
-```@raw html
-<p><img src="../../assets/exp_feedback.svg" alt="simple_sim1" width=600 style="background-color:white; 
-    border:20px solid white; display: block; margin-left: auto; margin-right: auto;"/></p>
+Final, we compute the binary search tree 
+```@example explicit_mpc
+build_tree!(empc)
+```
+and evalute the control at `x=[0.2, 1.0, 0, 0]` and `r=[0.5, 0.0]` with: 
+
+```@example explicit_mpc
+compute_control(empc,[0.2, 1.0, 0, 0]; r=[0.5, 0.0])
 ```
