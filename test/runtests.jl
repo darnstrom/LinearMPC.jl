@@ -2,7 +2,9 @@ using LinearMPC
 using Test
 using LinearAlgebra
 using Statistics
+using Random
 global templib
+Random.seed!(1234)
 
 @testset verbose = true "LinearMPC.jl" begin
     @testset "Basic setup" begin
@@ -593,11 +595,51 @@ global templib
                 xref2 = copy(LinearMPC.correct!(mpc.state_observer,y))
 
                 global templib = joinpath(srcdir, testlib)
-                ccall(("mpc_predict_state", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble}), x,u)
+                ccall(("mpc_predict_state", templib), Cint,
+                      (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), x,u,C_NULL)
                 @test norm(x-xref1) < 1e-9
-                ccall(("mpc_correct_state", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble}), x,y)
+                ccall(("mpc_correct_state", templib), Cint,
+                      (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), x,y,C_NULL)
                 @test norm(x-xref2) < 1e-9
             end
+        end
+    end
+    @testset "Observer + disturbance" begin
+        F,G = [1 1; 0 1],[0;1]
+        Gd = [1 0;0 0]
+        Dd = [0 1]
+
+        mpc = LinearMPC.MPC(F,G;C=[1 0],Gd,Dd)
+        LinearMPC.set_state_observer!(mpc;Q=[1.0, 1],R=[1e-2])
+        get_measurement = (x,d) -> [x[1] + d[2] + 0.01*randn()]
+
+        sim = LinearMPC.Simulation(mpc;x0=[1;0],
+                                   d=[1;1],N=100,get_measurement)
+        @test abs(mean(sim.ys[end-20:end])) < 1e-2
+
+        srcdir = tempname()
+        LinearMPC.codegen(mpc,dir=srcdir)
+ 
+        src = [f for f in readdir(srcdir) if last(f,1) == "c"]
+
+        if !isnothing(Sys.which("gcc"))
+            testlib = "mpctest."* Base.Libc.Libdl.dlext
+            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+
+            x = randn(2)
+            u = randn(1)
+            y = randn(1)
+            d = randn(2)
+
+            LinearMPC.set_state!(mpc,x)
+            xref1 = copy(LinearMPC.predict!(mpc.state_observer,u,d))
+            xref2 = copy(LinearMPC.correct!(mpc.state_observer,y,d))
+
+            global templib = joinpath(srcdir,testlib)
+            ccall(("mpc_predict_state", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), x,u,d)
+            @test norm(x-xref1) < 1e-9
+            ccall(("mpc_correct_state", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), x,y,d)
+            @test norm(x-xref2) < 1e-9
         end
     end
     @testset "x0 uncertainty" begin
