@@ -1,7 +1,7 @@
 name = "LinearMPC"
 uuid = "82e1c212-e1a2-49d2-b26a-a31d6968e3bd"
-authors = ["Daniel Arnström <daniel.arnstrom@gmail.com>"]
 version = "0.7.3"
+authors = ["Daniel Arnström <daniel.arnstrom@gmail.com>"]
 
 [deps]
 ASCertain = "3c289fd8-0ede-4eb4-bc21-a9cdb942ddf8"
@@ -24,7 +24,7 @@ ControlSystemsBase = "aaaaaaaa-a6ca-5380-bf3e-84a91bcd477e"
 ControlSystemsExt = "ControlSystemsBase"
 
 [compat]
-ASCertain = "0.3"
+ASCertain = "0.3.4"
 ControlSystemsBase = "1.10"
 DAQPBase = "0.3.0"
 ForwardDiff = "1, 0.10"
