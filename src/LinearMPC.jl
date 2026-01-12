@@ -11,7 +11,7 @@ include("types.jl");
 using ParametricDAQP
 include("explicit.jl");
 export ExplicitMPC
-export plot_regions,plot_feedback
+export build_tree!
 
 include("utils.jl");
 export compute_control

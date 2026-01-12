@@ -27,26 +27,33 @@ function certify(mpc::MPC; range=nothing, AS0 = Int[], settings = ASCertain.Cert
     part, iter_max = ASCertain.certify(mpQP,region,convert(Vector{Int},AS0);opts=settings)
     return CertificationResult(mpc,iter_max,part,region)
 end
-
-function plot(cert::CertificationResult,lth1,lth2; show_fixed=true, show_zero = false, 
-        x=nothing, r=nothing, d=nothing, uprev=nothing)
-    lth1,lth2 = Symbol(lth1),Symbol(lth2)
+## Plots.jl
+@recipe function f(cert::CertificationResult; parameters=[], show_fixed=true, show_zero=false, 
+        x=nothing,r=nothing,d=nothing,uprev=nothing)
+    # Make sure these are removed from plots directory Plots.jl arguments 
+    r = pop!(plotattributes, :rotation,r)
+    x = pop!(plotattributes, :x,x)
+    plotattributes[:xrotation] = 0
+    plotattributes[:yrotation] = 0
+    plotattributes[:zrotation] = 0
 
     x= isnothing(x) ? zeros(cert.mpc.model.nx) : x
     r= isnothing(r) ? zeros(cert.mpc.nr) : r
     d= isnothing(d) ? zeros(cert.mpc.model.nd) : d
     uprev= isnothing(uprev) ? zeros(cert.mpc.nuprev) : uprev
 
-    free_ids,fix_ids,lx,ly= get_parameter_plot(cert.mpc,lth1,lth2)
+    parameters = Symbol.(parameters)
+    length(parameters) != 2 && throw(ArgumentError("parameters has to contain two elements"))
+
+    free_ids,fix_ids,lx,ly= get_parameter_plot(cert.mpc,parameters[1],parameters[2])
     fix_vals = [x;r;d;uprev][fix_ids]
 
-    opts = Dict{Symbol,Any}()
-    push!(opts,:xlabel=>latexify(lx))
-    push!(opts,:ylabel=>latexify(ly))
-    show_fixed && push!(opts,:title=>fixed_parameters_string(cert.mpc,fix_ids,fix_vals;show_zero))
+    xlabel --> latexify(lx)
+    ylabel --> latexify(ly)
 
-    push!(opts, :xticklabels=>"{$(cert.region.lb[free_ids[1]]),$(cert.region.ub[free_ids[1]])}")
-    push!(opts, :yticklabels=>"{$(cert.region.lb[free_ids[2]]),$(cert.region.ub[free_ids[2]])}")
-
-    ASCertain.pplot(cert.partition;key=nothing, fix_ids, fix_vals, opts)
+    if show_fixed
+        colorbar_title --> fixed_parameters_string(cert.mpc,fix_ids,fix_vals;show_zero)
+    end
+    plotattributes[:CR_attr] = (0,free_ids,fix_ids,fix_vals)
+    return cert.partition
 end

@@ -6,5 +6,7 @@ range.xmax[1:2] = [0.3;2.0]
 # Compute explicit controller over range
 empc = LinearMPC.ExplicitMPC(mpc;range)
 
-LinearMPC.plot_regions(empc,:x1,:x2,r=[0.5,0.0])
-LinearMPC.plot_feedback(empc,:u1,:x1,:x2,r=[0.5,0.0])
+using Plots
+p1 = plot(empc;parameters=[:x1,:x2],r=[0.5,0.0],title="Critical regions");
+p2 = plot(empc;parameters=[:x1,:x2],control=:u1, r=[0.5,0.0], title="Feedback law");
+plot(p1,p2, size = (800, 400))

@@ -68,17 +68,8 @@ function build_tree!(mpc::ExplicitMPC; daqp_settings=nothing, clipping=true)
     return mpc.bst
 end
 
-function plot_regions(mpc::ExplicitMPC;fix_ids=nothing,fix_vals=nothing,opts=Dict{Symbol,Any}())
-    ParametricDAQP.plot_regions(mpc.solution;fix_ids,fix_vals,opts)
-end
-
-function plot_feedback(mpc::ExplicitMPC;u_id=1,fix_ids=nothing,fix_vals=nothing,opts=Dict{Symbol,Any}())
-    push!(opts,:zlabel=>"\\large\$u_{"*string(u_id)*"}\$")
-    ParametricDAQP.plot_solution(mpc.solution;z_id=u_id,fix_ids,fix_vals,opts)
-end
-
+## Parameter utils 
 using Latexify
-
 function get_parameter_plot(mpc,l1,l2)
     id1,l1 = label2id(mpc,l1)
     isnothing(id1) && throw(ArgumentError("Unknown label $l1"))  
@@ -94,64 +85,6 @@ function get_parameter_plot(mpc,l1,l2)
     return [idx,idy],fix_ids,make_subscript(lx),make_subscript(ly)
 end
 
-function plot_regions(mpc::ExplicitMPC,lth1,lth2; show_fixed=true, show_zero = false,
-        x=nothing, r=nothing, d=nothing, uprev=nothing)
-    lth1,lth2 = Symbol(lth1),Symbol(lth2)
-
-    x= isnothing(x) ? zeros(mpc.model.nx) : x
-    r= isnothing(r) ? zeros(mpc.nr) : r
-    d= isnothing(d) ? zeros(mpc.model.nd) : d
-    uprev= isnothing(uprev) ? zeros(mpc.nuprev) : uprev
-
-    free_ids,fix_ids,lx,ly= get_parameter_plot(mpc,lth1,lth2)
-    fix_vals = [x;r;d;uprev][fix_ids]
-
-    opts = Dict{Symbol,Any}()
-    push!(opts,:xlabel=>latexify(lx))
-    push!(opts,:ylabel=>latexify(ly))
-    show_fixed && push!(opts,:title=>fixed_parameters_string(mpc,fix_ids,fix_vals;show_zero))
-
-    ParametricDAQP.plot_regions(mpc.solution;fix_ids,fix_vals,opts)
-end
-
-function plot_regions(mpc::ExplicitMPC,ths; show_fixed=true, show_zero = false,
-        x=nothing, r=nothing, d=nothing, uprev=nothing)
-    plot_region(mpc,first(ths),last(ths):x,r,d,uprev,show_fixed,show_zero)
-end
-
-function plot_feedback(mpc::ExplicitMPC,lu1,lth1,lth2; show_fixed=true, show_zero = false,
-        x=nothing, r=nothing, d=nothing, uprev=nothing)
-    lu1,lth1,lth2 = Symbol(lu1),Symbol(lth1),Symbol(lth2)
-
-    x= isnothing(x) ? zeros(mpc.model.nx) : x
-    r= isnothing(r) ? zeros(mpc.nr) : r
-    d= isnothing(d) ? zeros(mpc.model.nd) : d
-    uprev= isnothing(uprev) ? zeros(mpc.nuprev) : uprev
-
-    u_id = findfirst(x->x==lu1,mpc.model.labels.u)
-    isnothing(u_id) && throw(ArgumentError("Unknown control $lu1"))
-    lz = make_subscript(string(mpc.model.labels.u[u_id]))
-
-    free_ids,fix_ids,lx,ly= get_parameter_plot(mpc,lth1,lth2)
-    fix_vals = [x;r;d;uprev][fix_ids]
-
-    fixed_parameters_string(mpc,fix_ids,fix_vals)
-
-    opts = Dict{Symbol,Any}()
-    push!(opts,:xlabel=>latexify(lx))
-    push!(opts,:ylabel=>latexify(ly))
-    push!(opts,:zlabel=>latexify(lz))
-
-    show_fixed && push!(opts,:title=>fixed_parameters_string(mpc,fix_ids,fix_vals;show_zero))
-
-    ParametricDAQP.plot_solution(mpc.solution;z_id=u_id,fix_ids,fix_vals,opts)
-end
-
-function plot_feedback(mpc::ExplicitMPC,lu1,ths; show_fixed=true, show_zero = false,
-        x=nothing, r=nothing, d=nothing, uprev=nothing)
-    plot_feedback(mpc,lu1,first(ths),last(ths);x,r,d,uprev,show_fixed, show_zero)
-end
-
 function fixed_parameters_string(mpc,fix_ids,fix_vals;show_zero = false)
     xlabels = [string(l) for l in mpc.model.labels.x]
     rlabels = [string(l)*"^r " for l in mpc.model.labels.y[1:mpc.nr]]
@@ -160,5 +93,43 @@ function fixed_parameters_string(mpc,fix_ids,fix_vals;show_zero = false)
     ls = [xlabels;rlabels;dlabels;ulabels]
     str = [latexify(make_subscript(ls[fix_ids[i]])*"="*string(fix_vals[i]))*", "
            for i in 1:length(fix_ids) if show_zero || fix_vals[i] != 0 ]
-    return isempty(str) ? "" : "\\tiny "*reduce(*,str)[1:end-2]
+    return isempty(str) ? "" : reduce(*,str)[1:end-2]
+end
+
+## Plots.jl
+using RecipesBase
+@recipe function f(mpc::ExplicitMPC; parameters=[],control=nothing, show_fixed=true, show_zero=false, 
+        x=nothing,r=nothing,d=nothing,uprev=nothing)
+
+    # Make sure these are removed from plots directory Plots.jl arguments 
+    r = pop!(plotattributes, :rotation,r)
+    x = pop!(plotattributes, :x,x)
+    plotattributes[:xrotation] = 0
+    plotattributes[:yrotation] = 0
+    plotattributes[:zrotation] = 0
+
+    x= isnothing(x) ? zeros(mpc.model.nx) : x
+    r= isnothing(r) ? zeros(mpc.nr) : r
+    d= isnothing(d) ? zeros(mpc.model.nd) : d
+    uprev= isnothing(uprev) ? zeros(mpc.nuprev) : uprev
+
+    parameters,control = Symbol.(parameters),Symbol(control)
+    length(parameters) != 2 && throw(ArgumentError("parameters has to contain two elements"))
+    u_id = something(findfirst(x->x==control,mpc.model.labels.u),0)
+
+    free_ids,fix_ids,lx,ly= get_parameter_plot(mpc,parameters[1],parameters[2])
+    fix_vals = [x;r;d;uprev][fix_ids]
+
+    xlabel --> latexify(lx)
+    ylabel --> latexify(ly)
+    if u_id != 0
+        zlabel --> latexify(make_subscript(string(mpc.model.labels.u[u_id])))
+    end
+
+    if show_fixed
+        titlefontsize --> 10
+        title --> fixed_parameters_string(mpc,fix_ids,fix_vals;show_zero)
+    end
+    plotattributes[:CR_attr] = (u_id ,free_ids,fix_ids,fix_vals)
+    return ParametricDAQP.get_critical_regions(mpc.solution)
 end
