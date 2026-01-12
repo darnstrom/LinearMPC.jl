@@ -67,3 +67,69 @@ function build_tree!(mpc::ExplicitMPC; daqp_settings=nothing, clipping=true)
     end
     return mpc.bst
 end
+
+## Parameter utils 
+using Latexify
+function get_parameter_plot(mpc,l1,l2)
+    id1,l1 = label2id(mpc,l1)
+    isnothing(id1) && throw(ArgumentError("Unknown label $l1"))  
+    id2,l2 = label2id(mpc,l2)
+    isnothing(id2) && throw(ArgumentError("Unknown label $l2"))
+    # lower id is always plotted on x-axis
+    if id1 < id2
+        lx,ly,idx,idy = l1,l2,id1,id2
+    else
+        lx,ly,idx,idy = l2,l1,id2,id1
+    end
+    fix_ids = setdiff(1:sum(get_parameter_dims(mpc)),[id1,id2])
+    return [idx,idy],fix_ids,make_subscript(lx),make_subscript(ly)
+end
+
+function fixed_parameters_string(mpc,fix_ids,fix_vals;show_zero = false)
+    xlabels = [string(l) for l in mpc.model.labels.x]
+    rlabels = [string(l)*"^r " for l in mpc.model.labels.y[1:mpc.nr]]
+    dlabels = [string(l) for l in mpc.model.labels.d]
+    ulabels = [string(l)*"^- " for l in mpc.model.labels.u[1:mpc.nuprev]]
+    ls = [xlabels;rlabels;dlabels;ulabels]
+    str = [latexify(make_subscript(ls[fix_ids[i]])*"="*string(fix_vals[i]))*", "
+           for i in 1:length(fix_ids) if show_zero || fix_vals[i] != 0 ]
+    return isempty(str) ? "" : reduce(*,str)[1:end-2]
+end
+
+## Plots.jl
+using RecipesBase
+@recipe function f(mpc::ExplicitMPC; parameters=[],control=nothing, show_fixed=true, show_zero=false, 
+        x=nothing,r=nothing,d=nothing,uprev=nothing)
+
+    # Make sure these are removed from plots directory Plots.jl arguments 
+    r = pop!(plotattributes, :rotation,r)
+    x = pop!(plotattributes, :x,x)
+    plotattributes[:xrotation] = 0
+    plotattributes[:yrotation] = 0
+    plotattributes[:zrotation] = 0
+
+    x= isnothing(x) ? zeros(mpc.model.nx) : x
+    r= isnothing(r) ? zeros(mpc.nr) : r
+    d= isnothing(d) ? zeros(mpc.model.nd) : d
+    uprev= isnothing(uprev) ? zeros(mpc.nuprev) : uprev
+
+    parameters,control = Symbol.(parameters),Symbol(control)
+    length(parameters) != 2 && throw(ArgumentError("parameters has to contain two elements"))
+    u_id = something(findfirst(x->x==control,mpc.model.labels.u),0)
+
+    free_ids,fix_ids,lx,ly= get_parameter_plot(mpc,parameters[1],parameters[2])
+    fix_vals = [x;r;d;uprev][fix_ids]
+
+    xlabel --> latexify(lx)
+    ylabel --> latexify(ly)
+    if u_id != 0
+        zlabel --> latexify(make_subscript(string(mpc.model.labels.u[u_id])))
+    end
+
+    if show_fixed
+        titlefontsize --> 10
+        title --> fixed_parameters_string(mpc,fix_ids,fix_vals;show_zero)
+    end
+    plotattributes[:CR_attr] = (u_id ,free_ids,fix_ids,fix_vals)
+    return ParametricDAQP.get_critical_regions(mpc.solution)
+end
