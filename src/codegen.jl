@@ -247,6 +247,7 @@ function qp2ldp(mpQP,n_control;normalize=true)
     du = mpQP.bu[:]+Δd 
     dl = mpQP.bl[:]+Δd
 
+    uscaling = ones(n_control)
     if(normalize)
         # Normalize
         norm_factors = zeros(size(Mext,1))
@@ -260,9 +261,9 @@ function qp2ldp(mpQP,n_control;normalize=true)
                 dl[i]/= norm_factor
             end
         end
-        uscaling = norm_factors[1:n_control]
-    else
-        uscaling = ones(n_control)
+        if(nb > 0) # XXX might be wrong if dim(mpc.umax) < dim(u)
+            uscaling[1:n_control]  .= norm_factors[1:n_control]
+        end
     end
     Uth_offset = -mpQP.H\mpQP.f_theta;
     Uth_offset = Uth_offset[1:n_control,:];

@@ -1,18 +1,22 @@
 struct KalmanFilter
     F::Matrix{Float64}
     G::Matrix{Float64}
+    Gd::Matrix{Float64}
     f_offset::Vector{Float64}
     C::Matrix{Float64}
+    Dd::Matrix{Float64}
     h_offset::Vector{Float64}
     K::Matrix{Float64}
     x::Vector{Float64} 
 end
 
-function KalmanFilter(F,G,C;f_offset=nothing, h_offset=nothing, x0=nothing, Q=nothing,R=nothing)
+function KalmanFilter(F,G,C;Gd=nothing,Dd=nothing,f_offset=nothing, h_offset=nothing, x0=nothing, Q=nothing,R=nothing)
     # Solve equation 
     ny,nx = size(C) 
     nu = size(G,2)
 
+    Gd = isnothing(Gd) ? zeros(nx,0) : Gd
+    Dd = isnothing(Dd) ? zeros(ny,0) : Dd
     f_offset = isnothing(f_offset) ? zeros(nx) : f_offset;
     h_offset = isnothing(h_offset) ? zeros(ny) : h_offset;
     x0 = isnothing(x0) ? zeros(nx) : x0;
@@ -21,35 +25,39 @@ function KalmanFilter(F,G,C;f_offset=nothing, h_offset=nothing, x0=nothing, Q=no
 
     P,_ = ared(F',C',R,Q);
     K = P*C'/(C*P*C'+R) 
-    return KalmanFilter(F,G,f_offset,C,h_offset,K,x0)
+    return KalmanFilter(F,G,Gd,f_offset,C,Dd,h_offset,K,x0)
 
 end
 
 function set_state!(kf::KalmanFilter,x)
-    kf.x[:] = x
+    kf.x .= x
 end
-function predict!(kf::KalmanFilter,u)
-    kf.x[:] = kf.F*kf.x + kf.G*u +kf.f_offset
+function predict!(kf::KalmanFilter,u,d=nothing)
+    kf.x .= kf.F*kf.x + kf.G*u +kf.f_offset
+    isnothing(d) || (kf.x .+= kf.Gd*d)
+    return kf.x
 end
 
-function correct!(kf::KalmanFilter,y)
+function correct!(kf::KalmanFilter,y,d=nothing)
     inov = y - kf.C*kf.x - kf.h_offset
-    kf.x[:] += kf.K*inov
+    isnothing(d) || (inov .-= kf.Dd*d)
+    kf.x .+= kf.K*inov
 end
 
 function codegen(kf::KalmanFilter,fh,fsrc)
     ny,nx = size(kf.C)
     nu = size(kf.G,2)
+    nd = size(kf.Gd,2)
     @printf(fh, "#define N_MEASUREMENT %d\n",ny);
-    @printf(fh, "extern c_float MPC_PLANT_DYNAMICS[%d];\n",nx*(1+nx+nu));
-    @printf(fh, "extern c_float C_OBSERVER[%d];\n",ny*(nx+1));
+    @printf(fh, "extern c_float MPC_PLANT_DYNAMICS[%d];\n",nx*(1+nx+nu+nd));
+    @printf(fh, "extern c_float MPC_MEASUREMENT_FUNCTION[%d];\n",ny*(1+nx+nd));
     @printf(fh, "extern c_float K_TRANSPOSE_OBSERVER[%d];\n",ny*nx);
     fmpc_h = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_observer.h"), "r");
     write(fh, read(fmpc_h))
     close(fmpc_h)
 
-    write_float_array(fsrc,[kf.f_offset kf.F kf.G]'[:],"MPC_PLANT_DYNAMICS");
-    write_float_array(fsrc,[kf.h_offset kf.C]'[:],"C_OBSERVER");
+    write_float_array(fsrc,[kf.f_offset kf.F kf.G kf.Gd]'[:],"MPC_PLANT_DYNAMICS");
+    write_float_array(fsrc,[kf.h_offset kf.C kf.Dd]'[:],"MPC_MEASUREMENT_FUNCTION");
     write_float_array(fsrc,kf.K[:],"K_TRANSPOSE_OBSERVER");
     fmpc_src = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_observer.c"), "r");
     write(fsrc, read(fmpc_src))
@@ -57,21 +65,21 @@ function codegen(kf::KalmanFilter,fh,fsrc)
 end
 
 """
-    predict_state!(mpc,u)
+    predict_state!(mpc,u,d=nothing)
 Predict the state at the next time step if the control `u` is applied.
 This updates the state of `state_observer`
 """
-function predict_state!(mpc::Union{MPC,ExplicitMPC},u)
-    predict!(mpc.state_observer,u)
+function predict_state!(mpc::Union{MPC,ExplicitMPC},u,d=nothing)
+    predict!(mpc.state_observer,u,d)
 end
 
 """
-    set_correct_state!(mpcy)
+    correct_state!(mpc,y,d=nothing)
 Correct the state estimated based on measurement `u`.
 This updates the state of `state_observer`
 """
-function correct_state!(mpc::Union{MPC,ExplicitMPC},y)
-    correct!(mpc.state_observer,y)
+function correct_state!(mpc::Union{MPC,ExplicitMPC},y,d=nothing)
+    correct!(mpc.state_observer,y,d)
 end
 
 """
