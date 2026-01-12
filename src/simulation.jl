@@ -42,10 +42,10 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
     has_observer = !isnothing(mpc.state_observer)
     ny = has_observer ? size(mpc.state_observer.C,1) : mpc.model.ny
     if isnothing(scenario.get_measurement)
-        if has_observer 
-            get_measurement = (x,d) -> mpc.state_observer.C*x+mpc.state_observer.h_offset
+        get_measurement = if has_observer 
+            (x,d) -> mpc.state_observer.C*x+mpc.state_observer.Gd*d+mpc.state_observer.h_offset
         else
-            get_measurement = (x,d) -> mpc.model.C*x+mpc.model.Dd*d+mpc.model.h_offset
+            (x,d) -> mpc.model.C*x+mpc.model.Dd*d+mpc.model.h_offset
         end
     else
         get_measurement = scenario.get_measurement
@@ -74,8 +74,8 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
 
     # Setup disturbance
     if(!isempty(scenario.d))
-        ds[:,1:size(d,2)].= d
-        ds[:,size(d,2)+1:end] .= d[:,end] # hold last
+        ds[:,1:size(scenario.d,2)].= scenario.d
+        ds[:,size(scenario.d,2)+1:end] .= scenario.d[:,end] # hold last
     end
 
     # Setup linear cost trajectory
@@ -94,7 +94,7 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
         ys[:,k] = has_observer ? mpc.model.C*x + mpc.model.Dd*ds[:,k] : yms[:,k]
 
         # Get state estimate
-        xhat = has_observer ? correct_state!(mpc,yms[:,k]) : x
+        xhat = has_observer ? correct_state!(mpc,yms[:,k],ds[:,k]) : x
         xhats[:,k] = xhat
 
         # Get linear cost and reference preview
@@ -103,7 +103,7 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
 
         solve_times[k] = @elapsed u = compute_control(mpc,xhat;r=rk, d=ds[:,k],l=lk)
 
-        has_observer && predict_state!(mpc,u)
+        has_observer && predict_state!(mpc,u,ds[:,k])
 
         x = dynamics(x,u,ds[:,k])
         scenario.callback(x,u,ds[:,k],k)
