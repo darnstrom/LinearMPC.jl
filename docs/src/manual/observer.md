@@ -53,12 +53,13 @@ predict_state!(mpc,u)
 ```
 
 ## Code generation
-If an observer has been set, the `codegen` function will in addition to C-code for the MPC also generate C-code for the observer. Specifically the C functions `mpc_correct_state(state,measurement)` and  `mpc_predict_state(state,control)` will be generated, where `state`, `measurement`, and `control` are floating-point arrays. The updated state will be available in the floating-point array `state` after calling the functions. 
+If an observer has been set, the `codegen` function will in addition to C-code for the MPC also generate C-code for the observer. Specifically the C functions `mpc_correct_state(state, measurement, disturbance)` and  `mpc_predict_state(state, control, disturbance)` will be generated, where `state`, `measurement`, `control` and `disturbance` are floating-point arrays. The updated state will be available in the floating-point array `state` after calling the functions. 
 
 Similar to the previous section, the following is a typical sequence of calls when using an observer together with `mpc_compute_control` 
 
 ```c
-mpc_correct_state(state,measurement)
+mpc_correct_state(state,measurement,disturbance)
 mpc_compute_control(control,state,reference,disturbance)
-mpc_predict_state(state,control)
+mpc_predict_state(state,control,disturbance)
 ```
+Note for cases when there is no distrubance, one can pass `NULL` instead of `disturbance` as last argument to the functions.

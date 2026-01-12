@@ -30,33 +30,35 @@ function KalmanFilter(F,G,C;Gd=nothing,Dd=nothing,f_offset=nothing, h_offset=not
 end
 
 function set_state!(kf::KalmanFilter,x)
-    kf.x[:] = x
+    kf.x .= x
 end
 function predict!(kf::KalmanFilter,u,d=nothing)
-    kf.x[:] = kf.F*kf.x + kf.G*u +kf.f_offset
+    kf.x .= kf.F*kf.x + kf.G*u +kf.f_offset
     isnothing(d) || (kf.x .+= kf.Gd*d)
+    return kf.x
 end
 
 function correct!(kf::KalmanFilter,y,d=nothing)
     inov = y - kf.C*kf.x - kf.h_offset
     isnothing(d) || (inov .-= kf.Dd*d)
-    kf.x[:] += kf.K*inov
+    kf.x .+= kf.K*inov
 end
 
 # TODO: add support for disturbance input in codegen here
 function codegen(kf::KalmanFilter,fh,fsrc)
     ny,nx = size(kf.C)
     nu = size(kf.G,2)
+    nd = size(kf.Gd,2)
     @printf(fh, "#define N_MEASUREMENT %d\n",ny);
-    @printf(fh, "extern c_float MPC_PLANT_DYNAMICS[%d];\n",nx*(1+nx+nu));
-    @printf(fh, "extern c_float C_OBSERVER[%d];\n",ny*(nx+1));
+    @printf(fh, "extern c_float MPC_PLANT_DYNAMICS[%d];\n",nx*(1+nx+nu+nd));
+    @printf(fh, "extern c_float MPC_MEASUREMENT_FUNCTION[%d];\n",ny*(1+nx+nd));
     @printf(fh, "extern c_float K_TRANSPOSE_OBSERVER[%d];\n",ny*nx);
     fmpc_h = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_observer.h"), "r");
     write(fh, read(fmpc_h))
     close(fmpc_h)
 
-    write_float_array(fsrc,[kf.f_offset kf.F kf.G]'[:],"MPC_PLANT_DYNAMICS");
-    write_float_array(fsrc,[kf.h_offset kf.C]'[:],"C_OBSERVER");
+    write_float_array(fsrc,[kf.f_offset kf.F kf.G kf.Gd]'[:],"MPC_PLANT_DYNAMICS");
+    write_float_array(fsrc,[kf.h_offset kf.C kf.Dd]'[:],"MPC_MEASUREMENT_FUNCTION");
     write_float_array(fsrc,kf.K[:],"K_TRANSPOSE_OBSERVER");
     fmpc_src = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_observer.c"), "r");
     write(fsrc, read(fmpc_src))
