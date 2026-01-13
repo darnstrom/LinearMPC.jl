@@ -414,7 +414,8 @@ Consider instead to:
 2) Setting reference_tracking = false →  regulation to the operating point.")
     end
 
-    F,G,C,weights = create_extended_system_and_cost(mpc) 
+    F,G,C = create_extended_system(mpc) 
+    weights = create_extended_cost(mpc,mpc.weights) 
     nxe,nue= size(G) 
 
     Φ,Γ=state_predictor(F,G,mpc.Np,mpc.Nc);
@@ -438,36 +439,25 @@ Consider instead to:
     return MPQP(objective,constraints)
 end
 
-function create_extended_system_and_cost(mpc::MPC)
-    F,G,C = mpc.model.F-mpc.model.G*mpc.K, mpc.model.G, mpc.model.C
-    Q,R,Rr,S = copy(mpc.weights.Q), copy(mpc.weights.R), copy(mpc.weights.Rr), copy(mpc.weights.S)
-    Qf = iszero(mpc.weights.Qf) && iszero(mpc.weights.Qfx) ? Q : copy(mpc.weights.Qf)
-
+function create_extended_system(mpc::MPC)
+    F,G = mpc.model.F-mpc.model.G*mpc.K, mpc.model.G
+    C = mpc.model.C
     nx,nr,nd,nuprev,nl = get_parameter_dims(mpc)
     mpc.nr, mpc.nuprev, mpc.nl = nr, nuprev, nl
     nu = mpc.model.nu 
 
-    Np,Nc = mpc.Np, mpc.Nc
-
     if(nr > 0) # Reference tracking -> add reference to states
-        if mpc.settings.reference_preview
-            # Reference preview mode: references are part of parameter vector
-            # No need to add reference states to F, G matrices
-            # References will be handled directly in the objective function
-        else
-            # Standard mode: add reference as constant states
+        if !mpc.settings.reference_preview
             F = cat(F,I(mpc.model.ny),dims=(1,2))
             G = [G;zeros(mpc.model.ny,nu)]
             C = [C -I(mpc.model.ny)] 
-            S = [S;zeros(mpc.model.ny,nu)]
         end
     end
 
-    if(nd > 0) # add measureable disturbnace
+    if(nd > 0) # add measureable disturbance
         F = cat(F,I(nd),dims=(1,2))
         F[1:nx,end-nd+1:end] .= mpc.model.Gd
         G = [G;zeros(nd,nu)]
-        S = [S;zeros(nd,nu)]
         C = [C mpc.model.Dd]
     end
 
@@ -477,6 +467,36 @@ function create_extended_system_and_cost(mpc::MPC)
         G = [G;I(nu)]
         nye,nxe = size(C)
         C = [C zeros(nye,nu); mpc.K zeros(nu,nxe-nx) I(nu)]
+    end
+
+    if(!iszero(mpc.weights.R) && !iszero(mpc.K)) # terms from prestabilizing feedback
+        C = [C; mpc.K zeros(nu,size(C,2)-nx)]
+    end
+
+    if(!iszero(mpc.model.f_offset)) # Add offset to states
+        F = cat(F,1,dims=(1,2))
+        F[1:nx,end] .= mpc.model.f_offset
+        G = [G;zeros(1,nu)]
+        C = [C zeros(size(C,1),1)]
+    end
+    return F::Matrix{Float64},G::Matrix{Float64}, C::Matrix{Float64}
+end
+
+function create_extended_cost(mpc::MPC, weights::MPCWeights)
+    Q,R,Rr,S = copy(weights.Q), copy(weights.R), copy(weights.Rr), copy(weights.S)
+    Qf = iszero(weights.Qf) && iszero(weights.Qfx) ? Q : copy(weights.Qf)
+    nx,nr,nd,nuprev,nl = get_parameter_dims(mpc)
+    nu = mpc.model.nu 
+
+    if nr > 0 && !mpc.settings.reference_preview # Reference tracking -> add reference to states
+        S = [S;zeros(mpc.model.ny,nu)]
+    end
+
+    if(nd > 0) # add measureable disturbance 
+        S = [S;zeros(nd,nu)]
+    end
+
+    if(nuprev > 0) # Penalizing Δu -> add uold to states 
         Q = cat(Q,Rr,dims=(1,2))
         Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
         S = [S;-Rr];
@@ -487,21 +507,16 @@ function create_extended_system_and_cost(mpc::MPC)
     if(!iszero(mpc.weights.R) && !iszero(mpc.K)) # terms from prestabilizing feedback
         Q = cat(Q,mpc.weights.R,dims=(1,2))
         Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
-        C = [C; mpc.K zeros(nu,size(C,2)-nx)]
         S[1:nx,:] -=mpc.K'*mpc.weights.R
     end
 
     if(!iszero(mpc.model.f_offset))
-        F = cat(F,1,dims=(1,2))
-        F[1:nx,end] .= mpc.model.f_offset
-        G = [G;zeros(1,nu)]
         S = [S;zeros(1,nu)]
-        C = [C zeros(size(C,1),1)]
     end
 
-    return (F::Matrix{Float64},G::Matrix{Float64},
-            C::Matrix{Float64},MPCWeights(Q,R,zeros(0,0),S,Qf,zeros(0,0)))
+    return MPCWeights(Q,R,zeros(0,0),S,Qf,zeros(0,0))
 end
+
 function remove_redundant(c::DenseConstraints)
     A,bu,bl,W = c.A, c.bu, c.bl, c.W
     issoft,isbinary,prio = c.issoft, c.isbinary, c.prio
