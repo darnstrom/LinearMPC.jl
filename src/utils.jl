@@ -255,8 +255,8 @@ function zoh(A,B,Ts)
 end
 
 matrixify(x::Number, n::Int) = diagm(fill(float(x),n))
-matrixify(v::AbstractVector, n::Int) = diagm(float(v))
-matrixify(M::AbstractMatrix, n::Int) = float(M)
+matrixify(v::AbstractVector, n::Int=length(v)) = diagm(float(v))
+matrixify(M::AbstractMatrix, n::Int=size(M,1)) = float(M)
 
 # get paramer id of a label
 function label2id(mpc, label::Symbol)

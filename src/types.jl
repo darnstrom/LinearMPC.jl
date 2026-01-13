@@ -31,6 +31,12 @@ function MPCWeights(nu,nx,nr)
                       zeros(nx,nu),zeros(nr,nr),zeros(nx,nx))
 end
 
+function MPCWeights(Q::AbstractArray,R::AbstractArray,Rr::AbstractArray=zeros(size(R));
+        S = zeros(0,0), Qf = zeros(0,0), Qfx = zeros(0,0))
+    Qf = isempty(Qf) ? copy(Q) : Qf 
+    return MPCWeights(matrixify(Q),matrixify(R),matrixify(Rr),S,Qf,Qfx)
+end
+
 """
 MPC controller settings.
 

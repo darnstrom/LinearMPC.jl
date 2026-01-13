@@ -486,7 +486,7 @@ function create_extended_cost(mpc::MPC, weights::MPCWeights)
     Q,R,Rr,S = copy(weights.Q), copy(weights.R), copy(weights.Rr), copy(weights.S)
     Qf = iszero(weights.Qf) && iszero(weights.Qfx) ? Q : copy(weights.Qf)
     nx,nr,nd,nuprev,nl = get_parameter_dims(mpc)
-    nu = mpc.model.nu 
+    nu = size(R,1) 
 
     if nr > 0 && !mpc.settings.reference_preview # Reference tracking -> add reference to states
         S = [S;zeros(mpc.model.ny,nu)]
@@ -684,3 +684,52 @@ function MPQP(obj::DenseObjective, c::DenseConstraints)
                 any(c.isbinary),
                 zeros(m),zeros(m),zeros(m),zeros(n))
 end
+
+function create_variational_objective(mpc::MPC,objectives::Vector{<:Tuple{MPCWeights,Vector{Int}}})
+    N,Nc = mpc.Np,mpc.Nc
+    nu = mpc.model.nu
+
+    F,G,Cp = create_extended_system(mpc) 
+    Φ,Γ=state_predictor(F,G,mpc.Np,mpc.Nc);
+
+    weights = [create_extended_cost(mpc,first(c)) for c in objectives]
+    uids = last.(objectives)
+
+
+    n_players = length(objectives)
+    #
+    # first make sure that the uids  
+    uids_unsorted = reduce(vcat,uids)
+    uids_sorted = sort(uids_unsorted)
+    if length(uids_sorted) != nu || any(uids_sorted[i] != i for i in 1:nu)
+        throw(ArgumentError("The controls have to be fully partitioned")) 
+    end
+    
+    Γs = Matrix{Float64}[]
+    Uids = Vector{Int}[]
+    nU,nth = size(Γ,2),size(Φ,2)
+    for i in 1:n_players
+        Uid = vec(uids[i] .+ (0:nu:nU-nu)')
+        push!(Γs,Γ[:,Uid])
+        push!(Uids,Uid)
+    end
+
+    H = zeros(nU,nU)
+    f_theta = zeros(nU,nth)
+    for i in 1:n_players
+        nui = length(uids[i])
+        CQCtot  = kron(I(N),Cp'*weights[i].Q*Cp);
+        CQCtot = cat(CQCtot,Cp'*weights[i].Qf*Cp,dims=(1,2))
+        for j in 1:n_players
+            H[Uids[i],Uids[j]] = Γs[i]'*CQCtot*Γs[j]
+            # TODO handle S if prestabilizing feedback
+            if i == j
+                H[Uids[i],Uids[i]] .+= kron(I(Nc),weights[i].R)
+                H[end-nui+1:end,end-nui+1:end] .+= (N-Nc)*weights[i].R
+            end
+        end
+        f_theta[Uids[i],:] = Γs[i]'*CQCtot*Φ
+    end
+    return DenseObjective(H, zeros(nU),f_theta,zeros(0,0))
+end
+
