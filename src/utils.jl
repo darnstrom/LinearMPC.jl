@@ -238,8 +238,20 @@ function solve(mpc::MPC,θ)
     if mpc.mpQP.has_binaries # Make sure workspace is clean
         ccall(("node_cleanup_workspace", DAQP.libdaqp),Cvoid,(Cint,Ptr{DAQP.Workspace}),0, mpc.opt_model.work)
     end
+    return _solve(mpc, Val(mpc.mpQP.is_symmetric))
+end
+
+function _solve(mpc::MPC,symmetric::Val{true})
     DAQP.update(mpc.opt_model,nothing,mpc.mpQP._f,nothing,mpc.mpQP._bu,mpc.mpQP._bl,nothing)
     return DAQP.solve(mpc.opt_model)
+end
+
+function _solve(mpc::MPC,symmetric::Val{false})
+    # TODO use workspace for AVI
+    x,_,info = DAQP.solve_avi(mpc.mpQP.H,mpc.mpQP._f, mpc.mpQP.A, mpc.mpQP._bu, mpc.mpQP._bl)
+    @info "" info
+    exitflag = info.status == :Solved ? 1 : -1
+    return x,NaN,exitflag,info
 end
 
 function range2region(range)

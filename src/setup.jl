@@ -7,21 +7,26 @@ Internally, this means generating an mpQP, and setting up a DAQP workspace.
 function setup!(mpc::MPC)
     mpc.mpqp_issetup = false  # Reset so get_parameter_dims computes from settings
     mpc.mpQP = mpc2mpqp(mpc)
-    bu,bl = mpc.mpQP.bu[:],mpc.mpQP.bl[:]
-    setup_flag,_ = DAQP.setup(mpc.opt_model, mpc.mpQP.H,mpc.mpQP.f[:],mpc.mpQP.A,bu,bl,mpc.mpQP.senses;break_points=mpc.mpQP.break_points)
-    if(setup_flag < 0)
-        if setup_flag == -1
-            @warn " Cannot setup optimization problem - Problem is infeasible"
-        elseif setup_flag == -6
-            @warn " Cannot setup optimization problem - Equality constraints overdetermined"
-        elseif setup_flag == -5
-            @warn " Cannot setup optimization problem - Convonvex objective"
+    if(mpc.mpQP.is_symmetric)
+        bu,bl = mpc.mpQP.bu[:],mpc.mpQP.bl[:]
+        setup_flag,_ = DAQP.setup(mpc.opt_model, mpc.mpQP.H,mpc.mpQP.f[:],mpc.mpQP.A,bu,bl,mpc.mpQP.senses;break_points=mpc.mpQP.break_points)
+        if(setup_flag < 0)
+            if setup_flag == -1
+                @warn " Cannot setup optimization problem - Problem is infeasible"
+            elseif setup_flag == -6
+                @warn " Cannot setup optimization problem - Equality constraints overdetermined"
+            elseif setup_flag == -5
+                @warn " Cannot setup optimization problem - Convonvex objective"
+            else
+                @warn " Cannot setup optimization problem " setup_flag
+            end
         else
-            @warn " Cannot setup optimization problem " setup_flag
+            # Set up soft weight
+            DAQP.settings(mpc.opt_model,Dict(:rho_soft=>1/mpc.settings.soft_weight))
+            mpc.mpqp_issetup = true
         end
     else
-        # Set up soft weight
-        DAQP.settings(mpc.opt_model,Dict(:rho_soft=>1/mpc.settings.soft_weight))
+        # TODO: setup AVI
         mpc.mpqp_issetup = true
     end
 end
@@ -112,7 +117,7 @@ Set the weights in the objective function `xN' C' Qf C xN^T + ∑ (C xₖ - rₖ
 
 A vector is interpreted as a diagonal matrix.
 """
-function set_objective!(mpc::MPC;Q = zeros(0,0), R=zeros(0,0), Rr=zeros(0,0), S= zeros(0,0), Qf=zeros(0,0), Qfx=zeros(0,0))
+function set_objective!(mpc::MPC;Q = zeros(0,0), R=zeros(0,0), Rr=zeros(0,0), S= zeros(0,0),Qf=zeros(0,0), Qfx=zeros(0,0))
     isempty(Q)  || (mpc.weights.Q .= matrixify(Q,mpc.model.ny))
     isempty(R)  || (mpc.weights.R .= matrixify(R,mpc.model.nu))
     isempty(Rr) || (mpc.weights.Rr .= matrixify(Rr,mpc.model.nu))
@@ -121,7 +126,31 @@ function set_objective!(mpc::MPC;Q = zeros(0,0), R=zeros(0,0), Rr=zeros(0,0), S=
     isempty(Qfx) || (mpc.weights.Qfx .= matrixify(Qfx,mpc.model.nx))
     mpc.mpqp_issetup = false
 end
+
+
+function set_objective!(mpc::MPC, uids::Vector{Int};Q = zeros(0,0), R=zeros(0,0), 
+        Rr=zeros(0,0), S= zeros(0,0), Qf=zeros(0,0), Qfx=zeros(0,0))
+    nu,ny,nx = length(uids), mpc.model.ny, mpc.model.nx
+    Q   = isempty(Q)   ? zeros(mpc.model.ny,mpc.model.ny) : matrixify(Q,ny)
+    R   = isempty(R)   ? zeros(nu,nu) : matrixify(R,nu)
+    Rr  = isempty(Rr)  ? zeros(nu,nu) : matrixify(Rr,nu)
+    S   = isempty(S)   ? zeros(nx,nu) : float(S)
+    Qf  = isempty(Qf)  ? copy(Q) : matrixify(Qf,ny)
+    Qfx = isempty(Qfx) ? zeros(nx,nx) :  matrixify(Qfx,nx)
+
+    mpc.weights.Rr[uids,uids] .= Rr # To be able to keep track of nuprev
+    push!(mpc.objectives, (MPCWeights(Q,R,Rr,S,Qf,Qfx),uids))
+    mpc.mpqp_issetup = false
+end
+
+
 set_weights! = set_objective! # backwards compatibility
+add_objective! = set_objective!
+
+function empty_objectives!(mpc::MPC)
+    empty!(mpc.objectives)
+    mpc.mpqp_issetup = false
+end
 
 # Terminal ingredients
 using MatrixEquations 

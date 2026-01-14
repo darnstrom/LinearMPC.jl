@@ -415,12 +415,16 @@ Consider instead to:
     end
 
     F,G,C = create_extended_system(mpc) 
-    weights = create_extended_cost(mpc,mpc.weights) 
-    nxe,nue= size(G) 
-
     Φ,Γ=state_predictor(F,G,mpc.Np,mpc.Nc);
 
-    objective  = create_objective(mpc,Φ,Γ,C,weights,nue,nxe)
+    if isempty(mpc.objectives) # Normal, single objective, MPC
+        weights = create_extended_cost(mpc,mpc.weights)
+        nxe,nue= size(G)
+        objective  = create_objective(mpc,Φ,Γ,C,weights,nue,nxe)
+    else
+        objective = create_variational_objective(mpc,Φ,Γ,C)
+    end
+
     constraints = create_constraints(mpc,Φ,Γ)
 
     if(!isempty(mpc.move_blocks))
@@ -482,36 +486,42 @@ function create_extended_system(mpc::MPC)
     return F::Matrix{Float64},G::Matrix{Float64}, C::Matrix{Float64}
 end
 
-function create_extended_cost(mpc::MPC, weights::MPCWeights)
+function create_extended_cost(mpc::MPC, weights::MPCWeights;uids=1:mpc.model.nu)
     Q,R,Rr,S = copy(weights.Q), copy(weights.R), copy(weights.Rr), copy(weights.S)
     Qf = iszero(weights.Qf) && iszero(weights.Qfx) ? Q : copy(weights.Qf)
     nx,nr,nd,nuprev,nl = get_parameter_dims(mpc)
-    nu = size(R,1) 
+    nu = mpc.model.nu
+    nui = length(uids)
+
 
     if nr > 0 && !mpc.settings.reference_preview # Reference tracking -> add reference to states
-        S = [S;zeros(mpc.model.ny,nu)]
+        S = [S;zeros(mpc.model.ny,nui)]
     end
 
     if(nd > 0) # add measureable disturbance 
-        S = [S;zeros(nd,nu)]
+        S = [S;zeros(nd,nui)]
     end
 
     if(nuprev > 0) # Penalizing Δu -> add uold to states 
-        Q = cat(Q,Rr,dims=(1,2))
+        Rrfull = zeros(nu,nu)
+        Rrfull[uids,uids] .= Rr
+        Q = cat(Q,Rrfull,dims=(1,2))
         Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
-        S = [S;-Rr];
-        S[1:nx,:] -=mpc.K'*Rr
+        S = [S;-Rrfull[:,uids]];
+        S[1:nx,:] -=mpc.K[uids,:]'*Rr
         R+=Rr
     end
 
-    if(!iszero(mpc.weights.R) && !iszero(mpc.K)) # terms from prestabilizing feedback
-        Q = cat(Q,mpc.weights.R,dims=(1,2))
+    if(!iszero(R) && !iszero(mpc.K)) # terms from prestabilizing feedback
+        Rfull = zeros(nu,nu)
+        Rfull[uids,uids] .= weights.R
+        Q = cat(Q,Rfull,dims=(1,2))
         Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
-        S[1:nx,:] -=mpc.K'*mpc.weights.R
+        S[1:nx,:] -=mpc.K[uids,:]'*weights.R
     end
 
     if(!iszero(mpc.model.f_offset))
-        S = [S;zeros(1,nu)]
+        S = [S;zeros(1,nui)]
     end
 
     return MPCWeights(Q,R,zeros(0,0),S,Qf,zeros(0,0))
@@ -681,22 +691,18 @@ function MPQP(obj::DenseObjective, c::DenseConstraints)
     m,n = length(c.bu),length(obj.f)
     mpQP = MPQP(obj.H,obj.f,obj.H_theta,obj.f_theta,
                 c.A,c.bu,c.bl,c.W, senses, c.prio, break_points,
-                any(c.isbinary),
+                any(c.isbinary),isapprox(obj.H, obj.H', rtol=1e-9),
                 zeros(m),zeros(m),zeros(m),zeros(n))
 end
-
-function create_variational_objective(mpc::MPC,objectives::Vector{<:Tuple{MPCWeights,Vector{Int}}})
+function create_variational_objective(mpc::MPC,Φ,Γ,Cp)
     N,Nc = mpc.Np,mpc.Nc
     nu = mpc.model.nu
 
-    F,G,Cp = create_extended_system(mpc) 
-    Φ,Γ=state_predictor(F,G,mpc.Np,mpc.Nc);
-
-    weights = [create_extended_cost(mpc,first(c)) for c in objectives]
-    uids = last.(objectives)
+    weights = [create_extended_cost(mpc,first(c);uids=last(c)) for c in mpc.objectives]
+    uids = last.(mpc.objectives)
 
 
-    n_players = length(objectives)
+    n_players = length(mpc.objectives)
     #
     # first make sure that the uids  
     uids_unsorted = reduce(vcat,uids)
@@ -729,6 +735,13 @@ function create_variational_objective(mpc::MPC,objectives::Vector{<:Tuple{MPCWei
             end
         end
         f_theta[Uids[i],:] = Γs[i]'*CQCtot*Φ
+
+        # From x'Su
+        Stot = [kron(I(Nc),weights[i].S);zeros((N-Nc+1)*nth,Nc*nui)]
+        Stot[Nc*nth+1:N*nth,end-nui+1:end] = repeat(weights[i].S,N-Nc,1) # Due to Nc
+        GS = Γs[i]'*Stot
+        H[Uids[i],Uids[i]] .+= (GS + GS')
+        f_theta[Uids[i],:] .+= Stot'*Φ
     end
     return DenseObjective(H, zeros(nU),f_theta,zeros(0,0))
 end

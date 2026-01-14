@@ -74,6 +74,7 @@ struct MPQP
     break_points::Vector{Cint}
 
     has_binaries::Bool
+    is_symmetric::Bool
 
     # Workspace arrays for solve() to avoid allocations
     _bth::Vector{Float64}
@@ -85,7 +86,7 @@ end
 function MPQP()
     return MPQP(Matrix{Float64}(undef, 0, 0),Float64[],Matrix{Float64}(undef, 0, 0), Matrix{Float64}(undef, 0, 0),
                 Matrix{Float64}(undef, 0, 0),Float64[],Float64[], Matrix{Float64}(undef, 0, 0),
-                Cint[],Cint[],Cint[],false,
+                Cint[],Cint[],Cint[],false,true,
                 Float64[],Float64[],Float64[],Float64[])
 end
 
@@ -139,6 +140,9 @@ mutable struct MPC
     state_observer
 
     Δx0::Vector{Float64}
+
+    objectives::Vector{<:Tuple{MPCWeights,Vector{Int}}}
+
 end
 
 function MPC(model::Model;Np=10,Nc=Np)
@@ -147,7 +151,8 @@ function MPC(model::Model;Np=10,Nc=Np)
         zeros(0),zeros(0),zeros(0),-1,
         Constraint[],MPCSettings(),MPQP(),
         DAQP.Model(),zeros(model.nu,model.nx),Vector{Int}[],false, zeros(model.nu),zeros(0,0),
-        nothing,zeros(model.nx))
+        nothing,zeros(model.nx),
+        Tuple{MPCWeights,Vector{Int}}[])
 end
 
 function MPC(F,G;Gd=zeros(0,0), C=zeros(0,0), Dd= zeros(0,0), f_offset=zeros(0), Ts= -1.0, Np=10, Nc = Np)
