@@ -49,7 +49,8 @@ function compute_control(empc::ExplicitMPC,x;r=nothing,d=nothing,uprev=nothing,l
     if isnothing(empc.bst)
         @error "Need to build a binary search tree to evaluate control law"
     else
-        return ParametricDAQP.evaluate(empc.bst,form_parameter(empc,x,r,d,uprev,l))
+        empc.uprev .= ParametricDAQP.evaluate(empc.bst,form_parameter(empc,x,r,d,uprev,l))
+        return copy(empc.uprev) 
     end
 end
 
@@ -247,10 +248,9 @@ function _solve(mpc::MPC,symmetric::Val{true})
 end
 
 function _solve(mpc::MPC,symmetric::Val{false})
-    # TODO use workspace for AVI
-    x,_,info = DAQP.solve_avi(mpc.mpQP.H,mpc.mpQP._f, mpc.mpQP.A, mpc.mpQP._bu, mpc.mpQP._bl)
-    @info "" info
-    exitflag = info.status == :Solved ? 1 : -1
+    DAQP.update(mpc.avi_workspace.daqp_workspace,
+                nothing,mpc.mpQP._f,nothing,mpc.mpQP._bu,mpc.mpQP._bl,nothing)
+    x,λ,exitflag,info = DAQP.solve(mpc.avi_workspace)
     return x,NaN,exitflag,info
 end
 

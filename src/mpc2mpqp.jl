@@ -692,7 +692,7 @@ function MPQP(obj::DenseObjective, c::DenseConstraints)
     mpQP = MPQP(obj.H,obj.f,obj.H_theta,obj.f_theta,
                 c.A,c.bu,c.bl,c.W, senses, c.prio, break_points,
                 any(c.isbinary),isapprox(obj.H, obj.H', rtol=1e-9),
-                zeros(m),zeros(m),zeros(m),zeros(n))
+                zeros(m),ones(m),-ones(m),zeros(n))
 end
 function create_variational_objective(mpc::MPC,Φ,Γ,Cp)
     N,Nc = mpc.Np,mpc.Nc
@@ -731,7 +731,7 @@ function create_variational_objective(mpc::MPC,Φ,Γ,Cp)
             # TODO handle S if prestabilizing feedback
             if i == j
                 H[Uids[i],Uids[i]] .+= kron(I(Nc),weights[i].R)
-                H[end-nui+1:end,end-nui+1:end] .+= (N-Nc)*weights[i].R
+                H[Uids[i][end-nui+1:end],Uids[i][end-nui+1:end]] .+= (N-Nc)*weights[i].R
             end
         end
         f_theta[Uids[i],:] = Γs[i]'*CQCtot*Φ

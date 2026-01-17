@@ -26,8 +26,14 @@ function setup!(mpc::MPC)
             mpc.mpqp_issetup = true
         end
     else
-        # TODO: setup AVI
-        mpc.mpqp_issetup = true
+        bu,bl = mpc.mpQP._bu, mpc.mpQP._bl
+        setup_flag,ws = DAQPBase.setup_avi(mpc.mpQP.H,mpc.mpQP._f,mpc.mpQP.A,bu,bl,mpc.mpQP.senses)
+        if(setup_flag < 0)
+            @warn " Cannot setup optimization problem " setup_flag
+        else
+            mpc.avi_workspace = ws
+            mpc.mpqp_issetup = true
+        end
     end
 end
 

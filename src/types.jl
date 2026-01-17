@@ -142,7 +142,7 @@ mutable struct MPC
     Δx0::Vector{Float64}
 
     objectives::Vector{<:Tuple{MPCWeights,Vector{Int}}}
-
+    avi_workspace::DAQPBase.AVIWorkspace
 end
 
 function MPC(model::Model;Np=10,Nc=Np)
@@ -152,7 +152,7 @@ function MPC(model::Model;Np=10,Nc=Np)
         Constraint[],MPCSettings(),MPQP(),
         DAQP.Model(),zeros(model.nu,model.nx),Vector{Int}[],false, zeros(model.nu),zeros(0,0),
         nothing,zeros(model.nx),
-        Tuple{MPCWeights,Vector{Int}}[])
+        Tuple{MPCWeights,Vector{Int}}[],DAQPBase.AVIWorkspace())
 end
 
 function MPC(F,G;Gd=zeros(0,0), C=zeros(0,0), Dd= zeros(0,0), f_offset=zeros(0), Ts= -1.0, Np=10, Nc = Np)
