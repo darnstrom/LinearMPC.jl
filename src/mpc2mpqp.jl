@@ -307,9 +307,11 @@ function create_objective(mpc::MPC,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
     end
 
     # ==== From (Cx)'Q(Cx) ====
-    CQCtot  = kron(I(N),Cp'*Q*Cp);
-    CQCf = Cf'*Qf*Cf + cat(mpc.weights.Qfx,zeros(nx-nxp,nx-nxp), dims=(1,2))
-    CQCtot = cat(CQCtot,CQCf,dims=(1,2))
+    CQCtot  = kron(I(N+1),Cp'*Q*Cp);
+    CQCf = Cf'*Qf*Cf
+    CQCf[1:nxp,1:nxp] .+= mpc.weights.Qfx
+    CQCtot[end-nx+1:end,end-nx+1:end].=CQCf
+
 
     H += Γ'*CQCtot*Γ; 
     # f_theta & H_theta for state parameters
@@ -329,50 +331,21 @@ function create_objective(mpc::MPC,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
     end
 
     # ==== Reference tracking terms ====
-    if mpc.settings.reference_tracking && nrp > 0
-        if mpc.settings.reference_preview
-            # Reference preview mode: handle time-varying references
-            # Needs to add terms for r to f_theta and H_theta
-            # Recall that θ = [x0 r nd uprev]
-            if nrp > 0
-                Fr = -Γ'*cat(kron(I(N),C_full'*Q_full), C_full'*Qf_full,dims=(1,2))
-                Fr = Fr[:,ny+1:end] # First reference superfluous
-                Hr = cat(kron(I(N-1),Q_full),Qf_full,dims=(1,2))
-                if mpc.settings.reference_condensation
-                    Is = repeat(I(ny),mpc.Np)
-                    if(isempty(mpc.settings.traj2setpoint))
-                        W = cat(1e6*I(nu),I(nu*(Nc-1)),dims=(1,2))
-                        mpc.traj2setpoint = (W*inv(H)*Fr*Is)\(W*inv(H)*Fr)
-                    else
-                        mpc.traj2setpoint = mpc.settings.traj2setpoint
-                    end
-                    Fr *= Is
-                    Hr = Is'*Hr*Is
-                end
-                f_theta = [f_theta[:,1:nxp] Fr f_theta[:,nxp+1:end]]
-
-                H_theta = [H_theta[1:nxp, 1:nxp] zeros(nxp,nrp) H_theta[1:nxp,nxp+1:end];
-                           zeros(nrp,nxp) Hr zeros(nrp,ndp+nup);
-                           H_theta[nxp+1:end,1:nxp] zeros(ndp+nup,nrp) H_theta[nxp+1:end,nxp+1:end]]
-            end
-        else
-            # Standard mode: references are handled as augmented states
-            # No additional terms needed here since references are in the state vector
-        end
+    if nrp > 0 && mpc.settings.reference_preview
+        f_theta,H_theta = ref_preview_cost(mpc,Γ,C_full,Q_full,Qf_full,H,f_theta,H_theta)
     end
 
     # ==== Linear cost on control inputs ====
-    if mpc.settings.linear_cost && nlp > 0
+    if nlp > 0 && mpc.settings.linear_cost
         # Linear cost l'U adds directly to the linear term
         # f_theta gets an identity block for the linear cost parameters
         # This maps l = [l_0; l_1; ...; l_{Nc-1}] directly to U
-        Fl = I(nlp)
-        f_theta = [f_theta Fl]
+        f_theta = [f_theta Matrix{Float64}(I,nlp,nlp)]
 
         # Extend H_theta with zero blocks (linear cost doesn't contribute to quadratic terms)
         nth_current = size(H_theta, 1)
-        H_theta = [H_theta          zeros(nth_current, nlp);
-                   zeros(nlp, nth_current)  zeros(nlp, nlp)]
+        H_theta = [H_theta zeros(nth_current, nlp);
+                   zeros(nlp, nth_current+nlp)]
     end
 
     # Add regularization for binary variables (won't change the solution)
@@ -398,6 +371,44 @@ function create_objective(mpc::MPC,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
     end
 
     return DenseObjective((H+H')/2,f[:],f_theta,H_theta)
+end
+
+function ref_preview_cost(mpc,Γ,C_full,Q_full,Qf_full,H,f_theta,H_theta)
+    # Reference preview mode: handle time-varying references
+    # Needs to add terms for r to f_theta and H_theta
+    # Recall that θ = [x0 r nd uprev]
+
+    N,Nc = mpc.Np,mpc.Nc
+    nu,ny = mpc.model.nu,mpc.model.ny
+    nxp, nrp, ndp, nup, nlp = get_parameter_dims(mpc)
+
+    CQfull = kron(I(N+1),C_full'*Q_full);
+    CQfull[end-size(C_full,2)+1:end,end-size(Qf_full,2)+1:end] .= C_full'*Qf_full
+    Fr = -Γ'*CQfull
+    Fr = Fr[:,ny+1:end] # First reference superfluous
+    Hr = kron(I(N),Q_full)
+    Hr[end-size(Q_full,1)+1:end,end-size(Q_full,2)+1:end] .= Qf_full
+    if mpc.settings.reference_condensation
+        Is = repeat(Matrix{Float64}(I,ny,ny),N)
+        if(isempty(mpc.settings.traj2setpoint))
+            W = Matrix{Float64}(I, nu*Nc, nu*Nc)
+            for i in 1:nu 
+                W[i,i] = 1e6  
+            end
+            WinvHFr = (W/H)*Fr
+            mpc.traj2setpoint = (WinvHFr*Is)\(WinvHFr)
+        else
+            mpc.traj2setpoint = mpc.settings.traj2setpoint
+        end
+        Fr *= Is
+        Hr = Is'*Hr*Is
+    end
+    f_theta = Float64[f_theta[:,1:nxp] Fr f_theta[:,nxp+1:end]]
+
+    H_theta = Float64[H_theta[1:nxp, 1:nxp] zeros(nxp,nrp) H_theta[1:nxp,nxp+1:end];
+                      zeros(nrp,nxp) Hr zeros(nrp,ndp+nup);
+                      H_theta[nxp+1:end,1:nxp] zeros(ndp+nup,nrp) H_theta[nxp+1:end,nxp+1:end]]
+    return f_theta, H_theta
 end
 
 """
