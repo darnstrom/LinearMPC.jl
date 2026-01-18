@@ -31,6 +31,12 @@ function MPCWeights(nu,nx,nr)
                       zeros(nx,nu),zeros(nr,nr),zeros(nx,nx))
 end
 
+function MPCWeights(Q::AbstractArray,R::AbstractArray,Rr::AbstractArray=zeros(size(R));
+        S = zeros(0,0), Qf = zeros(0,0), Qfx = zeros(0,0))
+    Qf = isempty(Qf) ? copy(Q) : Qf 
+    return MPCWeights(matrixify(Q),matrixify(R),matrixify(Rr),S,Qf,Qfx)
+end
+
 """
 MPC controller settings.
 
@@ -68,6 +74,7 @@ struct MPQP
     break_points::Vector{Cint}
 
     has_binaries::Bool
+    is_symmetric::Bool
 
     # Workspace arrays for solve() to avoid allocations
     _bth::Vector{Float64}
@@ -79,7 +86,7 @@ end
 function MPQP()
     return MPQP(Matrix{Float64}(undef, 0, 0),Float64[],Matrix{Float64}(undef, 0, 0), Matrix{Float64}(undef, 0, 0),
                 Matrix{Float64}(undef, 0, 0),Float64[],Float64[], Matrix{Float64}(undef, 0, 0),
-                Cint[],Cint[],Cint[],false,
+                Cint[],Cint[],Cint[],false,true,
                 Float64[],Float64[],Float64[],Float64[])
 end
 
@@ -133,6 +140,9 @@ mutable struct MPC
     state_observer
 
     Δx0::Vector{Float64}
+
+    objectives::Vector{<:Tuple{MPCWeights,Vector{Int}}}
+    avi_workspace::DAQPBase.AVIWorkspace
 end
 
 function MPC(model::Model;Np=10,Nc=Np)
@@ -141,7 +151,8 @@ function MPC(model::Model;Np=10,Nc=Np)
         zeros(0),zeros(0),zeros(0),-1,
         Constraint[],MPCSettings(),MPQP(),
         DAQP.Model(),zeros(model.nu,model.nx),Vector{Int}[],false, zeros(model.nu),zeros(0,0),
-        nothing,zeros(model.nx))
+        nothing,zeros(model.nx),
+        Tuple{MPCWeights,Vector{Int}}[],DAQPBase.AVIWorkspace())
 end
 
 function MPC(F,G;Gd=zeros(0,0), C=zeros(0,0), Dd= zeros(0,0), f_offset=zeros(0), Ts= -1.0, Np=10, Nc = Np)

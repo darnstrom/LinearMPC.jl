@@ -848,5 +848,27 @@ Random.seed!(1234)
         @test sim.ys[end] ≈ 5.0
     end
 
+    @testset "Game-theoretic MPC" begin
+        F = [1 0.1; 0 1];
+        G = [0 0;1 1];
+        mpc = LinearMPC.MPC(F,G;C=[1 0;0 1],Np=10);
+        set_objective!(mpc, [1]; Q=[1,0], Rr=1e3);
+        set_objective!(mpc, [2]; Q=[0,1], Rr=1e3);
+        set_bounds!(mpc;umin=-ones(2),umax=ones(2));
+        move_block!(mpc,[1,1,8])
+        empc = ExplicitMPC(mpc;build_tree=true)
 
+        sim_imp = Simulation(mpc;x0=10*ones(2), r = [10,0], N=500);
+        sim_exp = Simulation(empc;x0=10*ones(2), r = [10,0], N=500);
+
+        @test !issymmetric(mpc.mpQP.H)
+
+        @test all(abs.(sim_imp.us-sim_exp.us) .< 1e-4)
+
+        @test sim_imp.ys[1,end] ≈ 10.0 atol=1e-4
+        @test sim_imp.ys[2,end] ≈ 0.0 atol=1e-4
+
+        @test sim_exp.ys[1,end] ≈ 10.0 atol=1e-4
+        @test sim_exp.ys[2,end] ≈ 0.0 atol=1e-4
+    end
 end

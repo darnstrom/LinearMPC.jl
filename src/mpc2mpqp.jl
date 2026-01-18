@@ -414,12 +414,17 @@ Consider instead to:
 2) Setting reference_tracking = false →  regulation to the operating point.")
     end
 
-    F,G,C,weights = create_extended_system_and_cost(mpc) 
-    nxe,nue= size(G) 
-
+    F,G,C = create_extended_system(mpc) 
     Φ,Γ=state_predictor(F,G,mpc.Np,mpc.Nc);
 
-    objective  = create_objective(mpc,Φ,Γ,C,weights,nue,nxe)
+    if isempty(mpc.objectives) # Normal, single objective, MPC
+        weights = create_extended_cost(mpc,mpc.weights)
+        nxe,nue= size(G)
+        objective  = create_objective(mpc,Φ,Γ,C,weights,nue,nxe)
+    else
+        objective = create_variational_objective(mpc,Φ,Γ,C)
+    end
+
     constraints = create_constraints(mpc,Φ,Γ)
 
     if(!isempty(mpc.move_blocks))
@@ -438,36 +443,25 @@ Consider instead to:
     return MPQP(objective,constraints)
 end
 
-function create_extended_system_and_cost(mpc::MPC)
-    F,G,C = mpc.model.F-mpc.model.G*mpc.K, mpc.model.G, mpc.model.C
-    Q,R,Rr,S = copy(mpc.weights.Q), copy(mpc.weights.R), copy(mpc.weights.Rr), copy(mpc.weights.S)
-    Qf = iszero(mpc.weights.Qf) && iszero(mpc.weights.Qfx) ? Q : copy(mpc.weights.Qf)
-
+function create_extended_system(mpc::MPC)
+    F,G = mpc.model.F-mpc.model.G*mpc.K, mpc.model.G
+    C = mpc.model.C
     nx,nr,nd,nuprev,nl = get_parameter_dims(mpc)
     mpc.nr, mpc.nuprev, mpc.nl = nr, nuprev, nl
     nu = mpc.model.nu 
 
-    Np,Nc = mpc.Np, mpc.Nc
-
     if(nr > 0) # Reference tracking -> add reference to states
-        if mpc.settings.reference_preview
-            # Reference preview mode: references are part of parameter vector
-            # No need to add reference states to F, G matrices
-            # References will be handled directly in the objective function
-        else
-            # Standard mode: add reference as constant states
+        if !mpc.settings.reference_preview
             F = cat(F,I(mpc.model.ny),dims=(1,2))
             G = [G;zeros(mpc.model.ny,nu)]
             C = [C -I(mpc.model.ny)] 
-            S = [S;zeros(mpc.model.ny,nu)]
         end
     end
 
-    if(nd > 0) # add measureable disturbnace
+    if(nd > 0) # add measureable disturbance
         F = cat(F,I(nd),dims=(1,2))
         F[1:nx,end-nd+1:end] .= mpc.model.Gd
         G = [G;zeros(nd,nu)]
-        S = [S;zeros(nd,nu)]
         C = [C mpc.model.Dd]
     end
 
@@ -477,31 +471,62 @@ function create_extended_system_and_cost(mpc::MPC)
         G = [G;I(nu)]
         nye,nxe = size(C)
         C = [C zeros(nye,nu); mpc.K zeros(nu,nxe-nx) I(nu)]
-        Q = cat(Q,Rr,dims=(1,2))
-        Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
-        S = [S;-Rr];
-        S[1:nx,:] -=mpc.K'*Rr
-        R+=Rr
     end
 
     if(!iszero(mpc.weights.R) && !iszero(mpc.K)) # terms from prestabilizing feedback
-        Q = cat(Q,mpc.weights.R,dims=(1,2))
-        Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
         C = [C; mpc.K zeros(nu,size(C,2)-nx)]
-        S[1:nx,:] -=mpc.K'*mpc.weights.R
     end
 
-    if(!iszero(mpc.model.f_offset))
+    if(!iszero(mpc.model.f_offset)) # Add offset to states
         F = cat(F,1,dims=(1,2))
         F[1:nx,end] .= mpc.model.f_offset
         G = [G;zeros(1,nu)]
-        S = [S;zeros(1,nu)]
         C = [C zeros(size(C,1),1)]
     end
-
-    return (F::Matrix{Float64},G::Matrix{Float64},
-            C::Matrix{Float64},MPCWeights(Q,R,zeros(0,0),S,Qf,zeros(0,0)))
+    return F::Matrix{Float64},G::Matrix{Float64}, C::Matrix{Float64}
 end
+
+function create_extended_cost(mpc::MPC, weights::MPCWeights;uids=1:mpc.model.nu)
+    Q,R,Rr,S = copy(weights.Q), copy(weights.R), copy(weights.Rr), copy(weights.S)
+    Qf = iszero(weights.Qf) && iszero(weights.Qfx) ? Q : copy(weights.Qf)
+    nx,nr,nd,nuprev,nl = get_parameter_dims(mpc)
+    nu = mpc.model.nu
+    nui = length(uids)
+
+
+    if nr > 0 && !mpc.settings.reference_preview # Reference tracking -> add reference to states
+        S = [S;zeros(mpc.model.ny,nui)]
+    end
+
+    if(nd > 0) # add measureable disturbance 
+        S = [S;zeros(nd,nui)]
+    end
+
+    if(nuprev > 0) # Penalizing Δu -> add uold to states 
+        Rrfull = zeros(nu,nu)
+        Rrfull[uids,uids] .= Rr
+        Q = cat(Q,Rrfull,dims=(1,2))
+        Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
+        S = [S;-Rrfull[:,uids]];
+        S[1:nx,:] -=mpc.K[uids,:]'*Rr
+        R+=Rr
+    end
+
+    if(!iszero(R) && !iszero(mpc.K)) # terms from prestabilizing feedback
+        Rfull = zeros(nu,nu)
+        Rfull[uids,uids] .= weights.R
+        Q = cat(Q,Rfull,dims=(1,2))
+        Qf = cat(Qf,zeros(nu,nu),dims=(1,2))
+        S[1:nx,:] -=mpc.K[uids,:]'*weights.R
+    end
+
+    if(!iszero(mpc.model.f_offset))
+        S = [S;zeros(1,nui)]
+    end
+
+    return MPCWeights(Q,R,zeros(0,0),S,Qf,zeros(0,0))
+end
+
 function remove_redundant(c::DenseConstraints)
     A,bu,bl,W = c.A, c.bu, c.bl, c.W
     issoft,isbinary,prio = c.issoft, c.isbinary, c.prio
@@ -666,6 +691,58 @@ function MPQP(obj::DenseObjective, c::DenseConstraints)
     m,n = length(c.bu),length(obj.f)
     mpQP = MPQP(obj.H,obj.f,obj.H_theta,obj.f_theta,
                 c.A,c.bu,c.bl,c.W, senses, c.prio, break_points,
-                any(c.isbinary),
-                zeros(m),zeros(m),zeros(m),zeros(n))
+                any(c.isbinary),isapprox(obj.H, obj.H', rtol=1e-9),
+                zeros(m),ones(m),-ones(m),zeros(n))
 end
+function create_variational_objective(mpc::MPC,Φ,Γ,Cp)
+    N,Nc = mpc.Np,mpc.Nc
+    nu = mpc.model.nu
+
+    weights = [create_extended_cost(mpc,first(c);uids=last(c)) for c in mpc.objectives]
+    uids = last.(mpc.objectives)
+
+
+    n_players = length(mpc.objectives)
+    #
+    # first make sure that the uids  
+    uids_unsorted = reduce(vcat,uids)
+    uids_sorted = sort(uids_unsorted)
+    if length(uids_sorted) != nu || any(uids_sorted[i] != i for i in 1:nu)
+        throw(ArgumentError("The controls have to be fully partitioned")) 
+    end
+    
+    Γs = Matrix{Float64}[]
+    Uids = Vector{Int}[]
+    nU,nth = size(Γ,2),size(Φ,2)
+    for i in 1:n_players
+        Uid = vec(uids[i] .+ (0:nu:nU-nu)')
+        push!(Γs,Γ[:,Uid])
+        push!(Uids,Uid)
+    end
+
+    H = zeros(nU,nU)
+    f_theta = zeros(nU,nth)
+    for i in 1:n_players
+        nui = length(uids[i])
+        CQCtot  = kron(I(N),Cp'*weights[i].Q*Cp);
+        CQCtot = cat(CQCtot,Cp'*weights[i].Qf*Cp,dims=(1,2))
+        for j in 1:n_players
+            H[Uids[i],Uids[j]] = Γs[i]'*CQCtot*Γs[j]
+            # TODO handle S if prestabilizing feedback
+            if i == j
+                H[Uids[i],Uids[i]] .+= kron(I(Nc),weights[i].R)
+                H[Uids[i][end-nui+1:end],Uids[i][end-nui+1:end]] .+= (N-Nc)*weights[i].R
+            end
+        end
+        f_theta[Uids[i],:] = Γs[i]'*CQCtot*Φ
+
+        # From x'Su
+        Stot = [kron(I(Nc),weights[i].S);zeros((N-Nc+1)*nth,Nc*nui)]
+        Stot[Nc*nth+1:N*nth,end-nui+1:end] = repeat(weights[i].S,N-Nc,1) # Due to Nc
+        GS = Γs[i]'*Stot
+        H[Uids[i],Uids[i]] .+= (GS + GS')
+        f_theta[Uids[i],:] .+= Stot'*Φ
+    end
+    return DenseObjective(H, zeros(nU),f_theta,zeros(0,0))
+end
+
