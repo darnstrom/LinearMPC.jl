@@ -1,5 +1,4 @@
-function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=nothing, 
-        src=true, float_type="double",warm_start=false, preamble = true)
+function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=nothing, src=true, float_type="double",warm_start=false)
     length(dir)==0 && (dir="codegen")
     dir[end] != '/' && (dir*="/") ## Make sure it is a correct directory path
     ## Generate mpQP
@@ -26,10 +25,11 @@ function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=not
     # Append preamble at the start of H file
     mv(joinpath(dir,fname*".h"),joinpath(dir,"mpc_old.h"))
     fold = open(joinpath(dir,"mpc_old.h"),"r")
-    s = read(fold, String)
-    fnew = open(joinpath(dir,fname*".h"),"w")
     fpre = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/preamble.c"), "r");
-    write(fnew, read(fpre))
+    s = read(fold, String)
+    pre = read(fpre, String)
+    fnew = open(joinpath(dir,fname*".h"),"w")
+    write(fnew, pre*s)
     close(fpre)
     close(fold)
     close(fnew)
