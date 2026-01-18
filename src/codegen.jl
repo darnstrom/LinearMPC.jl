@@ -1,4 +1,5 @@
-function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=nothing, src=true, float_type="double",warm_start=false)
+function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=nothing, 
+        src=true, float_type="double",warm_start=false, preamble = true)
     length(dir)==0 && (dir="codegen")
     dir[end] != '/' && (dir*="/") ## Make sure it is a correct directory path
     ## Generate mpQP
@@ -22,6 +23,18 @@ function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=not
         rm(joinpath(dir,"types_old.h"))
     end
 
+    # Append preamble at the start of H file
+    mv(joinpath(dir,fname*".h"),joinpath(dir,"mpc_old.h"))
+    fold = open(joinpath(dir,"mpc_old.h"),"r")
+    s = read(fold, String)
+    fnew = open(joinpath(dir,fname*".h"),"w")
+    fpre = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/preamble.c"), "r");
+    write(fnew, read(fpre))
+    close(fpre)
+    close(fold)
+    close(fnew)
+    rm(joinpath(dir,"mpc_old.h"))
+
     # Append MPC-specific data/functions
     render_mpc_workspace(mpc;fname,dir,float_type, fmode="a",warm_start)
 
@@ -39,6 +52,11 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
 
     # HEADER
     fh = open(joinpath(dir,"mpc_compute_control.h"), "w")
+
+    fpre = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/preamble.c"), "r");
+    write(fh, read(fpre))
+    close(fpre)
+
     hguard = "MPC_COMPUTE_CONTROL_H"
     @printf(fh, "#ifndef %s\n",   hguard);
     @printf(fh, "#define %s\n\n", hguard);
@@ -70,6 +88,7 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
 
     # SOURCE
     fsrc = open(joinpath(dir,"mpc_compute_control.c"), "w")
+
     write(fsrc, "#include \"mpc_compute_control.h\"\n")
     write(fsrc, "#include \"$fname.h\"\n")
     if(mpc.settings.reference_condensation)
