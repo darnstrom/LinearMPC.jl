@@ -27,4 +27,4 @@ makedocs(sitename = "LinearMPC.jl",
                 "Functions" => "functions.md"
                ])
 
-deploydocs(;repo="github.com/darnstrom/LinearMPC.jl",)
+deploydocs(repo="github.com/darnstrom/LinearMPC.jl", devbranch="main", push_preview=true)
