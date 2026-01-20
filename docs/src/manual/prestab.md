@@ -20,6 +20,11 @@ set_prestabilizing_feedback!(mpc,K)
 A popular choice of $K$ is as the gain from solving an infinite horizon LQR problem. This gain can be set as the stabilizing feedback with
 ```julia
 set_prestabilizing_feedback!(mpc)
+
+!!! note "Prestabilization + Move block"
+   If you use prestabilization and move blocking, only $v_k$ is held constant, not $u_k$.
+   Hence, the closed-loop behaviour with/without prestabilization might differ. 
+
 ```
 ## Example
 Consider a first-order system with a pole in 10, which has the transfer function  

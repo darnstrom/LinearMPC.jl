@@ -1,4 +1,4 @@
-# [Robust MPC](@id man_robust)
+# [Game-Theoretic MPC](@id man_robust)
 
 **LinearMPC.jl** can also solve general Nash equilibria to game-theoretic linear MPC problems.
 Specifically it can handle objective of the form 
