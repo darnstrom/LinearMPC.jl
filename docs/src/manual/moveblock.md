@@ -33,7 +33,8 @@ using LinearMPC,Plots
 tsolve, plt = zeros(3),plot();
 for (k,Np) in  enumerate([100,75,50])
     mpc,_ = LinearMPC.mpc_examples("invpend",Np)
-    tsolve[k] = @elapsed sim = LinearMPC.Simulation(mpc;r=[1,0],N=500);
+    dynamics = (x,u,d) -> mpc.model.F*x + mpc.model.G*u # Since long horizon
+    tsolve[k] = @elapsed sim = LinearMPC.Simulation(dynamics,mpc;r=[1,0],N=500);
     plot!(plt, sim,yids=[1],uids=[], color = k, label="Np = "*string(Np))
 end
 plot!(plt,ylims=(-0.5,1.25), legend=true)
@@ -46,21 +47,24 @@ To reduce the computation time, we consider three different move blocks. We cons
 
 ```@example move_block
 mpc,_ = LinearMPC.mpc_examples("invpend",100)
+dynamics = (x,u,d) -> mpc.model.F*x + mpc.model.G*u # Since long horizon
 tsolve, plt = zeros(3),plot();
 move_blocks = [Int[], [1,1,1,1,1], [1,1,5,10,10]]
 solve_times = []
 for (k,mb) in  enumerate(move_blocks)
     move_block!(mpc,mb)
-    tsolve[k] = @elapsed sim = LinearMPC.Simulation(mpc;r=[1,0],N=500);
+    tsolve[k] = @elapsed sim = LinearMPC.Simulation(dynamics,mpc;r=[1,0],N=500);
     plot!(plt, sim,yids=[1],uids=[], color = k, label="move block = "*string(mb))
     push!(solve_times,sim.solve_times)
 end
-plot!(plt,ylims=(-0.5,1.25))
+plot!(plt,ylims=(-0.5,1.25),legend=true)
 ```
 
 We see that the adaptive move block almost performs as well as using no move blocks. The main difference is that when no move blocks are used, there are 100 decision variables, while for both the move blocks `[1,1,1,1,1]` and `[1,1,5,10,10]` there are only 5 decision variables.
-This can be seen in the solution times, where both of the move blocks leads to solution times that are about 6 times faster (note that the actual speedup is even higher due to some overhead from the simulation.)
+This can be seen in the solution times, where both of the move blocks leads to solution times that are about 5-10 times faster.
 ```@example move_block
 using Statistics
-[median(times) for times in solve_times]
+for (k,mb) in enumerate(move_blocks)
+    println("median solve time: $(round(median(solve_times[k]),sigdigits=3)) | move block: "*string(mb))
+end
 ```
