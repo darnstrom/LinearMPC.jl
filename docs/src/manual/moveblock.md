@@ -28,20 +28,16 @@ Finally, it is possible to define different move blocks for different control si
 
 Consider the example of the control of an inverted pendulum on a cart, which is predefined as one of the examples in **LinearMPC.jl** and can be accessed with the call `mpc_examples`. We consider the case when we want the first output (the position of the cart) to reach a certain value (1 m to be specific.) Below we create three different MPC controllers with different prediction horizons and show the resulting step responses.   
 
-```julia
+```@example move_block
 using LinearMPC,Plots
 tsolve, plt = zeros(3),plot();
 for (k,Np) in  enumerate([100,75,50])
     mpc,_ = LinearMPC.mpc_examples("invpend",Np)
-    tsolve[k] = @elapsed sim = LinearMPC.Simulation(mpc;r=[1,0],N=500);
+    dynamics = (x,u,d) -> mpc.model.F*x + mpc.model.G*u # Since long horizon
+    tsolve[k] = @elapsed sim = LinearMPC.Simulation(dynamics,mpc;r=[1,0],N=500);
     plot!(plt, sim,yids=[1],uids=[], color = k, label="Np = "*string(Np))
 end
-plot!(plt,ylims=(-0.5,1.25))
-```
-
-```@raw html
-<p><img src="../../assets/moveblock_horizon.svg" alt="simple_sim1" width=700 style="background-color:white; 
-    border:20px solid white; display: block; margin-left: auto; margin-right: auto;"/></p>
+plot!(plt,ylims=(-0.5,1.25), legend=true)
 ```
 
 As can be seen, the higher the prediction horizon, the faster the setpoint is reached. (Note that for even lower values of the prediction horizon, the resulting closed-loop system becomes unstable.) The cost of the horizon can, however, be seen in the solve times, where the solve times are about four times slower for $N_p = 100$ compared with $N_p = 50$. 
@@ -49,23 +45,26 @@ As can be seen, the higher the prediction horizon, the faster the setpoint is re
 To reduce the computation time, we consider three different move blocks. We consider the case of no move blocks (which an empty vector of move blocks encodes,) of evenly spaced move blocks `[1,1,1,1,1]` and a more dynamics set of move blocks `[1,1,5,10,10]`. For all of the cases, we consider a prediction horizon of $N_p = 100$. The resulting step responses are shown below.
 
 
-```julia
-using LinearMPC,Plots
+```@example move_block
 mpc,_ = LinearMPC.mpc_examples("invpend",100)
+dynamics = (x,u,d) -> mpc.model.F*x + mpc.model.G*u # Since long horizon
 tsolve, plt = zeros(3),plot();
 move_blocks = [Int[], [1,1,1,1,1], [1,1,5,10,10]]
+solve_times = []
 for (k,mb) in  enumerate(move_blocks)
     move_block!(mpc,mb)
-    tsolve[k] = @elapsed sim = LinearMPC.Simulation(mpc;r=[1,0],N=500);
+    tsolve[k] = @elapsed sim = LinearMPC.Simulation(dynamics,mpc;r=[1,0],N=500);
     plot!(plt, sim,yids=[1],uids=[], color = k, label="move block = "*string(mb))
+    push!(solve_times,sim.solve_times)
 end
-plot!(plt,ylims=(-0.5,1.25))
+plot!(plt,ylims=(-0.5,1.25),legend=true)
 ```
 
-```@raw html
-<p><img src="../../assets/moveblocks.svg" alt="simple_sim1" width=700 style="background-color:white; 
-    border:20px solid white; display: block; margin-left: auto; margin-right: auto;"/></p>
+We see that the adaptive move block almost performs as well as using no move blocks. The main difference is that when no move blocks are used, there are 100 decision variables, while for both the move blocks `[1,1,1,1,1]` and `[1,1,5,10,10]` there are only 5 decision variables.
+This can be seen in the solution times, where both of the move blocks leads to solution times that are about 5-10 times faster.
+```@example move_block
+using Statistics
+for (k,mb) in enumerate(move_blocks)
+    println("median solve time: $(round(median(solve_times[k]),sigdigits=3)) | move block: "*string(mb))
+end
 ```
-
-As can be seen, the adaptive move block almost performs as well as using no move blocks. The main difference is that when no move blocks are used, there are 100 decision variables, while for both the move blocks `[1,1,1,1,1]` and `[1,1,5,10,10]` there are only 5 decision variables.
-This can be seen in the solution times, where both of the move blocks leads to solution times that are about 6 times faster (note that the actual speedup is even higher due to some overhead from the simulation.)
