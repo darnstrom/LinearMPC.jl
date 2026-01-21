@@ -43,7 +43,7 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
     ny = has_observer ? size(mpc.state_observer.C,1) : mpc.model.ny
     if isnothing(scenario.get_measurement)
         get_measurement = if has_observer 
-            (x,d) -> mpc.state_observer.C*x+mpc.state_observer.Gd*d+mpc.state_observer.h_offset
+            (x,d) -> mpc.state_observer.C*x+mpc.state_observer.Dd*d+mpc.state_observer.h_offset
         else
             (x,d) -> mpc.model.C*x+mpc.model.Dd*d+mpc.model.h_offset
         end
