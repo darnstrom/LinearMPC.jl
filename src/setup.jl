@@ -107,9 +107,9 @@ function set_output_bounds!(mpc::MPC; ymin=zeros(0), ymax=zeros(0), ks = 2:mpc.N
 end
 
 """
-    set_bounds!(mpc;umin,umax,ymin,umax)
+    set_bounds!(mpc;umin,umax,ymin,ymax)
 
-Sets the bounds umin ≤ u ≤ umax and ymin ≤ y ≤ umax
+Sets the bounds umin ≤ u ≤ umax and ymin ≤ y ≤ ymax
 """
 function set_bounds!(mpc::MPC; umin=zeros(0), umax=zeros(0), ymin = zeros(0), ymax = zeros(0))
     (!isempty(umin) ||  !isempty(umax)) && set_input_bounds!(mpc;umin,umax)
