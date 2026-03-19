@@ -4,11 +4,15 @@
 #
 # Usage example:
 #
-#   mpc = MPC(F, G; C=C, Np=10)
-#   @control mpc u umin=-ones(2) umax=ones(2)
-#   @state   mpc x
-#   @output  mpc y
-#   @disturbance mpc d wmin=-0.1 wmax=0.1
+#   mpc = MPC(2, 1; Np=10)       # create with just state/control dimensions
+#   x = @state   mpc x           # declare signal references
+#   u = @control mpc u umin=-ones(1) umax=ones(1)
+#   d = @disturbance mpc d
+#
+#   A = [1.0 0.1; 0.0 1.0]; B = [0.0; 1.0]
+#   @dynamics mpc x_next = A*x + B*u        # set dynamics
+#
+#   y = @output mpc y
 #   @objective mpc Q=I R=0.1*I Rr=0.01*I
 #   @constraint mpc -1 <= u <= 1
 #   @constraint mpc 0 <= y <= 5
@@ -88,31 +92,130 @@ end
 """
     A * u  where u::ControlRef
 
-Produce a weighted control signal expression for use in `@constraint`.
+Produce a weighted control signal expression for use in `@constraint` and `@dynamics`.
 """
 Base.:*(A::AbstractMatrix, u::ControlRef) =
     SignalExpr(u.mpc, [SignalTerm(float(A), :u)])
+Base.:*(A::AbstractVector, u::ControlRef) =
+    SignalExpr(u.mpc, [SignalTerm(reshape(float(A), :, 1), :u)])
 
 """
     A * x  where x::StateRef
 
-Produce a weighted state signal expression for use in `@constraint`.
+Produce a weighted state signal expression for use in `@constraint` and `@dynamics`.
 """
 Base.:*(A::AbstractMatrix, x::StateRef) =
     SignalExpr(x.mpc, [SignalTerm(float(A), :x)])
+Base.:*(A::AbstractVector, x::StateRef) =
+    SignalExpr(x.mpc, [SignalTerm(reshape(float(A), :, 1), :x)])
 
 """
     A * d  where d::DisturbanceRef
 
-Produce a weighted disturbance signal expression for use in `@constraint`.
+Produce a weighted disturbance signal expression for use in `@constraint` and `@dynamics`.
 """
 Base.:*(A::AbstractMatrix, d::DisturbanceRef) =
     SignalExpr(d.mpc, [SignalTerm(float(A), :d)])
+Base.:*(A::AbstractVector, d::DisturbanceRef) =
+    SignalExpr(d.mpc, [SignalTerm(reshape(float(A), :, 1), :d)])
 
 """Combine two `SignalExpr` values (sum)."""
 function Base.:+(e1::SignalExpr, e2::SignalExpr)
     @assert e1.mpc === e2.mpc "Signal expressions must refer to the same MPC controller"
     SignalExpr(e1.mpc, [e1.terms; e2.terms])
+end
+
+# ---- DynamicsExpr: SignalExpr + optional constant offset -------------------
+
+"""
+    DynamicsExpr(signals, offset)
+
+Internal type representing the right-hand side of a dynamics equation:
+`x_{k+1} = F*x_k + G*u_k + Gd*d_k + f_offset`
+
+Built automatically by expressions like `F*x + G*u + f_offset` where `x`,
+`u` are signal references.  Passed to [`_set_dynamics!`](@ref) by the
+[`@dynamics`](@ref) macro.
+"""
+struct DynamicsExpr
+    signals::SignalExpr
+    offset::Vector{Float64}
+end
+
+DynamicsExpr(expr::SignalExpr) = DynamicsExpr(expr, zeros(0))
+
+Base.:+(e::SignalExpr, offset::AbstractVector) = DynamicsExpr(e, float(offset))
+Base.:+(offset::AbstractVector, e::SignalExpr) = DynamicsExpr(e, float(offset))
+Base.:+(e::DynamicsExpr, offset::AbstractVector) = DynamicsExpr(e.signals, e.offset + offset)
+Base.:+(offset::AbstractVector, e::DynamicsExpr) = DynamicsExpr(e.signals, e.offset + offset)
+Base.:+(e1::DynamicsExpr, e2::SignalExpr) = DynamicsExpr(e1.signals + e2, e1.offset)
+Base.:+(e1::SignalExpr, e2::DynamicsExpr) = DynamicsExpr(e1 + e2.signals, e2.offset)
+
+# Scalar multiplication: allow e.g. `0.5*x` (treats signal as identity-weighted)
+Base.:*(a::Number, u::ControlRef) =
+    SignalExpr(u.mpc, [SignalTerm(float(a) * Matrix{Float64}(I, u.mpc.model.nu, u.mpc.model.nu), :u)])
+Base.:*(a::Number, x::StateRef) =
+    SignalExpr(x.mpc, [SignalTerm(float(a) * Matrix{Float64}(I, x.mpc.model.nx, x.mpc.model.nx), :x)])
+Base.:*(a::Number, d::DisturbanceRef) =
+    SignalExpr(d.mpc, [SignalTerm(float(a) * Matrix{Float64}(I, d.mpc.model.nd, d.mpc.model.nd), :d)])
+
+# Bare signal with no matrix weight → identity
+_bare(u::ControlRef) = SignalExpr(u.mpc, [SignalTerm(Matrix{Float64}(I, u.mpc.model.nu, u.mpc.model.nu), :u)])
+_bare(x::StateRef)   = SignalExpr(x.mpc, [SignalTerm(Matrix{Float64}(I, x.mpc.model.nx, x.mpc.model.nx), :x)])
+_bare(d::DisturbanceRef) = SignalExpr(d.mpc, [SignalTerm(Matrix{Float64}(I, d.mpc.model.nd, d.mpc.model.nd), :d)])
+
+# Allow bare signal + something:  x + G*u, etc.
+Base.:+(x::StateRef, e::SignalExpr) = _bare(x) + e
+Base.:+(e::SignalExpr, x::StateRef) = e + _bare(x)
+Base.:+(u::ControlRef, e::SignalExpr) = _bare(u) + e
+Base.:+(e::SignalExpr, u::ControlRef) = e + _bare(u)
+Base.:+(d::DisturbanceRef, e::SignalExpr) = _bare(d) + e
+Base.:+(e::SignalExpr, d::DisturbanceRef) = e + _bare(d)
+
+# ---- _set_dynamics!: update mpc.model from a DynamicsExpr -----------------
+
+"""
+    _set_dynamics!(mpc, expr)
+
+Internal function used by [`@dynamics`](@ref).  Extracts F, G, Gd, and
+f_offset from `expr` (a `SignalExpr` or `DynamicsExpr`) and rebuilds
+`mpc.model` accordingly, preserving the output matrix C, offset h_offset,
+and sample time Ts.
+"""
+function _set_dynamics!(mpc::MPC, expr::SignalExpr)
+    _set_dynamics!(mpc, DynamicsExpr(expr))
+end
+
+function _set_dynamics!(mpc::MPC, dexpr::DynamicsExpr)
+    model = mpc.model
+    nx, nu, nd = model.nx, model.nu, model.nd
+
+    F  = zeros(nx, nx)
+    G  = zeros(nx, nu)
+    Gd = zeros(nx, nd)
+    f_offset = isempty(dexpr.offset) ? zeros(nx) : Vector{Float64}(dexpr.offset)
+
+    for term in dexpr.signals.terms
+        A = term.A
+        if     term.kind == :x;  F  .+= A
+        elseif term.kind == :u;  G  .+= A
+        elseif term.kind == :d;  Gd .+= A
+        end
+    end
+
+    mpc.model = Model(F, G;
+        Gd       = Gd,
+        C        = model.C,
+        Dd       = model.Dd,
+        f_offset = f_offset,
+        h_offset = model.h_offset,
+        Ts       = model.Ts,
+        xo       = model.xo,
+        uo       = model.uo,
+        wmin     = model.wmin,
+        wmax     = model.wmax)
+    mpc.mpqp_issetup = false
+    return mpc
 end
 
 # ---- Internal helpers ------------------------------------------------------
@@ -423,8 +526,71 @@ macro constraint(mpc_ex, expr, args...)
 end
 
 """
-    @objective(mpc, Q=Q_val, R=R_val, Rr=Rr_val, S=S_val, Qf=Qf_val, Qfx=Qfx_val)
+    @dynamics(mpc, x_next = F*x + G*u)
+    @dynamics(mpc, x_next = F*x + G*u + Gd*d)
+    @dynamics(mpc, x_next = F*x + G*u + f_offset)
+    @dynamics(mpc, x_next = F*x + G*u + Gd*d + f_offset)
 
+Set (or update) the system dynamics on the MPC controller `mpc`.
+
+The right-hand side must be an expression built from signal references
+(`x::StateRef`, `u::ControlRef`, `d::DisturbanceRef`) created by the
+[`@state`](@ref), [`@control`](@ref), and [`@disturbance`](@ref) macros, plus
+optional constant vectors for the affine offset.
+
+The state, control, and disturbance matrices are extracted automatically from
+the expression:
+
+| Expression term | Interpretation      |
+|:----------------|:--------------------|
+| `F*x`           | State matrix F       |
+| `G*u`           | Input matrix G       |
+| `Gd*d`          | Disturbance matrix Gd|
+| `f_offset`      | Affine offset vector |
+
+The left-hand side name is ignored (any symbol may be used).
+The C / Dd / h_offset / Ts / operating-point settings on the existing model
+are preserved.
+
+This macro is particularly useful when combined with [`MPC(nx, nu)`](@ref),
+which creates an MPC controller from state and control dimensions alone
+without requiring the matrices upfront.
+
+# Examples
+```julia
+# Basic usage with an existing MPC
+mpc = LinearMPC.MPC(F, G; Np=10)
+@state mpc x;  @control mpc u
+@dynamics mpc x_next = F_new*x + G_new*u     # update dynamics in place
+
+# Build an MPC purely through macros (no matrices needed upfront)
+mpc = LinearMPC.MPC(2, 1; Np=10)             # 2 states, 1 control
+@state mpc x;  @control mpc u
+
+A = [1.0 0.1; 0.0 1.0];  B = [0.0; 1.0]
+@dynamics mpc x_next = A*x + B*u
+
+@objective mpc Q=I R=0.1
+@constraint mpc -1 <= u <= 1
+setup!(mpc)
+
+# With disturbance and affine offset
+mpc = LinearMPC.MPC(2, 1; nd=1, Np=10)
+@state mpc x;  @control mpc u;  @disturbance mpc d
+Gd = [0.1; 0.0]
+fo = [0.01; 0.0]
+@dynamics mpc x_next = A*x + B*u + Gd*d + fo
+```
+"""
+macro dynamics(mpc_ex, eq_ex)
+    (eq_ex isa Expr && eq_ex.head == :(=)) ||
+        error("@dynamics: expected an assignment expression, e.g. `x_next = F*x + G*u`")
+    rhs = eq_ex.args[2]
+    return :(LinearMPC._set_dynamics!($(esc(mpc_ex)), $(esc(rhs))))
+end
+
+"""
+    @objective(mpc, Q=Q_val, R=R_val, Rr=Rr_val, S=S_val, Qf=Qf_val, Qfx=Qfx_val)
 Set the objective function weights for the MPC controller.
 Equivalent to [`set_objective!`](@ref)`(mpc; Q=Q_val, R=R_val, …)`.
 

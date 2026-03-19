@@ -51,8 +51,8 @@ export predict_state!,correct_state!
 export set_state!,get_state,update_state!
 
 include("macros.jl");
-export ControlRef, StateRef, OutputRef, DisturbanceRef, SignalExpr
-export @control, @state, @output, @disturbance, @constraint, @objective
+export ControlRef, StateRef, OutputRef, DisturbanceRef, SignalExpr, DynamicsExpr
+export @control, @state, @output, @disturbance, @constraint, @objective, @dynamics
 
 using PrecompileTools
 @setup_workload begin
