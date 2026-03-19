@@ -50,6 +50,10 @@ include("observer.jl");
 export predict_state!,correct_state!
 export set_state!,get_state,update_state!
 
+include("macros.jl");
+export ControlRef, StateRef, OutputRef, DisturbanceRef, SignalExpr
+export @control, @state, @output, @disturbance, @constraint, @objective
+
 using PrecompileTools
 @setup_workload begin
 
