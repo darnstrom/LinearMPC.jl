@@ -52,6 +52,7 @@ export set_state!,get_state,update_state!
 
 include("macros.jl");
 export ControlRef, StateRef, OutputRef, DisturbanceRef, SignalExpr, DynamicsExpr
+export ControlVec, StateVec, DisturbanceVec
 export @control, @state, @output, @disturbance, @constraint, @objective, @dynamics
 
 using PrecompileTools
