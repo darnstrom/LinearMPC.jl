@@ -35,6 +35,7 @@ include("simulation.jl");
 export Simulation
 
 using Printf
+using Downloads
 include("codegen.jl");
 
 using ASCertain

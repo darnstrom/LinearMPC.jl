@@ -8,7 +8,12 @@ function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=not
     if(!isnothing(opt_settings))
         DAQP.settings(d,opt_settings)
     end
-    DAQP.codegen(d;fname,dir,src)
+    # Call codegen without src download; we handle sources separately to ensure
+    # compatibility with the installed DAQP_jll version.
+    DAQP.codegen(d;fname,dir,src=false)
+    if src
+        _copy_daqp_sources(d, dir)
+    end
 
     if( float_type == "float" || float_type == "single")
         # Append #define DAQP_SINGLE_PRECISION at the top of types
@@ -295,4 +300,50 @@ function qp2ldp(mpQP,n_control;normalize=true)
 
     return (M=Mext[n+1:end,:], Dth=Dth, du=du, dl=dl, 
             Uth_offset=Uth_offset, u_offset = u_offset, uscaling=uscaling)
+end
+
+# Download DAQP C source and header files from the GitHub release that matches
+# the installed DAQP_jll version, ensuring ABI compatibility with the generated
+# workspace initialization code produced by render_daqp_workspace.
+function _copy_daqp_sources(d, dir)
+    # DAQP.libdaqp is the path to the shared library, e.g.:
+    #   /julia/artifacts/<hash>/lib/libdaqp.so
+    # Navigating two levels up gives us the artifact root, which contains
+    # an "include/daqp/" subdirectory with the matching headers.
+    daqp_artifact_dir = dirname(dirname(DAQP.libdaqp))
+    daqp_include_dir = joinpath(daqp_artifact_dir, "include", "daqp")
+
+    # Copy the headers from the artifact (guaranteed to match the compiled library)
+    for f in readdir(daqp_include_dir)
+        cp(joinpath(daqp_include_dir, f), joinpath(dir, f); force=true)
+    end
+
+    # The DAQP_jll UUID is fixed for the registered package; it never changes.
+    daqp_jll_uuid = Base.UUID("5c51c916-43bf-57fe-9d62-13064ebbf40d")
+    daqp_jll_pkgid = Base.PkgId(daqp_jll_uuid, "DAQP_jll")
+    daqp_jll_path = Base.locate_package(daqp_jll_pkgid)
+    toml_path = joinpath(dirname(dirname(daqp_jll_path)), "Project.toml")
+    toml = Base.parsed_toml(toml_path)
+    v = VersionNumber(toml["version"])
+    ver_tag = "v$(v.major).$(v.minor).$(v.patch)"
+    base_url = "https://raw.githubusercontent.com/darnstrom/daqp/$ver_tag/src/"
+
+    cfiles = ["daqp.c", "auxiliary.c", "factorization.c"]
+    if any((d.qpj.sense .& DAQP.BINARY) .== DAQP.BINARY)
+        push!(cfiles, "bnb.c")
+    end
+    if d.qpj.nh > 1
+        push!(cfiles, "hierarchical.c")
+    end
+
+    for f in cfiles
+        url = base_url * f
+        try
+            Downloads.download(url, joinpath(dir, f))
+        catch e
+            error("Failed to download DAQP source file '$f' from $url " *
+                  "(DAQP_jll version: $ver_tag). " *
+                  "Check your internet connection. Original error: $e")
+        end
+    end
 end
