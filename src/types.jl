@@ -41,6 +41,8 @@ end
 MPC controller settings.
 
 # Fields
+- `condensation_weights = zeros(0)`: weights used in the reference condensation
+- `preprocess_mpqp::Bool = true`: Run preprocessing of mpqp to merge/remove constraints
 - `reference_condensation::Bool = false`: Collapse reference trajectory to setpoint 
 - `reference_tracking::Bool = true`: Enable reference tracking
 - `reference_preview::Bool = false`: Enable time-varying reference preview
@@ -48,6 +50,7 @@ MPC controller settings.
 - `solver_opts::Dict{Symbol,Any}`: Additional solver options
 """
 Base.@kwdef mutable struct MPCSettings
+    condensation_weights::Union{Vector{Float64},Matrix{Float64}}= zeros(0)
     preprocess_mpqp::Bool=true
     reference_condensation::Bool= false
     reference_tracking::Bool= true

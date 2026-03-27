@@ -391,9 +391,14 @@ function ref_preview_cost(mpc,Γ,C_full,Q_full,Qf_full,H,f_theta,H_theta)
     if mpc.settings.reference_condensation
         Is = repeat(Matrix{Float64}(I,ny,ny),N)
         if(isempty(mpc.settings.traj2setpoint))
-            W = Matrix{Float64}(I, nu*Nc, nu*Nc)
-            for i in 1:nu 
-                W[i,i] = 1e6  
+            # Default: weight the accuracy of first control more
+            if(isempty(mpc.settings.condensation_weights))
+                W = Matrix{Float64}(I, nu*Nc, nu*Nc)
+                for i in 1:nu
+                    W[i,i] = 1e6
+                end
+            else
+                W = matrixify(mpc.settings.condensation_weights)
             end
             WinvHFr = (W/H)*Fr
             mpc.traj2setpoint = (WinvHFr*Is)\(WinvHFr)
