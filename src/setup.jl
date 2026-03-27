@@ -7,33 +7,24 @@ Internally, this means generating an mpQP, and setting up a DAQP workspace.
 function setup!(mpc::MPC)
     mpc.mpqp_issetup = false  # Reset so get_parameter_dims computes from settings
     mpc.mpQP = mpc2mpqp(mpc)
-    if(mpc.mpQP.is_symmetric)
-        bu,bl = mpc.mpQP.bu[:],mpc.mpQP.bl[:]
-        setup_flag,_ = DAQP.setup(mpc.opt_model, mpc.mpQP.H,mpc.mpQP.f[:],mpc.mpQP.A,bu,bl,mpc.mpQP.senses;break_points=mpc.mpQP.break_points)
-        if(setup_flag < 0)
-            if setup_flag == -1
-                @warn " Cannot setup optimization problem - Problem is infeasible"
-            elseif setup_flag == -6
-                @warn " Cannot setup optimization problem - Equality constraints overdetermined"
-            elseif setup_flag == -5
-                @warn " Cannot setup optimization problem - Convonvex objective"
-            else
-                @warn " Cannot setup optimization problem " setup_flag
-            end
+    bu,bl = mpc.mpQP.bu[:],mpc.mpQP.bl[:]
+    setup_flag,_ = DAQP.setup(mpc.opt_model, mpc.mpQP.H,mpc.mpQP.f[:],mpc.mpQP.A,bu,bl,
+                              mpc.mpQP.senses;break_points=mpc.mpQP.break_points, 
+                              is_avi=!mpc.mpQP.is_symmetric)
+    if(setup_flag < 0)
+        if setup_flag == -1
+            @warn " Cannot setup optimization problem - Problem is infeasible"
+        elseif setup_flag == -6
+            @warn " Cannot setup optimization problem - Equality constraints overdetermined"
+        elseif setup_flag == -5
+            @warn " Cannot setup optimization problem - Convonvex objective"
         else
-            # Set up soft weight
-            DAQP.settings(mpc.opt_model,Dict(:rho_soft=>1/mpc.settings.soft_weight))
-            mpc.mpqp_issetup = true
+            @warn " Cannot setup optimization problem " setup_flag
         end
     else
-        bu,bl = mpc.mpQP._bu, mpc.mpQP._bl
-        setup_flag,ws = DAQPBase.setup_avi(mpc.mpQP.H,mpc.mpQP._f,mpc.mpQP.A,bu,bl,mpc.mpQP.senses)
-        if(setup_flag < 0)
-            @warn " Cannot setup optimization problem " setup_flag
-        else
-            mpc.avi_workspace = ws
-            mpc.mpqp_issetup = true
-        end
+        # Set up soft weight
+        DAQP.settings(mpc.opt_model,Dict(:rho_soft=>1/mpc.settings.soft_weight))
+        mpc.mpqp_issetup = true
     end
 end
 
