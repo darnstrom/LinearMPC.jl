@@ -27,7 +27,7 @@ ControlSystemsExt = "ControlSystemsBase"
 [compat]
 ASCertain = "~0.4.0"
 ControlSystemsBase = "1.10"
-DAQPBase = "~0.4.2"
+DAQPBase = "~0.4.4"
 ForwardDiff = "1, 0.10"
 Latexify = "0.16"
 MatrixEquations = "2.4.5"
