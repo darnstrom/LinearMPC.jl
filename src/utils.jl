@@ -237,21 +237,11 @@ function solve(mpc::MPC,θ)
     mul!(mpc.mpQP._f, mpc.mpQP.f_theta, θ)
     mpc.mpQP._f .+= mpc.mpQP.f
     if mpc.mpQP.has_binaries # Make sure workspace is clean
-        ccall(("node_cleanup_workspace", DAQP.libdaqp),Cvoid,(Cint,Ptr{DAQP.Workspace}),0, mpc.opt_model.work)
+        ccall(("daqp_node_cleanup_workspace", DAQP.libdaqp),
+              Cvoid,(Cint,Ptr{DAQP.Workspace}),0, mpc.opt_model.work)
     end
-    return _solve(mpc, Val(mpc.mpQP.is_symmetric))
-end
-
-function _solve(mpc::MPC,symmetric::Val{true})
     DAQP.update(mpc.opt_model,nothing,mpc.mpQP._f,nothing,mpc.mpQP._bu,mpc.mpQP._bl,nothing)
     return DAQP.solve(mpc.opt_model)
-end
-
-function _solve(mpc::MPC,symmetric::Val{false})
-    DAQP.update(mpc.avi_workspace.daqp_workspace,
-                nothing,mpc.mpQP._f,nothing,mpc.mpQP._bu,mpc.mpQP._bl,nothing)
-    x,λ,exitflag,info = DAQP.solve(mpc.avi_workspace)
-    return x,NaN,exitflag,info
 end
 
 function range2region(range)
