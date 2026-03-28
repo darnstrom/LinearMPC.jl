@@ -14,17 +14,13 @@ For adding an objective, one can use the function `set_objective!` as usual, but
 
 For example, if there are 5 controls and 2 players, where player 1 governs control 1,4, and player 2 governs control 2,3,5, one can set up the objectives as
 
-```@raw html
-<div class="lang-switcher">
-<div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
-<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
-</div>
-<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">set_objective!(mpc,[1,4];Q=Q1, R=R1, Rr=Rr1)
-set_objective!(mpc,[2,3,5];Q=Q2, R=R2, Rr=Rr2)</code></pre></div>
-<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc.set_objective(uids=[1, 4], Q=Q1, R=R1, Rr=Rr1)
-mpc.set_objective(uids=[2, 3, 5], Q=Q2, R=R2, Rr=Rr2)</code></pre></div>
-</div>
+```@tab
+# julia
+set_objective!(mpc,[1,4];Q=Q1, R=R1, Rr=Rr1)
+set_objective!(mpc,[2,3,5];Q=Q2, R=R2, Rr=Rr2)
+# python
+mpc.set_objective(uids=[1, 4], Q=Q1, R=R1, Rr=Rr1)
+mpc.set_objective(uids=[2, 3, 5], Q=Q2, R=R2, Rr=Rr2)
 ```
 where `Qi`, `Ri`, and `Rri`, corresponds to the cost weights for player `i` on states, controls, and control change, respectively.
 

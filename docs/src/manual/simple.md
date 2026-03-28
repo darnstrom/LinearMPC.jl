@@ -48,13 +48,9 @@ Finally, we have the constraint $-1 \leq 2 x_1 - x_2 \leq 2$.
 
 We can create an MPC controller for the corresponding problem with the following code:
 
-```@raw html
-<div class="lang-switcher">
-<div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
-<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
-</div>
-<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">using LinearMPC
+```@tab
+# julia
+using LinearMPC
 
 # dynamics
 F = [1 0.5; 0 1]
@@ -71,8 +67,9 @@ set_bounds!(mpc,umin=[-3],umax=[3], ymin= [0, 0],ymax = [1,2])
 add_constraint!(mpc,Ax = [2 -1], lb = [-1], ub = [2])
 
 # the prediction/control horizons
-set_horizon!(mpc,10)</code></pre></div>
-<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">import numpy as np
+set_horizon!(mpc,10)
+# python
+import numpy as np
 from lmpc import MPC
 
 # dynamics
@@ -90,8 +87,7 @@ mpc.set_bounds(umin=[-3], umax=[3], ymin=[0, 0], ymax=[1, 2])
 mpc.add_constraint(Ax=np.array([[2, -1]]), lb=[-1], ub=[2])
 
 # the prediction/control horizons
-mpc.set_horizon(10)</code></pre></div>
-</div>
+mpc.set_horizon(10)
 ```
 
 where the last command `set_horizon!(mpc,10)` sets the prediction horizon of the controller to 10 time steps.
@@ -101,51 +97,39 @@ That is it! Let's try our MPC controller.
 ### Testing the MPC controller in simulation
 The function `compute_control(mpc,x;r)` uses the MPC controller `mpc` to compute an optimal control action given the state `x` and reference value `r`. For example,
 
-```@raw html
-<div class="lang-switcher">
-<div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
-<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
-</div>
-<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">u = compute_control(mpc,[0.5,1];r=[0,0])</code></pre></div>
-<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">u = mpc.compute_control([0.5, 1], r=[0, 0])</code></pre></div>
-</div>
+```@tab
+# julia
+u = compute_control(mpc,[0.5,1];r=[0,0])
+# python
+u = mpc.compute_control([0.5, 1], r=[0, 0])
 ```
 
 gives that the optimal control action at `x=[0.5,1]` with `r=[0,0]` is `u=-1`.
 
 Still, it is hard to draw any conclusion about wheter the controller is doing what we desire based on solving just one problem. To give a better feel of the performance of the MPC, we can create a `Simulation` for it. The following code simulates the closed-loop system, starting at `x0=[0,0]`, with a reference value `r=[1,0]`, for `N=10` time steps:
 
-```@raw html
-<div class="lang-switcher">
-<div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
-<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
-</div>
-<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia"># simulate the system
-sim = LinearMPC.Simulation(mpc;x0=[0,0],r=[1,0],N=10)</code></pre></div>
-<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">from lmpc import Simulation
+```@tab
+# julia
+# simulate the system
+sim = LinearMPC.Simulation(mpc;x0=[0,0],r=[1,0],N=10)
+# python
+from lmpc import Simulation
 
 # simulate the system
-sim = Simulation(mpc, x0=[0, 0], r=[1, 0], N=10)</code></pre></div>
-</div>
+sim = Simulation(mpc, x0=[0, 0], r=[1, 0], N=10)
 ```
 
 To visualize the result we can use the plotting package `Plots`:
 
-```@raw html
-<div class="lang-switcher">
-<div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
-<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
-</div>
-<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">using Plots
-plot(sim)</code></pre></div>
-<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">import matplotlib.pyplot as plt
+```@tab
+# julia
+using Plots
+plot(sim)
+# python
+import matplotlib.pyplot as plt
 plt.plot(sim.ts, sim.ys.T)
 plt.xlabel("Time step")
-plt.show()</code></pre></div>
-</div>
+plt.show()
 ```
 
 ```@raw html
@@ -154,20 +138,16 @@ plt.show()</code></pre></div>
 ```
 We can see that both of the output are not following the references very well. This is due to the  desired value `r=[1,0]` not satisfying the constraints, which makes it impossible to reach it. If we, however, mainly want  $y_1$ to reach its reference, we can increase the weight of $y_1$ from 1 to 1000:
 
-```@raw html
-<div class="lang-switcher">
-<div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
-<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
-</div>
-<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">set_objective!(mpc, Q=[1000, 1], Rr = [1])
+```@tab
+# julia
+set_objective!(mpc, Q=[1000, 1], Rr = [1])
 sim = LinearMPC.Simulation(mpc;x0=[0,0],r=[1,0],N=10)
-plot(sim)</code></pre></div>
-<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc.set_objective(Q=[1000, 1], Rr=[1])
+plot(sim)
+# python
+mpc.set_objective(Q=[1000, 1], Rr=[1])
 sim = Simulation(mpc, x0=[0, 0], r=[1, 0], N=10)
 plt.plot(sim.ts, sim.ys.T)
-plt.show()</code></pre></div>
-</div>
+plt.show()
 ```
 
 ```@raw html
@@ -180,15 +160,11 @@ This gives the desired effect, since now $y_1$ is able to follow its reference. 
 ### Code generation
 Most real-time controllers run on embedded hardware, which often require the controller to be implemented in a low-level programmign language like C. However, implementing an MPC controller in C from scratch is a very time consuming endeveaur. To simplify the process, **LinearMPC.jl** can generate C-code for MPC controllers that have been designed and tested in Julia, which enables the MPC controller to easibly be applied on embedded systems. To generate such C code in a directory `code_dir`, we can run the following code
 
-```@raw html
-<div class="lang-switcher">
-<div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
-<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
-</div>
-<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">LinearMPC.codegen(mpc; dir="code_dir", fname="test_mpc")</code></pre></div>
-<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc.codegen(fname="test_mpc", dir="code_dir")</code></pre></div>
-</div>
+```@tab
+# julia
+LinearMPC.codegen(mpc; dir="code_dir", fname="test_mpc")
+# python
+mpc.codegen(fname="test_mpc", dir="code_dir")
 ```
 
 where `fname` determines some of the naming of the generated code.

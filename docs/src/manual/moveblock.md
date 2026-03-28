@@ -10,15 +10,11 @@ Another way is to "block" some of the controls by holding them constant over mor
 
 In **LinearMPC.jl**, controls can be blocked with the function `move_block!`. The function takes in a vector that defines how the control decisions should be held. For example, one can hold the control for 3 time steps, then 2 time steps, then 1 time step, then 4 time steps with
 
-```@raw html
-<div class="lang-switcher">
-<div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
-<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
-</div>
-<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">move_block!(mpc,[3,2,1,4])</code></pre></div>
-<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc.move_block([3, 2, 1, 4])</code></pre></div>
-</div>
+```@tab
+# julia
+move_block!(mpc,[3,2,1,4])
+# python
+mpc.move_block([3, 2, 1, 4])
 ```
 !!! note "Padding of move blocks"
     If the sum of the blocks add up to _less_ than the prediction horizon, the last block will be extended to cover the entire horizon.

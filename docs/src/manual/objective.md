@@ -7,15 +7,11 @@ where $N$ is the prediction horizon of the controller.
 
 For an MPC controller `mpc`, the weighting matrices $Q$, $R$, and $R_r$ that defines the objective can be set with 
 
-```@raw html
-<div class="lang-switcher">
-<div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
-<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
-</div>
-<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">set_objective!(mpc;Q,R,Rr)</code></pre></div>
-<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc.set_objective(Q=Q, R=R, Rr=Rr)</code></pre></div>
-</div>
+```@tab
+# julia
+set_objective!(mpc;Q,R,Rr)
+# python
+mpc.set_objective(Q=Q, R=R, Rr=Rr)
 ```
 
 If a vector value of $Q$,$R$, or $R_r$ are inputted to `set_objective`, it will be interpreted as a diagonal matrix with the vector on diagonal. Similarly, if a scalar is inputted, it will be interpreted as a diagonal matrix with this value on the diagonal.
@@ -50,35 +46,27 @@ Reference preview allows time-varying references $r_k$ in the objective:
 
 Enable reference preview with:
 
-```@raw html
-<div class="lang-switcher">
-<div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
-<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
-</div>
-<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">mpc.settings.reference_preview = true
-setup!(mpc)</code></pre></div>
-<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc.settings({"reference_preview": True})
-mpc.setup()</code></pre></div>
-</div>
+```@tab
+# julia
+mpc.settings.reference_preview = true
+setup!(mpc)
+# python
+mpc.settings({"reference_preview": True})
+mpc.setup()
 ```
 
 Then provide a reference trajectory matrix of size `(ny, Np)` to `compute_control`:
 
-```@raw html
-<div class="lang-switcher">
-<div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
-<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
-</div>
-<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">r_trajectory = [1.0 1.5 2.0 2.0 2.0;   # Reference for output 1
+```@tab
+# julia
+r_trajectory = [1.0 1.5 2.0 2.0 2.0;   # Reference for output 1
                 0.0 0.0 0.5 1.0 1.0]   # Reference for output 2
-u = compute_control(mpc, x; r=r_trajectory)</code></pre></div>
-<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">import numpy as np
+u = compute_control(mpc, x; r=r_trajectory)
+# python
+import numpy as np
 r_trajectory = np.array([[1.0, 1.5, 2.0, 2.0, 2.0],   # Reference for output 1
                           [0.0, 0.0, 0.5, 1.0, 1.0]])  # Reference for output 2
-u = mpc.compute_control(x, r=r_trajectory)</code></pre></div>
-</div>
+u = mpc.compute_control(x, r=r_trajectory)
 ```
 
 ## Linear control cost
@@ -86,39 +74,31 @@ The term $l_k^T u_k$ adds an optional linear cost on the control signal. This is
 
 Enable linear cost with:
 
-```@raw html
-<div class="lang-switcher">
-<div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
-<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
-</div>
-<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">mpc.settings.linear_cost = true
-setup!(mpc)</code></pre></div>
-<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc.settings({"linear_cost": True})
-mpc.setup()</code></pre></div>
-</div>
+```@tab
+# julia
+mpc.settings.linear_cost = true
+setup!(mpc)
+# python
+mpc.settings({"linear_cost": True})
+mpc.setup()
 ```
 
 Then provide the linear cost to `compute_control`:
 
-```@raw html
-<div class="lang-switcher">
-<div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
-<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
-</div>
-<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia"># Constant linear cost across horizon
+```@tab
+# julia
+# Constant linear cost across horizon
 u = compute_control(mpc, x; l=[0.5])
 
 # Time-varying linear cost (nu × Np matrix)
 l_trajectory = [0.1 0.2 0.5 0.8 1.0]  # Cost varies over prediction horizon
-u = compute_control(mpc, x; l=l_trajectory)</code></pre></div>
-<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">import numpy as np
+u = compute_control(mpc, x; l=l_trajectory)
+# python
+import numpy as np
 # Constant linear cost across horizon
 u = mpc.compute_control(x, l=[0.5])
 
 # Time-varying linear cost (nu x Np array)
 l_trajectory = np.array([[0.1, 0.2, 0.5, 0.8, 1.0]])  # Cost varies over prediction horizon
-u = mpc.compute_control(x, l=l_trajectory)</code></pre></div>
-</div>
+u = mpc.compute_control(x, l=l_trajectory)
 ```

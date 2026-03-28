@@ -103,13 +103,9 @@ Uncertainty in the current state can also be handled robustly. If the current st
 ```
 constraints can be tightened with 
 
-```@raw html
-<div class="lang-switcher">
-<div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
-<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
-</div>
-<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">set_x0_uncertainty!(mpc,delta)</code></pre></div>
-<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc.set_x0_uncertainty(delta)</code></pre></div>
-</div>
+```@tab
+# julia
+set_x0_uncertainty!(mpc,delta)
+# python
+mpc.set_x0_uncertainty(delta)
 ```

@@ -6,13 +6,9 @@ LinearMPC uses the [DAQP](https://darnstrom.github.io/daqp/) solver for solving 
 
 After setting up the MPC controller, you can modify solver settings using `DAQP.settings`:
 
-```@raw html
-<div class="lang-switcher">
-<div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
-<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
-</div>
-<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">using LinearMPC
+```@tab
+# julia
+using LinearMPC
 
 # Create and setup MPC
 mpc = MPC(A, B; Np=10)
@@ -26,8 +22,9 @@ DAQP.settings(mpc.opt_model, Dict(
 ))
 
 # Compute control with new settings
-u = compute_control(mpc, x)</code></pre></div>
-<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">from lmpc import MPC
+u = compute_control(mpc, x)
+# python
+from lmpc import MPC
 
 # Create and setup MPC
 mpc = MPC(A, B, Np=10)
@@ -41,8 +38,7 @@ mpc.settings({
 })
 
 # Compute control with new settings
-u = mpc.compute_control(x)</code></pre></div>
-</div>
+u = mpc.compute_control(x)
 ```
 
 ## Basic Settings
@@ -63,15 +59,11 @@ For full documentation of all DAQP settings, see the [DAQP settings reference](h
 
 When generating C code, you can pass solver settings via the `opt_settings` argument:
 
-```@raw html
-<div class="lang-switcher">
-<div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
-<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
-</div>
-<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">codegen(mpc; opt_settings=Dict(:iter_limit => 500))</code></pre></div>
-<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc.codegen(opt_settings={"iter_limit": 500})</code></pre></div>
-</div>
+```@tab
+# julia
+codegen(mpc; opt_settings=Dict(:iter_limit => 500))
+# python
+mpc.codegen(opt_settings={"iter_limit": 500})
 ```
 
 These settings will be embedded in the generated C code.
