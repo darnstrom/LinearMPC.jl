@@ -22,8 +22,8 @@ For a MPC struct `mpc`, a steady state Kalman filter can be created with
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">set_state_observer!(mpc;Q,R)</code></pre></div>
 <div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc.set_state_observer(Q=Q, R=R)</code></pre></div>

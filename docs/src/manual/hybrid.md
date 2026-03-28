@@ -34,22 +34,63 @@ The thrusters give rise to the binary controls $u_2 \in \{0,1\}$ and $u_3 \in \{
 
 An MPC controller that controls the attitude of the satellite can be set up with **LinearMPC.jl** as follows: 
 
-```@example hybrid_mpc
-using LinearMPC
+```@raw html
+<div class="lang-switcher">
+<div class="lang-switcher-tabs">
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
+</div>
+<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">using LinearMPC
 # Setup dynamics + horizon
 A = [0.0 1 0; 0 0 0; 0 0 0]
 B = [0 0 0; 2.5 1 1; -10 0 0]
-mpc = LinearMPC.MPC(A,B,0.1;Np=20)
+mpc = LinearMPC.MPC(A, B, 0.1; Np=20)
 
-# Setup the binary controls u_2 {0,1} and u3 in {-1,0}
-set_binary_controls!(mpc,[2,3])
-set_bounds!(mpc;umin=[-Inf;0;-1],umax=[Inf;1;0])
+# Setup the binary controls u_2 ∈ {0,1} and u_3 ∈ {-1,0}
+set_binary_controls!(mpc, [2, 3])
+set_bounds!(mpc; umin=[-Inf; 0; -1], umax=[Inf; 1; 0])
 
-# Setup objetive to prioritize tracking of the attitude x1
-set_objective!(mpc;Q=[0.5e4, 1e-2, 1e-1], R = [10,10,10], Rr = 0)
+# Setup objective to prioritize tracking of the attitude x1
+set_objective!(mpc; Q=[0.5e4, 1e-2, 1e-1], R=[10, 10, 10], Rr=0)
 
 # Enable reference preview
-mpc.settings.reference_preview = true
+mpc.settings.reference_preview = true</code></pre></div>
+<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">import numpy as np
+from lmpc import MPC
+
+# Setup dynamics + horizon
+A = np.array([[0.0, 1, 0], [0, 0, 0], [0, 0, 0]])
+B = np.array([[0, 0, 0], [2.5, 1, 1], [-10, 0, 0]])
+mpc = MPC(A, B, Ts=0.1, Np=20)
+
+# Setup the binary controls u_2 in {0,1} and u_3 in {-1,0}
+mpc.set_binary_controls([2, 3])
+mpc.set_bounds(umin=[-np.inf, 0, -1], umax=[np.inf, 1, 0])
+
+# Setup objective to prioritize tracking of the attitude x1
+mpc.set_objective(Q=[0.5e4, 1e-2, 1e-1], R=[10, 10, 10], Rr=0)
+
+# Enable reference preview
+mpc.settings({"reference_preview": True})</code></pre></div>
+</div>
+```
+
+```@example hybrid_mpc
+using LinearMPC # hide
+# Setup dynamics + horizon
+A = [0.0 1 0; 0 0 0; 0 0 0] # hide
+B = [0 0 0; 2.5 1 1; -10 0 0] # hide
+mpc = LinearMPC.MPC(A,B,0.1;Np=20) # hide
+
+# Setup the binary controls u_2 {0,1} and u3 in {-1,0}
+set_binary_controls!(mpc,[2,3]) # hide
+set_bounds!(mpc;umin=[-Inf;0;-1],umax=[Inf;1;0]) # hide
+
+# Setup objetive to prioritize tracking of the attitude x1
+set_objective!(mpc;Q=[0.5e4, 1e-2, 1e-1], R = [10,10,10], Rr = 0) # hide
+
+# Enable reference preview
+mpc.settings.reference_preview = true # hide
 nothing # hide
 ```
 !!! note "Binary control horizon"
@@ -57,19 +98,54 @@ nothing # hide
 
 We simulate the controller with an attitude reference change to 0.5 after 5 time steps with the following code
 
+```@raw html
+<div class="lang-switcher">
+<div class="lang-switcher-tabs">
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
+</div>
+<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">x0, N = zeros(3), 20
+rs = [zeros(1, 5) 0.5*ones(1, N-5);
+      zeros(2, N)]
+dynamics = (x, u, d) -> mpc.model.F*x + mpc.model.G*u
+sim = LinearMPC.Simulation(dynamics, mpc; x0, N, r=rs)</code></pre></div>
+<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">from lmpc import Simulation
+
+x0, N = np.zeros(3), 20
+rs = np.block([[np.zeros((1, 5)), 0.5*np.ones((1, N-5))],
+               [np.zeros((2, N))]])
+sim = Simulation(mpc, x0=x0, N=N, r=rs)</code></pre></div>
+</div>
+```
+
 ```@example hybrid_mpc
-x0, N = zeros(3), 20; 
-rs = [zeros(1,5) 0.5*ones(1,N-5);
-      zeros(2,N)];
-dynamics = (x,u,d) -> mpc.model.F*x + mpc.model.G*u
-sim = LinearMPC.Simulation(dynamics, mpc; x0,N, r=rs)
+x0, N = zeros(3), 20; # hide
+rs = [zeros(1,5) 0.5*ones(1,N-5); # hide
+      zeros(2,N)]; # hide
+dynamics = (x,u,d) -> mpc.model.F*x + mpc.model.G*u # hide
+sim = LinearMPC.Simulation(dynamics, mpc; x0,N, r=rs) # hide
 nothing # hide
 ```
 
 The result of the simulation can be plotted with 
 
+```@raw html
+<div class="lang-switcher">
+<div class="lang-switcher-tabs">
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
+</div>
+<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">using Plots
+plot(sim)</code></pre></div>
+<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">import matplotlib.pyplot as plt
+plt.plot(sim.ts, sim.ys.T)
+plt.xlabel("Time step")
+plt.show()</code></pre></div>
+</div>
+```
+
 ```@example hybrid_mpc
-using Plots
+using Plots # hide
 plot(sim)
 ```
 

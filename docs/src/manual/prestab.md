@@ -18,8 +18,8 @@ In **LinearMPC.jl** you can set a stabilizing feedback $K$ for an MPC controller
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">set_prestabilizing_feedback!(mpc,K)</code></pre></div>
 <div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc.set_prestabilizing_feedback(K)</code></pre></div>
@@ -31,8 +31,8 @@ A popular choice of $K$ is as the gain from solving an infinite horizon LQR prob
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">set_prestabilizing_feedback!(mpc)</code></pre></div>
 <div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc.set_prestabilizing_feedback()</code></pre></div>

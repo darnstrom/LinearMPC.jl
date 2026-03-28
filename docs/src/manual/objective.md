@@ -10,8 +10,8 @@ For an MPC controller `mpc`, the weighting matrices $Q$, $R$, and $R_r$ that def
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">set_objective!(mpc;Q,R,Rr)</code></pre></div>
 <div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc.set_objective(Q=Q, R=R, Rr=Rr)</code></pre></div>
@@ -53,8 +53,8 @@ Enable reference preview with:
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">mpc.settings.reference_preview = true
 setup!(mpc)</code></pre></div>
@@ -68,8 +68,8 @@ Then provide a reference trajectory matrix of size `(ny, Np)` to `compute_contro
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">r_trajectory = [1.0 1.5 2.0 2.0 2.0;   # Reference for output 1
                 0.0 0.0 0.5 1.0 1.0]   # Reference for output 2
@@ -89,8 +89,8 @@ Enable linear cost with:
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">mpc.settings.linear_cost = true
 setup!(mpc)</code></pre></div>
@@ -104,8 +104,8 @@ Then provide the linear cost to `compute_control`:
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia"># Constant linear cost across horizon
 u = compute_control(mpc, x; l=[0.5])

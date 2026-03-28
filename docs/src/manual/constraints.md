@@ -25,8 +25,8 @@ This can be added to an MPC controller `mpc` with the following commands
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia"># control + output bounds
 set_bounds!(mpc;umin=[-2,0], umax = [1,3], ymin = [-1,-3], ymax = [1,0])
@@ -67,8 +67,8 @@ to the MPC controller `mpc`. This can be done with
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">add_constraint!(mpc;Ax=[1 1 3], lb = -1, ub = 1, ks = [2,4,6])</code></pre></div>
 <div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc.add_constraint(Ax=np.array([[1, 1, 3]]), lb=[-1], ub=[1], ks=[2, 4, 6])</code></pre></div>
@@ -83,8 +83,8 @@ To ensure that there is a solution to the resulting optimization problem, it can
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">add_constraint!(mpc;Ax=[1 1 3], lb = -1, ub = 1, ks = [2,4,6], soft=true)</code></pre></div>
 <div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc.add_constraint(Ax=np.array([[1, 1, 3]]), lb=[-1], ub=[1], ks=[2, 4, 6], soft=True)</code></pre></div>

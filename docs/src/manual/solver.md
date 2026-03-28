@@ -9,8 +9,8 @@ After setting up the MPC controller, you can modify solver settings using `DAQP.
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">using LinearMPC
 
@@ -66,8 +66,8 @@ When generating C code, you can pass solver settings via the `opt_settings` argu
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">codegen(mpc; opt_settings=Dict(:iter_limit => 500))</code></pre></div>
 <div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc.codegen(opt_settings={"iter_limit": 500})</code></pre></div>

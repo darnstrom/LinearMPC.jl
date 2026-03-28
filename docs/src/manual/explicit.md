@@ -22,8 +22,8 @@ For a given MPC controller `mpc`, an explicit MPC controller can be created with
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">empc = LinearMPC.ExplicitMPC(mpc)</code></pre></div>
 <div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">from lmpc import ExplicitMPC
@@ -38,8 +38,8 @@ Running the code above gives the warning "No paramter range defined". This is be
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">parameter_range = LinearMPC.ParameterRange(mpc)
 parameter_range.xmin[:] .= -1
@@ -57,8 +57,8 @@ To efficiently compute a control action using explicit MPC controller, **LinearM
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">LinearMPC.build_tree!(empc)</code></pre></div>
 <div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">empc.build_tree()</code></pre></div>
@@ -72,8 +72,8 @@ A binary search tree will also be compuetd by passing the optional argument `bui
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">empc = LinearMPC.ExplicitMPC(mpc;build_tree=true)</code></pre></div>
 <div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">empc = ExplicitMPC(mpc, build_tree=True)</code></pre></div>
@@ -85,8 +85,8 @@ When a binary search tree has been formed , a control can be computed, similar a
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">u = LinearMPC.compute_control(empc,x;r=r)</code></pre></div>
 <div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">u = empc.compute_control(x, r=r)</code></pre></div>
@@ -99,8 +99,8 @@ C code for an explicit MPC controller can be generate with `codegen`. The call
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">LinearMPC.codegen(empc;dir="code_dir")</code></pre></div>
 <div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">empc.codegen(dir="code_dir")</code></pre></div>

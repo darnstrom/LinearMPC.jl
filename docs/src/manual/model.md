@@ -8,8 +8,8 @@ where the state at time step $k+1$ is a linear combinations of the current state
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">mpc = LinearMPC.MPC(F,G)</code></pre></div>
 <div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">from lmpc import MPC
@@ -36,8 +36,8 @@ One alternative to deal with this is to [discretize](https://en.wikipedia.org/wi
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">mpc = LinearMPC.MPC(A,B,Ts)</code></pre></div>
 <div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc = MPC(A, B, Ts)</code></pre></div>
@@ -71,8 +71,8 @@ an MPC controller that uses this model can be created with
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">mpc = LinearMPC.MPC(F,G;C)</code></pre></div>
 <div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc = MPC(F, G, C=C)</code></pre></div>
@@ -94,8 +94,8 @@ is setup with
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">mpc = LinearMPC.MPC(A,B,Ts;C)</code></pre></div>
 <div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc = MPC(A, B, Ts, C=C)</code></pre></div>
@@ -120,8 +120,8 @@ where the matrices $G_d$ and $D_d$ determines the linear combination for the dyn
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">mpc = LinearMPC.MPC(F,G;Gd,C,Dd)</code></pre></div>
 <div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc = MPC(F, G, Gd=Gd, C=C, Dd=Dd)</code></pre></div>
@@ -137,8 +137,8 @@ can be used with
 ```@raw html
 <div class="lang-switcher">
 <div class="lang-switcher-tabs">
-<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
-<button class="lang-switcher-tab" data-lang="python">Python</button>
+<button class="lang-switcher-tab active" data-lang="julia"><img src="../../assets/julia.svg" alt="" class="lang-icon"> Julia</button>
+<button class="lang-switcher-tab" data-lang="python"><img src="../../assets/python.svg" alt="" class="lang-icon"> Python</button>
 </div>
 <div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">mpc = LinearMPC.MPC(A,B,Ts;Bd,C,Dd)</code></pre></div>
 <div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc = MPC(A, B, Ts, Bd=Bd, C=C, Dd=Dd)</code></pre></div>

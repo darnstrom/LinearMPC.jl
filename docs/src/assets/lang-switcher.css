@@ -14,6 +14,9 @@
 }
 
 .lang-switcher-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     padding: 6px 14px;
     border: none;
     border-bottom: 2px solid transparent;
@@ -24,6 +27,13 @@
     color: var(--color-text, #555);
     margin-bottom: -1px;
     transition: color 0.15s, border-color 0.15s;
+}
+
+.lang-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    vertical-align: middle;
 }
 
 .lang-switcher-tab:hover {
