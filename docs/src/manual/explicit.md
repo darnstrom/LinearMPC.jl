@@ -88,7 +88,7 @@ When a binary search tree has been formed , a control can be computed, similar a
 <button class="lang-switcher-tab active" data-lang="julia">Julia</button>
 <button class="lang-switcher-tab" data-lang="python">Python</button>
 </div>
-<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">x = LinearMPC.compute_control(empc,x;r=r)</code></pre></div>
+<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">u = LinearMPC.compute_control(empc,x;r=r)</code></pre></div>
 <div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">u = empc.compute_control(x, r=r)</code></pre></div>
 </div>
 ```
