@@ -5,8 +5,16 @@ using Documenter
 # ============================================================
 # Tab block preprocessor
 #
-# Introduces two custom fenced-code block types so that Julia
+# Introduces three custom fenced-code block types so that Julia
 # code only needs to be written *once* per example:
+#
+#   ```@tab
+#   # julia
+#   <julia code shown in the Julia tab>
+#   # python
+#   <python code shown in the Python tab>
+#   ```
+#   (display-only: no code is executed)
 #
 #   ```@tabexample name
 #   # julia
@@ -26,8 +34,9 @@ using Documenter
 #
 # The preprocessor expands each block into:
 #   • a ```@raw html``` lang-switcher showing the code, and
-#   • a ```@example name``` / ```@setup name``` block that runs
-#     the Julia code (all lines auto-hidden so only output shows).
+#   • (for @tabexample/@tabsetup) a ```@example name``` /
+#     ```@setup name``` block that runs the Julia code
+#     (all lines auto-hidden so only output shows).
 #
 # Files are modified in-place before makedocs and restored in the
 # finally block below.
@@ -111,6 +120,13 @@ function _expand_tab_blocks(content::String)::String
         "```@raw html\n$(html)\n```\n\n```@setup $(m.captures[1])\n$(julia_display)\n```"
     end)
 
+    # @tab: display code in tab only (no execution)
+    content = _apply(content, r"```@tab\n(.*?)\n```"s, function(m)
+        julia_display, _, python = _parse_sections(String(m.captures[1]))
+        html = _make_lang_switcher_html(julia_display, python)
+        "```@raw html\n$(html)\n```"
+    end)
+
     return content
 end
 
@@ -121,7 +137,7 @@ for (_root, _, _files) in walkdir(_docs_src)
     for _file in filter(f -> endswith(f, ".md"), _files)
         _path = joinpath(_root, _file)
         _original = read(_path, String)
-        if occursin("@tabexample", _original) || occursin("@tabsetup", _original)
+        if occursin("@tabexample", _original) || occursin("@tabsetup", _original) || occursin("```@tab\n", _original)
             _modified_files[_path] = _original
             write(_path, _expand_tab_blocks(_original))
         end
