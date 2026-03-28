@@ -81,23 +81,35 @@ function _parse_sections(body::AbstractString)
 end
 
 function _expand_tab_blocks(content::String)::String
+    # Helper: expand all matches of a regex using eachmatch (which yields RegexMatch
+    # objects with .captures), building the result string by walking through matches.
+    function _apply(str::String, pat::Regex, fn)::String
+        buf = IOBuffer()
+        last = firstindex(str)
+        for m in eachmatch(pat, str)
+            print(buf, str[last:prevind(str, m.offset)])
+            print(buf, fn(m))
+            last = m.offset + ncodeunits(m.match)
+        end
+        print(buf, str[last:end])
+        return String(take!(buf))
+    end
+
     # @tabexample: display code in tab; run via @example (all code hidden, output shown)
-    content = replace(content,
-        r"```@tabexample (\S+)\n(.*?)\n```"s => m -> begin
-            julia_display, julia_exec_only, python = _parse_sections(m.captures[2])
-            html = _make_lang_switcher_html(julia_display, python)
-            exec_code = isempty(julia_exec_only) ?
-                julia_display : julia_display * "\n" * julia_exec_only
-            "```@raw html\n$(html)\n```\n\n```@example $(m.captures[1])\n$(_add_hide(exec_code))\n```"
-        end)
+    content = _apply(content, r"```@tabexample (\S+)\n(.*?)\n```"s, function(m)
+        julia_display, julia_exec_only, python = _parse_sections(String(m.captures[2]))
+        html = _make_lang_switcher_html(julia_display, python)
+        exec_code = isempty(julia_exec_only) ?
+            julia_display : julia_display * "\n" * julia_exec_only
+        "```@raw html\n$(html)\n```\n\n```@example $(m.captures[1])\n$(_add_hide(exec_code))\n```"
+    end)
 
     # @tabsetup: display code in tab; run via @setup (silently, no output)
-    content = replace(content,
-        r"```@tabsetup (\S+)\n(.*?)\n```"s => m -> begin
-            julia_display, _, python = _parse_sections(m.captures[2])
-            html = _make_lang_switcher_html(julia_display, python)
-            "```@raw html\n$(html)\n```\n\n```@setup $(m.captures[1])\n$(julia_display)\n```"
-        end)
+    content = _apply(content, r"```@tabsetup (\S+)\n(.*?)\n```"s, function(m)
+        julia_display, _, python = _parse_sections(String(m.captures[2]))
+        html = _make_lang_switcher_html(julia_display, python)
+        "```@raw html\n$(html)\n```\n\n```@setup $(m.captures[1])\n$(julia_display)\n```"
+    end)
 
     return content
 end
