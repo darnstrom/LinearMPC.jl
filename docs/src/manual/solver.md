@@ -6,8 +6,13 @@ LinearMPC uses the [DAQP](https://darnstrom.github.io/daqp/) solver for solving 
 
 After setting up the MPC controller, you can modify solver settings using `DAQP.settings`:
 
-```julia
-using LinearMPC
+```@raw html
+<div class="lang-switcher">
+<div class="lang-switcher-tabs">
+<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
+<button class="lang-switcher-tab" data-lang="python">Python</button>
+</div>
+<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">using LinearMPC
 
 # Create and setup MPC
 mpc = MPC(A, B; Np=10)
@@ -21,7 +26,23 @@ DAQP.settings(mpc.opt_model, Dict(
 ))
 
 # Compute control with new settings
-u = compute_control(mpc, x)
+u = compute_control(mpc, x)</code></pre></div>
+<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">from lmpc import MPC
+
+# Create and setup MPC
+mpc = MPC(A, B, Np=10)
+mpc.set_bounds(umin=[-1], umax=[1])
+mpc.setup()
+
+# Change solver settings
+mpc.settings({
+    "iter_limit": 2000,
+    "primal_tol": 1e-8
+})
+
+# Compute control with new settings
+u = mpc.compute_control(x)</code></pre></div>
+</div>
 ```
 
 ## Basic Settings
@@ -32,7 +53,7 @@ For full documentation of all DAQP settings, see the [DAQP settings reference](h
 |  Parameter |  Description| Default |
 |:-------------|:------------------|:------:|
 | `primal_tol`  | Tolerance for primal infeasibility|  1e-6 |
-| `dual_tol`	 | Tolerance for dual infeasibility| 1e-12|
+| `dual_tol` | Tolerance for dual infeasibility| 1e-12|
 | `progress_tol` | Minimum change in objective function to consider it progress | 1e-6|
 | `cycle_tol` | Allowed number of iterations without progress before terminating| 10 |
 | `iter_limit` | Maximum number of iterations before terminating| 1000 |
@@ -42,9 +63,15 @@ For full documentation of all DAQP settings, see the [DAQP settings reference](h
 
 When generating C code, you can pass solver settings via the `opt_settings` argument:
 
-```julia
-codegen(mpc; opt_settings=Dict(:iter_limit => 500))
+```@raw html
+<div class="lang-switcher">
+<div class="lang-switcher-tabs">
+<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
+<button class="lang-switcher-tab" data-lang="python">Python</button>
+</div>
+<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">codegen(mpc; opt_settings=Dict(:iter_limit => 500))</code></pre></div>
+<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc.codegen(opt_settings={"iter_limit": 500})</code></pre></div>
+</div>
 ```
 
 These settings will be embedded in the generated C code.
-

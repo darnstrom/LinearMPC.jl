@@ -63,6 +63,14 @@ Uncertainty in the current state can also be handled robustly. If the current st
 -\delta \leq x - \hat{x} \leq \delta,
 ```
 constraints can be tightened with 
-```julia
-set_x0_uncertainty!(mpc,delta)
+
+```@raw html
+<div class="lang-switcher">
+<div class="lang-switcher-tabs">
+<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
+<button class="lang-switcher-tab" data-lang="python">Python</button>
+</div>
+<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">set_x0_uncertainty!(mpc,delta)</code></pre></div>
+<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc.set_x0_uncertainty(delta)</code></pre></div>
+</div>
 ```

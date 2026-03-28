@@ -5,9 +5,18 @@ Reference preview allows the MPC controller to use knowledge of future reference
 ## Setup
 
 Enable reference preview in the MPC settings:
-```julia
-mpc.settings.reference_preview = true
-setup!(mpc)  # Rebuild the controller with new settings
+
+```@raw html
+<div class="lang-switcher">
+<div class="lang-switcher-tabs">
+<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
+<button class="lang-switcher-tab" data-lang="python">Python</button>
+</div>
+<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">mpc.settings.reference_preview = true
+setup!(mpc)  # Rebuild the controller with new settings</code></pre></div>
+<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc.settings({"reference_preview": True})
+mpc.setup()  # Rebuild the controller with new settings</code></pre></div>
+</div>
 ```
 
 ## Usage
@@ -17,19 +26,40 @@ Provide references as a matrix of size `(ny, Np)` where:
 - `ny` is the number of outputs
 - `Np` is the prediction horizon
 
-```julia
-# For a system with 2 outputs and prediction horizon of 5
+```@raw html
+<div class="lang-switcher">
+<div class="lang-switcher-tabs">
+<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
+<button class="lang-switcher-tab" data-lang="python">Python</button>
+</div>
+<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia"># For a system with 2 outputs and prediction horizon of 5
 r_trajectory = [1.0 1.5 2.0 2.0 2.0;   # Reference for output 1
                 0.0 0.0 0.5 1.0 1.0]   # Reference for output 2
 
-u = compute_control(mpc, x; r=r_trajectory)
+u = compute_control(mpc, x; r=r_trajectory)</code></pre></div>
+<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">import numpy as np
+# For a system with 2 outputs and prediction horizon of 5
+r_trajectory = np.array([[1.0, 1.5, 2.0, 2.0, 2.0],   # Reference for output 1
+                          [0.0, 0.0, 0.5, 1.0, 1.0]])  # Reference for output 2
+
+u = mpc.compute_control(x, r=r_trajectory)</code></pre></div>
+</div>
 ```
 
 ### Single Reference
 Vector inputs are automatically broadcast across the prediction horizon:
-```julia
-# This reference will be used for all time steps
-u = compute_control(mpc, x; r=[1.0, 0.0])
+
+```@raw html
+<div class="lang-switcher">
+<div class="lang-switcher-tabs">
+<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
+<button class="lang-switcher-tab" data-lang="python">Python</button>
+</div>
+<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia"># This reference will be used for all time steps
+u = compute_control(mpc, x; r=[1.0, 0.0])</code></pre></div>
+<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python"># This reference will be used for all time steps
+u = mpc.compute_control(x, r=[1.0, 0.0])</code></pre></div>
+</div>
 ```
 
 ## Example

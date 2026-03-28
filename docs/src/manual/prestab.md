@@ -14,12 +14,29 @@ x_{k+1} = (F-GK) x_k + G v_k.
 If $K$ is selected such that $F-GK$ is stable, the condensed Quadratic program will be better conditioned compared to the unstable $F$.
 
 In **LinearMPC.jl** you can set a stabilizing feedback $K$ for an MPC controller `mpc` with
-```julia
-set_prestabilizing_feedback!(mpc,K)
+
+```@raw html
+<div class="lang-switcher">
+<div class="lang-switcher-tabs">
+<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
+<button class="lang-switcher-tab" data-lang="python">Python</button>
+</div>
+<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">set_prestabilizing_feedback!(mpc,K)</code></pre></div>
+<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc.set_prestabilizing_feedback(K)</code></pre></div>
+</div>
 ```
+
 A popular choice of $K$ is as the gain from solving an infinite horizon LQR problem. This gain can be set as the stabilizing feedback with
-```julia
-set_prestabilizing_feedback!(mpc)
+
+```@raw html
+<div class="lang-switcher">
+<div class="lang-switcher-tabs">
+<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
+<button class="lang-switcher-tab" data-lang="python">Python</button>
+</div>
+<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">set_prestabilizing_feedback!(mpc)</code></pre></div>
+<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc.set_prestabilizing_feedback()</code></pre></div>
+</div>
 ```
 
 !!! note "Prestabilization + Move block"

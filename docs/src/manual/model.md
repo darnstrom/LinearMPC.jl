@@ -5,9 +5,18 @@ x_{k+1} = F x_k + G u_k
 ```
 where the state at time step $k+1$ is a linear combinations of the current state $x_k$ and a control action $u_k$. If matrices $F$ and $G$ that define such a state-space model is available, a MPC controller that uses that model is created with 
 
-```julia
-mpc = LinearMPC.MPC(F,G)
+```@raw html
+<div class="lang-switcher">
+<div class="lang-switcher-tabs">
+<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
+<button class="lang-switcher-tab" data-lang="python">Python</button>
+</div>
+<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">mpc = LinearMPC.MPC(F,G)</code></pre></div>
+<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">from lmpc import MPC
+mpc = MPC(F, G)</code></pre></div>
+</div>
 ```
+
 One can also create a `Model` struct first, and then create the MPC controller, with 
 
 ```julia
@@ -24,9 +33,17 @@ Often, the system dynamics is given in continuous time rather than discrete time
 ```
 One alternative to deal with this is to [discretize](https://en.wikipedia.org/wiki/Discretization#discrete_function) the system, to yield matrices $F$ and $G$ instead of $A$ and $B$. A MPC controller that use a discretized continuous-time model can be created with
 
-```julia
-mpc = LinearMPC.MPC(A,B,Ts)
+```@raw html
+<div class="lang-switcher">
+<div class="lang-switcher-tabs">
+<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
+<button class="lang-switcher-tab" data-lang="python">Python</button>
+</div>
+<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">mpc = LinearMPC.MPC(A,B,Ts)</code></pre></div>
+<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc = MPC(A, B, Ts)</code></pre></div>
+</div>
 ```
+
 where `Ts` is the _sample time_, which  and determines how much one time step is. (For example, $T_s = 0.1$ corresponds to 10 time steps being 1 second.) As for discrete-time state spaces models, one can first create a `Model` struct, and create a MPC controller based on this model as follows: 
 
 ```julia
@@ -51,9 +68,17 @@ x_{k+1} = F x_k + G u_k, \quad y_k = C x_k,
 ```
 an MPC controller that uses this model can be created with
 
-```julia
-mpc = LinearMPC.MPC(F,G;C)
+```@raw html
+<div class="lang-switcher">
+<div class="lang-switcher-tabs">
+<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
+<button class="lang-switcher-tab" data-lang="python">Python</button>
+</div>
+<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">mpc = LinearMPC.MPC(F,G;C)</code></pre></div>
+<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc = MPC(F, G, C=C)</code></pre></div>
+</div>
 ```
+
 or by first creating a `Model` as 
 ```julia
 model = LinearMPC.Model(F,G;C)
@@ -65,9 +90,18 @@ Similarly, an MPC controller of the continuous-time system
 \frac{d}{dt} x(t) = A x(t) + B u(t), \quad y(t) = C x(t)
 ```
 is setup with 
-```julia
-mpc = LinearMPC.MPC(A,B,Ts;C)
+
+```@raw html
+<div class="lang-switcher">
+<div class="lang-switcher-tabs">
+<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
+<button class="lang-switcher-tab" data-lang="python">Python</button>
+</div>
+<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">mpc = LinearMPC.MPC(A,B,Ts;C)</code></pre></div>
+<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc = MPC(A, B, Ts, C=C)</code></pre></div>
+</div>
 ```
+
 or 
 ```julia
 model = LinearMPC.Model(A,B,Ts;C)
@@ -83,17 +117,34 @@ x_{k+1} = F x_k + G u_k + G_d d_k, \quad y_k = C x_k + D_d d_k,
 ```
 where the matrices $G_d$ and $D_d$ determines the linear combination for the dynamics and the output, respectively. Both $G_d$ and $D_d$ can be set as optional arguments:
 
-```julia
-mpc = LinearMPC.MPC(F,G;Gd,C,Dd)
+```@raw html
+<div class="lang-switcher">
+<div class="lang-switcher-tabs">
+<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
+<button class="lang-switcher-tab" data-lang="python">Python</button>
+</div>
+<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">mpc = LinearMPC.MPC(F,G;Gd,C,Dd)</code></pre></div>
+<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc = MPC(F, G, Gd=Gd, C=C, Dd=Dd)</code></pre></div>
+</div>
 ```
+
 Similarly, continuous-time state space models of the form 
 ```math
 \frac{d}{dt} x(t) = A x(t) + B u(t) + B_d d(t), \quad y(t) = C x(t) + D_d x(t)
 ```
 can be used with 
-```julia
-mpc = LinearMPC.MPC(A,B,Ts;Bd,C,Dd)
+
+```@raw html
+<div class="lang-switcher">
+<div class="lang-switcher-tabs">
+<button class="lang-switcher-tab active" data-lang="julia">Julia</button>
+<button class="lang-switcher-tab" data-lang="python">Python</button>
+</div>
+<div class="lang-switcher-content active" data-lang="julia"><pre><code class="language-julia">mpc = LinearMPC.MPC(A,B,Ts;Bd,C,Dd)</code></pre></div>
+<div class="lang-switcher-content" data-lang="python"><pre><code class="language-python">mpc = MPC(A, B, Ts, Bd=Bd, C=C, Dd=Dd)</code></pre></div>
+</div>
 ```
+
 !!! note "Constant disturbance"
     The disturbance $d$ is assumed to be constant over the horizon 
 ## Linearization
