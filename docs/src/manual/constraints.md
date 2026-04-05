@@ -21,7 +21,9 @@ As an illustrative example, consider the case with two controls $u_1$ and $u_2$,
 \end{aligned}
 ```
 This can be added to an MPC controller `mpc` with the following commands
-```julia
+
+```@tab
+# julia
 # control + output bounds
 set_bounds!(mpc;umin=[-2,0], umax = [1,3], ymin = [-1,-3], ymax = [1,0])
 
@@ -30,6 +32,17 @@ add_constraint!(mpc; Ax = [1 0 3], lb = -2, ub = 5)
 
 # -1 ≤ x1 - 2 x2 + u2 ≤  1
 add_constraint!(mpc; Ax = [1 -2 0], Au = [0 1], lb = -1, ub = 1)
+# python
+import numpy as np
+
+# control + output bounds
+mpc.set_bounds(umin=[-2, 0], umax=[1, 3], ymin=[-1, -3], ymax=[1, 0])
+
+# -1 <= x2 - 3 x3 <=  5
+mpc.add_constraint(Ax=np.array([[1, 0, 3]]), lb=[-2], ub=[5])
+
+# -1 <= x1 - 2 x2 + u2 <=  1
+mpc.add_constraint(Ax=np.array([[1, -2, 0]]), Au=np.array([[0, 1]]), lb=[-1], ub=[1])
 ```
 
 ## Constraint horizon 
@@ -46,17 +59,26 @@ For example, say that we want to add the constraint
 ```
 
 to the MPC controller `mpc`. This can be done with 
-```julia
+
+```@tab
+# julia
 add_constraint!(mpc;Ax=[1 1 3], lb = -1, ub = 1, ks = [2,4,6])
+# python
+mpc.add_constraint(Ax=np.array([[1, 1, 3]]), lb=[-1], ub=[1], ks=[2, 4, 6])
 ```
 
 
 
 ## Soft constraints
 To ensure that there is a solution to the resulting optimization problem, it can be good to _soften_ some constraint. A soft constraints means that the constraints is allowed to be violated, but such violations are penalized. A constraint can be marked to be soft by setting the optional argument `soft` to `true`. For example, if the constraint from above should be soft, one could run the command 
-```julia
+
+```@tab
+# julia
 add_constraint!(mpc;Ax=[1 1 3], lb = -1, ub = 1, ks = [2,4,6], soft=true)
+# python
+mpc.add_constraint(Ax=np.array([[1, 1, 3]]), lb=[-1], ub=[1], ks=[2, 4, 6], soft=True)
 ```
+
 By default, bound constraints on inputs $u$ are _hard_, and bound constraint outputs $y$ are _soft_.
 
 To be more specific, a constraint $\underline{b} \leq A_x x_k + A_u u_k \leq \overline{b}$ is softened by introducing a slack variable $\epsilon$, and replace the constraint with the constraints 
@@ -66,4 +88,4 @@ To be more specific, a constraint $\underline{b} \leq A_x x_k + A_u u_k \leq \ov
 & A_x x_k + A_u u_k &\leq \overline{b} + \epsilon.
 \end{aligned}
 ```
-To penalize violation of the constraint, a term $\rho \|\epsilon\|$ is added to the objective function, where the weight $\rho$ determines how hard the soft constraints should be penalized. By default, $\rho$ is set to `1e6`. 
+To penalize violation of the constraint, a term $\rho \|\epsilon\|$ is added to the objective function, where the weight $\rho$ determines how hard the soft constraints should be penalized. By default, $\rho$ is set to `1e6`.

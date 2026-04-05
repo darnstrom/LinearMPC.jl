@@ -14,12 +14,21 @@ x_{k+1} = (F-GK) x_k + G v_k.
 If $K$ is selected such that $F-GK$ is stable, the condensed Quadratic program will be better conditioned compared to the unstable $F$.
 
 In **LinearMPC.jl** you can set a stabilizing feedback $K$ for an MPC controller `mpc` with
-```julia
+
+```@tab
+# julia
 set_prestabilizing_feedback!(mpc,K)
+# python
+mpc.set_prestabilizing_feedback(K)
 ```
+
 A popular choice of $K$ is as the gain from solving an infinite horizon LQR problem. This gain can be set as the stabilizing feedback with
-```julia
+
+```@tab
+# julia
 set_prestabilizing_feedback!(mpc)
+# python
+mpc.set_prestabilizing_feedback()
 ```
 
 !!! note "Prestabilization + Move block"
