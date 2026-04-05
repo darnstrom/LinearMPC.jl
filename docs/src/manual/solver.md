@@ -52,7 +52,7 @@ For full documentation of all DAQP settings, see the [DAQP settings reference](h
 | `dual_tol` | Tolerance for dual infeasibility| 1e-12|
 | `progress_tol` | Minimum change in objective function to consider it progress | 1e-6|
 | `cycle_tol` | Allowed number of iterations without progress before terminating| 10 |
-| `iter_limit` | Maximum number of iterations before terminating| 1000 |
+| `iter_limit` | Maximum number of iterations before terminating| 1e4 |
 | `rho_soft` | Weight used for soft constraints (higher enables more violations) | 1e-6|
 
 ## Code Generation

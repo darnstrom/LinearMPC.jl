@@ -83,7 +83,7 @@ As usual, the closed-loop behaviour for a scenario can be simulated with
 sim_game = Simulation(mpc; x0=10*ones(2), r=[10, 0], N=100)
 
 using Plots
-plt_game = plot(sim_game, label="Game-theoretic MPC")  # stored for overlay in the next example
+plt_game = plot(sim_game, label="Game-theoretic MPC")
 # python
 from lmpc import Simulation
 import matplotlib.pyplot as plt
