@@ -34,43 +34,74 @@ The thrusters give rise to the binary controls $u_2 \in \{0,1\}$ and $u_3 \in \{
 
 An MPC controller that controls the attitude of the satellite can be set up with **LinearMPC.jl** as follows: 
 
-```@example hybrid_mpc
+```@tabsetup hybrid_mpc
+# julia
 using LinearMPC
 # Setup dynamics + horizon
 A = [0.0 1 0; 0 0 0; 0 0 0]
 B = [0 0 0; 2.5 1 1; -10 0 0]
-mpc = LinearMPC.MPC(A,B,0.1;Np=20)
+mpc = LinearMPC.MPC(A, B, 0.1; Np=20)
 
-# Setup the binary controls u_2 {0,1} and u3 in {-1,0}
-set_binary_controls!(mpc,[2,3])
-set_bounds!(mpc;umin=[-Inf;0;-1],umax=[Inf;1;0])
+# Setup the binary controls u_2 ∈ {0,1} and u_3 ∈ {-1,0}
+set_binary_controls!(mpc, [2, 3])
+set_bounds!(mpc; umin=[-Inf; 0; -1], umax=[Inf; 1; 0])
 
-# Setup objetive to prioritize tracking of the attitude x1
-set_objective!(mpc;Q=[0.5e4, 1e-2, 1e-1], R = [10,10,10], Rr = 0)
+# Setup objective to prioritize tracking of the attitude x1
+set_objective!(mpc; Q=[0.5e4, 1e-2, 1e-1], R=[10, 10, 10], Rr=0)
 
 # Enable reference preview
 mpc.settings.reference_preview = true
-nothing # hide
+# python
+import numpy as np
+from lmpc import MPC
+
+# Setup dynamics + horizon
+A = np.array([[0.0, 1, 0], [0, 0, 0], [0, 0, 0]])
+B = np.array([[0, 0, 0], [2.5, 1, 1], [-10, 0, 0]])
+mpc = MPC(A, B, Ts=0.1, Np=20)
+
+# Setup the binary controls u_2 in {0,1} and u_3 in {-1,0}
+mpc.set_binary_controls([2, 3])
+mpc.set_bounds(umin=[-np.inf, 0, -1], umax=[np.inf, 1, 0])
+
+# Setup objective to prioritize tracking of the attitude x1
+mpc.set_objective(Q=[0.5e4, 1e-2, 1e-1], R=[10, 10, 10], Rr=0)
+
+# Enable reference preview
+mpc.settings({"reference_preview": True})
 ```
 !!! note "Binary control horizon"
     `set_binary_controls!` takes in a third argument which specifies for how many time step the control should be binary (by default, this is equal to the control horizon.) After the binary control horizon, the control is allowed to take continuous values, which can reduce the computational time significantly, with minor effect on the solution.
 
 We simulate the controller with an attitude reference change to 0.5 after 5 time steps with the following code
 
-```@example hybrid_mpc
-x0, N = zeros(3), 20; 
-rs = [zeros(1,5) 0.5*ones(1,N-5);
-      zeros(2,N)];
-dynamics = (x,u,d) -> mpc.model.F*x + mpc.model.G*u
-sim = LinearMPC.Simulation(dynamics, mpc; x0,N, r=rs)
-nothing # hide
+```@tabsetup hybrid_mpc
+# julia
+x0, N = zeros(3), 20
+rs = [zeros(1, 5) 0.5*ones(1, N-5);
+      zeros(2, N)]
+dynamics = (x, u, d) -> mpc.model.F*x + mpc.model.G*u
+sim = LinearMPC.Simulation(dynamics, mpc; x0, N, r=rs)
+# python
+from lmpc import Simulation
+
+x0, N = np.zeros(3), 20
+rs = np.block([[np.zeros((1, 5)), 0.5*np.ones((1, N-5))],
+               [np.zeros((2, N))]])
+sim = Simulation(mpc, x0=x0, N=N, r=rs)
 ```
 
 The result of the simulation can be plotted with 
 
-```@example hybrid_mpc
+```@tabexample hybrid_mpc
+# julia
 using Plots
 plot(sim)
+# python
+import matplotlib.pyplot as plt
+plt.plot(sim.ts, sim.ys.T)
+plt.xlabel("Time step")
+plt.show()
 ```
 
 We can see that the attitude is able to reach the setpoint of 0.5. Moreover, we also we that $u_2$ and $u_3$ only take values in $\{0,1\}$ and $\{-1,0\}$, respectively.

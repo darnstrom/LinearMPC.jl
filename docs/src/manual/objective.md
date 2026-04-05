@@ -6,9 +6,14 @@ The basic objective for computing a control action in the MPC controller is of t
 where $N$ is the prediction horizon of the controller.
 
 For an MPC controller `mpc`, the weighting matrices $Q$, $R$, and $R_r$ that defines the objective can be set with 
-```julia
+
+```@tab
+# julia
 set_objective!(mpc;Q,R,Rr)
+# python
+mpc.set_objective(Q=Q, R=R, Rr=Rr)
 ```
+
 If a vector value of $Q$,$R$, or $R_r$ are inputted to `set_objective`, it will be interpreted as a diagonal matrix with the vector on diagonal. Similarly, if a scalar is inputted, it will be interpreted as a diagonal matrix with this value on the diagonal.
 
 The default values are $Q=I$, $R=I$, and $R_r = 0$.
@@ -40,35 +45,60 @@ Reference preview allows time-varying references $r_k$ in the objective:
 ```
 
 Enable reference preview with:
-```julia
+
+```@tab
+# julia
 mpc.settings.reference_preview = true
 setup!(mpc)
+# python
+mpc.settings({"reference_preview": True})
+mpc.setup()
 ```
 
 Then provide a reference trajectory matrix of size `(ny, Np)` to `compute_control`:
-```julia
+
+```@tab
+# julia
 r_trajectory = [1.0 1.5 2.0 2.0 2.0;   # Reference for output 1
                 0.0 0.0 0.5 1.0 1.0]   # Reference for output 2
 u = compute_control(mpc, x; r=r_trajectory)
+# python
+import numpy as np
+r_trajectory = np.array([[1.0, 1.5, 2.0, 2.0, 2.0],   # Reference for output 1
+                          [0.0, 0.0, 0.5, 1.0, 1.0]])  # Reference for output 2
+u = mpc.compute_control(x, r=r_trajectory)
 ```
 
 ## Linear control cost
 The term $l_k^T u_k$ adds an optional linear cost on the control signal. This is useful in economic MPC where control actions have time-varying costs (e.g., electricity prices).
 
 Enable linear cost with:
-```julia
+
+```@tab
+# julia
 mpc.settings.linear_cost = true
 setup!(mpc)
+# python
+mpc.settings({"linear_cost": True})
+mpc.setup()
 ```
 
 Then provide the linear cost to `compute_control`:
-```julia
+
+```@tab
+# julia
 # Constant linear cost across horizon
 u = compute_control(mpc, x; l=[0.5])
 
 # Time-varying linear cost (nu × Np matrix)
 l_trajectory = [0.1 0.2 0.5 0.8 1.0]  # Cost varies over prediction horizon
 u = compute_control(mpc, x; l=l_trajectory)
+# python
+import numpy as np
+# Constant linear cost across horizon
+u = mpc.compute_control(x, l=[0.5])
+
+# Time-varying linear cost (nu x Np array)
+l_trajectory = np.array([[0.1, 0.2, 0.5, 0.8, 1.0]])  # Cost varies over prediction horizon
+u = mpc.compute_control(x, l=l_trajectory)
 ```
-
-

@@ -18,43 +18,71 @@ Computing the explicit solution can be quite challenging in its own right. **Lin
 [^Arnstrom24]: Arnström, Daniel, and Axehill, Daniel "A High-Performant Multi-Parametric Quadratic Programming Solver," 2024 _IEEE 63rd Conference on Decision and Control (CDC)_, Milan, Italy, 2024, pp. 303-308
 
 For a given MPC controller `mpc`, an explicit MPC controller can be created with 
-```julia
+
+```@tab
+# julia
 empc = LinearMPC.ExplicitMPC(mpc)
+# python
+from lmpc import ExplicitMPC
+empc = ExplicitMPC(mpc)
 ```
 The resulting critical regions can be found with `empc.solution.CRs`, where the field `Ath` and `bth` in a critical region define the region itself, and the field `z` gives the feedback. Specifically, `K  = z[1:end-1,:]'` and `k=z[end,:]'`, so the optimal control `u` can be computed for the parameter `θ` with `u=z'*[θ;1]`. 
 
 ## Parameter range 
 Running the code above gives the warning "No paramter range defined". This is because we have not specified where in parameter space the solution should be computed. By default, a box with limits $[-100,100]$ is used, but this might be too big or too small of a volume. Instead, users can provide a `ParameterRange` which defines where in parameter space the solution should be computed. For example  
-```
+
+```@tab
+# julia
 parameter_range = LinearMPC.ParameterRange(mpc)
 parameter_range.xmin[:] .= -1
 parameter_range.xmax[:] .=  1
+# python
+parameter_range = mpc.range(xmin=[-1, -1], xmax=[1, 1])
 ```
+
 will consider states in the unit box. Similarly, one can modify the range for 
 * **references** by modifying the field `rmin` and `rmax`
 * **disturbances** by modifying the field `dmin` and `dmax`
 ## Computing control
 To efficiently compute a control action using explicit MPC controller, **LinearMPC.jl** constructs a  _binary search tree_[^Tondel03]. This can be done with
-```julia
+
+```@tab
+# julia
 LinearMPC.build_tree!(empc)
+# python
+empc.build_tree()
 ```
+
 [^Tondel03]: Tøndel, Petter, Tor Arne Johansen, and Alberto Bemporad. "Evaluation of piecewise affine control via binary search tree." _Automatica_ 39.5 (2003): 945-950.
 
 A binary search tree will also be compuetd by passing the optional argument `buil_tree` to `EMPC`:  
-```julia
+
+```@tab
+# julia
 empc = LinearMPC.ExplicitMPC(mpc;build_tree=true)
+# python
+empc = ExplicitMPC(mpc, build_tree=True)
 ```
 
 When a binary search tree has been formed , a control can be computed, similar as for a normal `MPC` struct, with the function `compute_control`. Given a state `x` and setpoint `r`, the corresponding control is computed with 
-```julia
-x = LinearMPC.compute_control(empc,x;r=r)
+
+```@tab
+# julia
+u = LinearMPC.compute_control(empc,x;r=r)
+# python
+u = empc.compute_control(x, r=r)
 ```
+
 ## Code generation
 C code for an explicit MPC controller can be generate with `codegen`. The call
 
-```
+```@tab
+# julia
 LinearMPC.codegen(empc;dir="code_dir")
+# python
+empc.codegen(dir="code_dir")
 ```
+
 will generate C code in the directory `code_dir`.
 
 The main function of interest is `mpc_compute_control(control, state, reference, disturbance)`. This function computes the optimal control given the current `state`, `reference`, and measured disturbances `disturbance`, which are all floating-point arrays. The optimal control is stored in the floating-point array `control`.

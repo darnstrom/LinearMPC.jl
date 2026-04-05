@@ -9,8 +9,12 @@ Another way is to "block" some of the controls by holding them constant over mor
 [^Cagienard07]: Cagienard, Raphael, et al. "Move blocking strategies in receding horizon control." _Journal of Process Control_ 17.6 (2007): 563-570.
 
 In **LinearMPC.jl**, controls can be blocked with the function `move_block!`. The function takes in a vector that defines how the control decisions should be held. For example, one can hold the control for 3 time steps, then 2 time steps, then 1 time step, then 4 time steps with
-```julia
+
+```@tab
+# julia
 move_block!(mpc,[3,2,1,4])
+# python
+mpc.move_block([3, 2, 1, 4])
 ```
 !!! note "Padding of move blocks"
     If the sum of the blocks add up to _less_ than the prediction horizon, the last block will be extended to cover the entire horizon.

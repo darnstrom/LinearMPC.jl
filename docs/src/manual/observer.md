@@ -18,9 +18,14 @@ The correction step is followed by a prediction step, where the state at the nex
 ```
 
 For a MPC struct `mpc`, a steady state Kalman filter can be created with
-```julia  
+
+```@tab
+# julia
 set_state_observer!(mpc;Q,R)
+# python
+mpc.set_state_observer(Q=Q, R=R)
 ```
+
 where `Q` and `R` are covariance matrices for the process noise and measurement noise, respectively. These are used as tuning variables, where the relative size of the elements in `Q` and `R` determines if the prediction or the measurements should be trusted more. By default, `set_state_observer!` uses $F$, $G$, and $C$ from the MPC structure. It is possible to override this by passing the optional arguments `F`,`G`,`C` to `set_state_observer!`.
 
 ## Getting, setting, correcting, and predicting state
