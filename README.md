@@ -1,6 +1,8 @@
 # **LinearMPC.jl**
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![](https://img.shields.io/badge/docs-online-brightgreen)](https://darnstrom.github.io/LinearMPC.jl)
+[![CI](https://github.com/darnstrom/LinearMPC.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/darnstrom/LinearMPC.jl/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/darnstrom/LinearMPC.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/darnstrom/LinearMPC.jl)
 
 **LinearMPC.jl** is a Julia package for Model Predictive Control (MPC) of linear systems. It aims to produce _high-performant_ and _lightweight_ C-code that can easily be used on embedded systems, while at the same time give a user-friendly and expressive development environment for MPC. The package supports code generation for the Quadratic Programming solver [DAQP](https://github.com/darnstrom/daqp), and for explicit solutions computed by [ParametricDAQP.jl](https://github.com/darnstrom/ParametricDAQP.jl). 
 
