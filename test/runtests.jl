@@ -6,6 +6,7 @@ using Random
 using RecipesBase
 global templib
 Random.seed!(1234)
+# RecipesBase expects plotting backends to register supported keys; tests exercise recipes directly.
 RecipesBase.is_key_supported(::Symbol) = true
 
 @testset verbose = true "LinearMPC.jl" begin
@@ -1031,6 +1032,7 @@ RecipesBase.is_key_supported(::Symbol) = true
             zeros(3, 1),
             BitVector([false, false, false]),
             BitVector([false, false, false]),
+            # One simple bound followed by two general constraints with duplicate rows.
             Cint[0, 1, 1],
         )
         dedup = LinearMPC.remove_duplicate(cdup)
@@ -1134,7 +1136,7 @@ RecipesBase.is_key_supported(::Symbol) = true
 
         tracked = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=2)
         set_objective!(tracked; Q=[1.0], R=[1.0])
-        @test_logs (:warn, r"LQR cost not valid for reference tracking problems") LinearMPC.set_terminal_cost!(tracked) == false
+        @test false == (@test_logs (:warn, r"LQR cost not valid for reference tracking problems") LinearMPC.set_terminal_cost!(tracked))
 
         @test_logs (:warn, r"The setting \"does_not_exist\" does not exist") (:warn, r"The setting \"does_not_exist\" does not exist") settings!(tracked; does_not_exist=true)
         @test_logs (:warn, r"The setting \"still_missing\" does not exist") settings!(tracked, Dict(:still_missing => true))
