@@ -142,7 +142,7 @@ get_reference_preview(rs, k, Np) = get_preview(rs, k , Np)
 
 Extract linear cost preview from linear cost trajectory starting at time step k.
 """
-get_linear_cost_preview(ls, k, Nc) = get_prewview(ls,k-1,Nc)
+get_linear_cost_preview(ls, k, Nc) = get_preview(ls,k-1,Nc)
 
 
 using RecipesBase
