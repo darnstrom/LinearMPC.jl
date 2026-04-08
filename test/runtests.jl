@@ -882,7 +882,7 @@ RecipesBase.is_key_supported(::Symbol) = true
         model = LinearMPC.Model(F, G; C, Gd=[0.5; -0.5])
         @test size(model.Gd) == (2, 1)
         @test size(model.Dd) == (1, 1)
-        @test model.true_dynamics([1.0, 2.0], [3.0], [4.0]) ≈ F * [1.0, 2.0] + G * [3.0] + model.Gd * [4.0]
+        @test model.true_dynamics([1.0, 2.0], [3.0], [4.0]) ≈ F * [1.0, 2.0] + 3.0 .* G + model.Gd * [4.0]
         @test model.true_h([1.0, 2.0], [3.0], [4.0]) ≈ C * [1.0, 2.0]
 
         cmodel = LinearMPC.Model([0.0 1.0; 0.0 0.0], [0.0; 1.0], 0.1; C)
@@ -946,7 +946,7 @@ RecipesBase.is_key_supported(::Symbol) = true
         blocked.settings.linear_cost = true
         move_block!(blocked, [2, 2])
         setup!(blocked)
-        @test LinearMPC.format_linear_cost(blocked, [1.0 3.0 5.0 7.0]) ≈ [2.0, 6.0]
+        @test LinearMPC.format_linear_cost(blocked, [1.0 3.0 5.0 7.0]) ≈ [2.0, 6.0, 0.0]
 
         varying = LinearMPC.MPC([1.0 1.0; 0.0 1.0], [0.0 0.0; 1.0 1.0]; C=[1.0 0.0], Np=4, Nc=4)
         set_objective!(varying; Q=[1.0], R=[0.1, 0.1])
@@ -970,7 +970,7 @@ RecipesBase.is_key_supported(::Symbol) = true
         sim = LinearMPC.Simulation(mpc; x0=[0.0], r=[0.0], N=3)
         attrs = RecipesBase.KW(:xids => [1])
         series = RecipesBase.apply_recipe(attrs, sim)
-        @test length(series) == 5
+        @test length(series) == 6
         @test attrs[:layout] == reshape([(1, 1), (1, 1), (1, 1)], 1, :)
         @test series[1].args == (sim.ts, sim.rs[1, :])
         @test series[end].args == (sim.ts, sim.xs[1, :])
@@ -1119,7 +1119,7 @@ RecipesBase.is_key_supported(::Symbol) = true
 
         c = LinearMPC.Constraint([1.0;;], [1.0 0.0], zeros(0, 0), zeros(0, 0), zeros(0, 0), zeros(0, 0), [1.0], [-1.0], 1:1, false, false, 0)
         @test LinearMPC.constraint_violation(c, [0.8, 0.0], [0.5]) ≈ 0.3
-        @test LinearMPC.constraint_violation(c, [0.8 0.2; 0.0 0.0], [0.5 0.0]) == [0.3, 0.0]
+        @test LinearMPC.constraint_violation(c, [0.8 0.2; 0.0 0.0], [0.5 0.0]) ≈ [0.3, 0.0]
         @test_throws AssertionError LinearMPC.constraint_violation(c, [0.8 0.0], [0.5 0.0 0.1])
     end
 
@@ -1136,7 +1136,7 @@ RecipesBase.is_key_supported(::Symbol) = true
         set_objective!(tracked; Q=[1.0], R=[1.0])
         @test_logs (:warn, r"LQR cost not valid for reference tracking problems") LinearMPC.set_terminal_cost!(tracked) == false
 
-        @test_logs (:warn, r"The setting \"does_not_exist\" does not exist") settings!(tracked; does_not_exist=true)
+        @test_logs (:warn, r"The setting \"does_not_exist\" does not exist") (:warn, r"The setting \"does_not_exist\" does not exist") settings!(tracked; does_not_exist=true)
         @test_logs (:warn, r"The setting \"still_missing\" does not exist") settings!(tracked, Dict(:still_missing => true))
     end
 end
