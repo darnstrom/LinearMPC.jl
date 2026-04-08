@@ -3,6 +3,7 @@ using Test
 using LinearAlgebra
 using Statistics
 using Random
+using RecipesBase
 global templib
 Random.seed!(1234)
 
@@ -870,5 +871,279 @@ Random.seed!(1234)
 
         @test sim_exp.ys[1,end] ≈ 10.0 atol=1e-4
         @test sim_exp.ys[2,end] ≈ 0.0 atol=1e-4
+    end
+
+    @testset "Model constructors and linearization helpers" begin
+        F = [1.0 0.2; 0.0 1.0]
+        G = [0.0; 1.0]
+        C = [1.0 0.0]
+
+        model = LinearMPC.Model(F, G; C, Gd=[0.5; -0.5])
+        @test size(model.Gd) == (2, 1)
+        @test size(model.Dd) == (1, 1)
+        @test model.true_dynamics([1.0, 2.0], [3.0], [4.0]) ≈ F * [1.0, 2.0] + 3.0 .* G + model.Gd * [4.0]
+        @test model.true_h([1.0, 2.0], [3.0], [4.0]) ≈ C * [1.0, 2.0]
+
+        cmodel = LinearMPC.Model([0.0 1.0; 0.0 0.0], [0.0; 1.0], 0.1; C)
+        @test cmodel.F ≈ [1.0 0.1; 0.0 1.0] atol=1e-8
+        @test cmodel.G ≈ [0.005; 0.1] atol=1e-8
+
+        f(x, u, d) = [x[1] + 2x[2] + u[1] + 3d[1]; x[2] + 2u[1] - d[1]]
+        h(x, u, d) = [x[1] - d[1]]
+        x0 = [1.0, -1.0]
+        u0 = [0.5]
+        d0 = [2.0]
+        A, B, Bd, Cn, D, Dd, foff, hoff = LinearMPC.linearize(f, h, x0, u0; d=d0)
+        @test A ≈ [1.0 2.0; 0.0 1.0]
+        @test B ≈ [1.0; 2.0;;]
+        @test Bd ≈ [3.0; -1.0;;]
+        @test Cn ≈ [1.0 0.0]
+        @test D ≈ zeros(1, 1)
+        @test Dd ≈ [-1.0;;]
+        @test foff ≈ zeros(2)
+        @test hoff ≈ zeros(1)
+
+        nmodel = LinearMPC.Model(f, h, x0, u0; d=d0)
+        @test nmodel.F ≈ A
+        @test nmodel.G ≈ B
+        @test nmodel.Gd ≈ Bd
+        @test nmodel.C ≈ Cn
+
+        @test_throws ArgumentError LinearMPC.Model(F, G; C=ones(3, 3))
+        @test_throws ArgumentError LinearMPC.Model(f, (x, u, d) -> [x[1] + u[1]], x0, u0; d=d0)
+    end
+
+    @testset "Reference and linear-cost formatting helpers" begin
+        mpc = LinearMPC.MPC([1.0 1.0; 0.0 1.0], [0.0; 1.0]; C=[1.0 0.0; 0.0 1.0], Np=4, Nc=4)
+        set_objective!(mpc; Q=[1.0, 1.0], R=[1.0])
+
+        mpc.settings.reference_preview = true
+        @test LinearMPC.format_reference(mpc, [1.0, 2.0]) ≈ repeat([1.0, 2.0], mpc.Np)
+        @test LinearMPC.format_reference(mpc, [1.0 2.0 3.0 4.0 5.0; 10.0 20.0 30.0 40.0 50.0]) ≈
+              [1.0, 10.0, 2.0, 20.0, 3.0, 30.0, 4.0, 40.0]
+        @test LinearMPC.format_reference(mpc, [1.0 2.0; 10.0 20.0]) ≈
+              [1.0, 10.0, 2.0, 20.0, 2.0, 20.0, 2.0, 20.0]
+        @test_throws ErrorException LinearMPC.format_reference(mpc, [1.0])
+        @test_throws ErrorException LinearMPC.format_reference(mpc, ones(1, 2))
+        @test_throws ErrorException LinearMPC.format_reference(mpc, 1.0)
+
+        mpc.settings.reference_preview = false
+        @test LinearMPC.format_reference(mpc, [7.0 8.0 9.0; 1.0 2.0 3.0]) ≈ [7.0, 1.0]
+
+        lmpc = LinearMPC.MPC([1.0 1.0; 0.0 1.0], [0.0; 1.0]; C=[1.0 0.0], Np=4, Nc=3)
+        set_objective!(lmpc; Q=[1.0], R=[0.1])
+        lmpc.settings.linear_cost = true
+        setup!(lmpc)
+        @test LinearMPC.format_linear_cost(lmpc, [2.0]) == [2.0, 2.0, 2.0]
+        @test LinearMPC.format_linear_cost(lmpc, [1.0, 2.0, 3.0]) == [1.0, 2.0, 3.0]
+        @test LinearMPC.format_linear_cost(lmpc, [4.0 5.0]) == [4.0, 5.0, 5.0]
+        @test_throws ErrorException LinearMPC.format_linear_cost(lmpc, ones(2, 2))
+        @test_throws ErrorException LinearMPC.format_linear_cost(lmpc, 1.0)
+
+        blocked = LinearMPC.MPC([1.0 1.0; 0.0 1.0], [0.0; 1.0]; C=[1.0 0.0], Np=4, Nc=4)
+        set_objective!(blocked; Q=[1.0], R=[0.1])
+        blocked.settings.linear_cost = true
+        move_block!(blocked, [2, 2])
+        setup!(blocked)
+        @test LinearMPC.format_linear_cost(blocked, [1.0 3.0 5.0 7.0]) ≈ [2.0, 6.0, 0.0]
+
+        varying = LinearMPC.MPC([1.0 1.0; 0.0 1.0], [0.0 0.0; 1.0 1.0]; C=[1.0 0.0], Np=4, Nc=4)
+        set_objective!(varying; Q=[1.0], R=[0.1, 0.1])
+        varying.settings.linear_cost = true
+        move_block!(varying, [[1, 3], [2, 2]])
+        setup!(varying)
+        @test_throws ArgumentError LinearMPC.format_linear_cost(varying, [1.0 2.0 3.0 4.0; 4.0 3.0 2.0 1.0])
+    end
+
+    @testset "Recipe helper coverage" begin
+        shim = @eval RecipesBase is_key_supported(::Symbol) = true
+        try
+            @testset "Simulation preview and recipe helpers" begin
+                rs = [1.0 2.0 3.0; 10.0 20.0 30.0]
+                @test LinearMPC.get_preview(rs, 1, 4) == [2.0 3.0 3.0 3.0; 20.0 30.0 30.0 30.0]
+                @test LinearMPC.get_reference_preview(rs, 1, 4) == LinearMPC.get_preview(rs, 1, 4)
+                ls = [1.0 2.0 3.0 4.0]
+                @test LinearMPC.get_linear_cost_preview(ls, 2, 3) == [2.0 3.0 4.0]
+
+                mpc = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=3)
+                set_objective!(mpc; Q=[1.0], R=[1.0])
+                set_bounds!(mpc; umin=[-1.0], umax=[1.0])
+                setup!(mpc)
+                sim = LinearMPC.Simulation(mpc; x0=[0.0], r=[0.0], N=3)
+                attrs = RecipesBase.KW(:xids => [1])
+                series = RecipesBase.apply_recipe(attrs, sim)
+                @test length(series) == 6
+                @test attrs[:layout] == reshape([(1, 1), (1, 1), (1, 1)], 1, :)
+                @test series[1].args == (sim.ts, sim.rs[1, :])
+                @test series[end].args == (sim.ts, sim.xs[1, :])
+            end
+
+            @testset "Explicit MPC parameter labeling and plotting helpers" begin
+                mpc = LinearMPC.MPC([1.0 1.0; 0.0 1.0], [0.0; 1.0]; Gd=[1.0; 0.0], C=[1.0 0.0; 0.0 1.0], Dd=[0.0; 1.0], Np=3)
+                set_objective!(mpc; Q=[1.0, 1.0], R=[1.0], Rr=[0.5])
+                set_input_bounds!(mpc; umin=[-2.0], umax=[2.0])
+                set_labels!(mpc; x=[:x1, :x2], u=[:u1], y=[:y1, :y2], d=[:d1])
+                setup!(mpc)
+
+                @test LinearMPC.label2id(mpc, :x2) == (2, "x2")
+                @test LinearMPC.label2id(mpc, :y1r) == (3, "y1^r")
+                @test LinearMPC.label2id(mpc, :d1) == (5, "d1")
+                @test LinearMPC.label2id(mpc, :u1p) == (6, "u1^-")
+                @test LinearMPC.label2id(mpc, :unknown) == (nothing, "unknown")
+                @test LinearMPC.make_subscript("x12") == "x_12"
+                @test LinearMPC.make_subscript("state") == "state"
+
+                empc = ExplicitMPC(mpc; range=LinearMPC.ParameterRange(mpc), build_tree=false)
+                free_ids, fix_ids, lx, ly = LinearMPC.get_parameter_plot(empc, :y1r, :x1)
+                @test free_ids == [1, 3]
+                @test all(i ∉ free_ids for i in fix_ids)
+                @test lx == "x_1"
+                @test ly == "y_1^r"
+                @test_throws ArgumentError LinearMPC.get_parameter_plot(empc, :unknown, :x1)
+                @test_throws ArgumentError LinearMPC.get_parameter_plot(empc, :x1, :unknown)
+
+                hidden_zero = string(LinearMPC.fixed_parameters_string(empc, [1, 2], [0.0, 2.0]))
+                shown_zero = string(LinearMPC.fixed_parameters_string(empc, [1, 2], [0.0, 2.0]; show_zero=true))
+                @test !occursin("0.0", hidden_zero)
+                @test occursin("2.0", hidden_zero)
+                @test occursin("0.0", shown_zero)
+
+                attrs = RecipesBase.KW(:parameters => [:x1, :y1r], :control => :u1)
+                series = RecipesBase.apply_recipe(attrs, empc)
+                @test length(series) == 1
+                @test attrs[:CR_attr][1] == 1
+                @test attrs[:CR_attr][2] == [1, 3]
+                @test_throws ArgumentError RecipesBase.apply_recipe(RecipesBase.KW(:parameters => [:x1], :control => :u1), empc)
+
+                cert = LinearMPC.certify(mpc; range=LinearMPC.ParameterRange(mpc))
+                cert_attrs = RecipesBase.KW(:parameters => [:x1, :y1r])
+                cert_series = RecipesBase.apply_recipe(cert_attrs, cert)
+                @test length(cert_series) == 1
+                @test cert_attrs[:CR_attr][1] == 0
+            end
+        finally
+            Base.delete_method(which(RecipesBase.is_key_supported, (Symbol,)))
+        end
+    end
+
+    @testset "MPQP preprocessing helpers" begin
+        duplicate_groups = LinearMPC.find_duplicate_rows([1.0 2.0; 1.0000001 2.0; 3.0 4.0]; digits=5)
+        @test duplicate_groups == [[1, 2], [3]]
+
+        cdup = LinearMPC.DenseConstraints(
+            [1.0 0.0; 1.0 0.0],
+            [10.0, 3.0, 5.0],
+            [-10.0, -5.0, -1.0],
+            zeros(3, 1),
+            BitVector([false, false, false]),
+            BitVector([false, false, false]),
+            # One simple bound followed by two general constraints with duplicate rows.
+            Cint[0, 1, 1],
+        )
+        dedup = LinearMPC.remove_duplicate(cdup)
+        @test size(dedup.A, 1) == 1
+        @test dedup.bu == [10.0, 3.0]
+        @test dedup.bl == [-10.0, -1.0]
+
+        cfold = LinearMPC.DenseConstraints(
+            [2.0 0.0],
+            [10.0, 4.0],
+            [-10.0, 0.0],
+            zeros(2, 0),
+            BitVector([false, false]),
+            BitVector([false, false]),
+            Cint[0, 0],
+        )
+        folded = LinearMPC.remove_redundant(cfold)
+        @test isempty(folded.A)
+        @test folded.bu == [2.0]
+        @test folded.bl == [0.0]
+
+        cpruned = LinearMPC.DenseConstraints(
+            [-2.0 0.0; 0.0 0.0],
+            [4.0, 1.0],
+            [2.0, -1.0],
+            zeros(2, 1),
+            BitVector([false, false]),
+            BitVector([false, false]),
+            Cint[0, 0],
+        )
+        pruned = LinearMPC.remove_redundant(cpruned)
+        @test size(pruned.A) == (1, 2)
+        @test pruned.A[1, :] == [1.0, 0.0]
+        @test pruned.bu == [-1.0]
+        @test pruned.bl == [-2.0]
+
+        mpqp_soft = LinearMPC.MPQP(
+            [1.0;;], [0.0], zeros(1, 0), zeros(1, 0),
+            [1.0;;], [1.0], [-1.0], zeros(1, 0),
+            Cint[LinearMPC.DAQP.SOFT], Cint[0], Cint[],
+            false, true, zeros(1), ones(1), -ones(1), zeros(1),
+        )
+        singlesided_single = LinearMPC.make_singlesided(mpqp_soft; single_soft=true)
+        singlesided_multi = LinearMPC.make_singlesided(mpqp_soft; single_soft=false)
+        @test size(singlesided_single.H, 1) == 2
+        @test size(singlesided_single.A, 2) == 2
+        @test size(singlesided_multi.H, 1) == 2
+        @test size(singlesided_multi.A, 2) == 2
+
+        mpqp_inf = LinearMPC.MPQP(
+            [1.0;;], [0.0], zeros(1, 0), zeros(1, 0),
+            [1.0;;], [1e21], [-1.0], zeros(1, 0),
+            Cint[0], Cint[0], Cint[],
+            false, true, zeros(1), ones(1), -ones(1), zeros(1),
+        )
+        pruned_inf = LinearMPC.make_singlesided(mpqp_inf)
+        @test length(pruned_inf.b) == 1
+        @test length(pruned_inf.bounds_table) == 1
+    end
+
+    @testset "Range, cost, and constraint helpers" begin
+        base = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=2)
+        set_objective!(base; Q=[1.0], R=[1.0])
+        setup!(base)
+        pr = LinearMPC.ParameterRange(base)
+        @test isempty(pr.umin)
+        @test isempty(pr.lmin)
+
+        parametric = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=3, Nc=2)
+        set_input_bounds!(parametric; umin=[-2.0], umax=[2.0])
+        set_objective!(parametric; Q=[1.0], R=[1.0], Rr=[0.5])
+        parametric.settings.linear_cost = true
+        setup!(parametric)
+        pr_param = LinearMPC.ParameterRange(parametric)
+        region = LinearMPC.range2region(pr_param)
+        @test pr_param.umin == [-2.0]
+        @test length(pr_param.lmin) == parametric.nl
+        @test region.lb == [pr_param.xmin; pr_param.rmin; pr_param.dmin; pr_param.umin; pr_param.lmin]
+        @test region.ub == [pr_param.xmax; pr_param.rmax; pr_param.dmax; pr_param.umax; pr_param.lmax]
+
+        mpc = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=2)
+        xs = [1.0 2.0]
+        us = [0.0 1.0]
+        rs = [0.0 1.0]
+        @test LinearMPC.evaluate_cost(mpc, xs, us, rs; Q=[2.0;;], R=[3.0;;], Rr=[4.0;;], S=[5.0;;]) ≈ 10.5
+
+        c = LinearMPC.Constraint([1.0;;], [1.0 0.0], zeros(0, 0), zeros(0, 0), zeros(0, 0), zeros(0, 0), [1.0], [-1.0], 1:1, false, false, 0)
+        @test LinearMPC.constraint_violation(c, [0.8, 0.0], [0.5]) ≈ 0.3
+        @test LinearMPC.constraint_violation(c, [0.8 0.2; 0.0 0.0], [0.5 0.0]) ≈ [0.3, 0.0]
+        @test_throws AssertionError LinearMPC.constraint_violation(c, [0.8 0.0], [0.5 0.0 0.1])
+    end
+
+    @testset "Setup warnings and early-return branches" begin
+        mpc = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=2)
+        @test_logs (:error, r"# of controls are 1") set_input_bounds!(mpc; umin=[-1.0, -2.0], umax=[1.0, 2.0])
+
+        n_constraints = length(mpc.constraints)
+        add_constraint!(mpc)
+        add_constraint!(mpc; Ax=[1.0;;], ub=zeros(0), lb=zeros(0))
+        @test length(mpc.constraints) == n_constraints
+
+        tracked = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=2)
+        set_objective!(tracked; Q=[1.0], R=[1.0])
+        @test false == (@test_logs (:warn, r"LQR cost not valid for reference tracking problems") LinearMPC.set_terminal_cost!(tracked))
+
+        @test_logs (:warn, r"The setting \"does_not_exist\" does not exist") (:warn, r"The setting \"does_not_exist\" does not exist") settings!(tracked; does_not_exist=true)
+        @test_logs (:warn, r"The setting \"still_missing\" does not exist") settings!(tracked, Dict(:still_missing => true))
     end
 end

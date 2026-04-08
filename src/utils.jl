@@ -339,7 +339,7 @@ function make_singlesided(mpQP;single_soft=false, soft_weight=1e6)
         # Correct bounds table 
         rm_offset, keep_ids = 1, Int[]
         for i in 1:2*ncstr
-            if(i==rm_ids[rm_offset])
+            if(rm_offset <= length(rm_ids) && i==rm_ids[rm_offset])
                 rm_offset+=1
             else
                 bounds_table[i] -= (rm_offset-1)
