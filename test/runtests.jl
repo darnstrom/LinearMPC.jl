@@ -6,8 +6,6 @@ using Random
 using RecipesBase
 global templib
 Random.seed!(1234)
-# RecipesBase expects plotting backends to register supported keys; tests exercise recipes directly.
-RecipesBase.is_key_supported(::Symbol) = true
 
 @testset verbose = true "LinearMPC.jl" begin
     @testset "Basic setup" begin
@@ -956,6 +954,9 @@ RecipesBase.is_key_supported(::Symbol) = true
         setup!(varying)
         @test_throws ArgumentError LinearMPC.format_linear_cost(varying, [1.0 2.0 3.0 4.0; 4.0 3.0 2.0 1.0])
     end
+
+    # RecipesBase expects plotting backends to register supported keys; these tests exercise recipes directly.
+    RecipesBase.is_key_supported(::Symbol) = true
 
     @testset "Simulation preview and recipe helpers" begin
         rs = [1.0 2.0 3.0; 10.0 20.0 30.0]
