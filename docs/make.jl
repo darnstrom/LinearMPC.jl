@@ -167,7 +167,8 @@ makedocs(sitename = "LinearMPC.jl",
                                                      "Linear control cost" => "manual/linear_cost.md",
                                                      #"Complexity Certification" => "manual/compcert.md",
                                                      "Solver Settings" => "manual/solver.md",
-                                                    ]
+                                                    ],
+                             "Benchmark" => "manual/benchmark.md"
                             ]
                 "Functions" => "functions.md"
                ])
