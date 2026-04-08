@@ -955,71 +955,75 @@ Random.seed!(1234)
         @test_throws ArgumentError LinearMPC.format_linear_cost(varying, [1.0 2.0 3.0 4.0; 4.0 3.0 2.0 1.0])
     end
 
-    # RecipesBase expects plotting backends to register supported keys; these tests exercise recipes directly.
-    RecipesBase.is_key_supported(::Symbol) = true
+    @testset "Recipe helper coverage" begin
+        shim = @eval RecipesBase is_key_supported(::Symbol) = true
+        try
+            @testset "Simulation preview and recipe helpers" begin
+                rs = [1.0 2.0 3.0; 10.0 20.0 30.0]
+                @test LinearMPC.get_preview(rs, 1, 4) == [2.0 3.0 3.0 3.0; 20.0 30.0 30.0 30.0]
+                @test LinearMPC.get_reference_preview(rs, 1, 4) == LinearMPC.get_preview(rs, 1, 4)
+                ls = [1.0 2.0 3.0 4.0]
+                @test LinearMPC.get_linear_cost_preview(ls, 2, 3) == [2.0 3.0 4.0]
 
-    @testset "Simulation preview and recipe helpers" begin
-        rs = [1.0 2.0 3.0; 10.0 20.0 30.0]
-        @test LinearMPC.get_preview(rs, 1, 4) == [2.0 3.0 3.0 3.0; 20.0 30.0 30.0 30.0]
-        @test LinearMPC.get_reference_preview(rs, 1, 4) == LinearMPC.get_preview(rs, 1, 4)
-        ls = [1.0 2.0 3.0 4.0]
-        @test LinearMPC.get_linear_cost_preview(ls, 2, 3) == [2.0 3.0 4.0]
+                mpc = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=3)
+                set_objective!(mpc; Q=[1.0], R=[1.0])
+                set_bounds!(mpc; umin=[-1.0], umax=[1.0])
+                setup!(mpc)
+                sim = LinearMPC.Simulation(mpc; x0=[0.0], r=[0.0], N=3)
+                attrs = RecipesBase.KW(:xids => [1])
+                series = RecipesBase.apply_recipe(attrs, sim)
+                @test length(series) == 6
+                @test attrs[:layout] == reshape([(1, 1), (1, 1), (1, 1)], 1, :)
+                @test series[1].args == (sim.ts, sim.rs[1, :])
+                @test series[end].args == (sim.ts, sim.xs[1, :])
+            end
 
-        mpc = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=3)
-        set_objective!(mpc; Q=[1.0], R=[1.0])
-        set_bounds!(mpc; umin=[-1.0], umax=[1.0])
-        setup!(mpc)
-        sim = LinearMPC.Simulation(mpc; x0=[0.0], r=[0.0], N=3)
-        attrs = RecipesBase.KW(:xids => [1])
-        series = RecipesBase.apply_recipe(attrs, sim)
-        @test length(series) == 6
-        @test attrs[:layout] == reshape([(1, 1), (1, 1), (1, 1)], 1, :)
-        @test series[1].args == (sim.ts, sim.rs[1, :])
-        @test series[end].args == (sim.ts, sim.xs[1, :])
-    end
+            @testset "Explicit MPC parameter labeling and plotting helpers" begin
+                mpc = LinearMPC.MPC([1.0 1.0; 0.0 1.0], [0.0; 1.0]; Gd=[1.0; 0.0], C=[1.0 0.0; 0.0 1.0], Dd=[0.0; 1.0], Np=3)
+                set_objective!(mpc; Q=[1.0, 1.0], R=[1.0], Rr=[0.5])
+                set_input_bounds!(mpc; umin=[-2.0], umax=[2.0])
+                set_labels!(mpc; x=[:x1, :x2], u=[:u1], y=[:y1, :y2], d=[:d1])
+                setup!(mpc)
 
-    @testset "Explicit MPC parameter labeling and plotting helpers" begin
-        mpc = LinearMPC.MPC([1.0 1.0; 0.0 1.0], [0.0; 1.0]; Gd=[1.0; 0.0], C=[1.0 0.0; 0.0 1.0], Dd=[0.0; 1.0], Np=3)
-        set_objective!(mpc; Q=[1.0, 1.0], R=[1.0], Rr=[0.5])
-        set_input_bounds!(mpc; umin=[-2.0], umax=[2.0])
-        set_labels!(mpc; x=[:x1, :x2], u=[:u1], y=[:y1, :y2], d=[:d1])
-        setup!(mpc)
+                @test LinearMPC.label2id(mpc, :x2) == (2, "x2")
+                @test LinearMPC.label2id(mpc, :y1r) == (3, "y1^r")
+                @test LinearMPC.label2id(mpc, :d1) == (5, "d1")
+                @test LinearMPC.label2id(mpc, :u1p) == (6, "u1^-")
+                @test LinearMPC.label2id(mpc, :unknown) == (nothing, "unknown")
+                @test LinearMPC.make_subscript("x12") == "x_12"
+                @test LinearMPC.make_subscript("state") == "state"
 
-        @test LinearMPC.label2id(mpc, :x2) == (2, "x2")
-        @test LinearMPC.label2id(mpc, :y1r) == (3, "y1^r")
-        @test LinearMPC.label2id(mpc, :d1) == (5, "d1")
-        @test LinearMPC.label2id(mpc, :u1p) == (6, "u1^-")
-        @test LinearMPC.label2id(mpc, :unknown) == (nothing, "unknown")
-        @test LinearMPC.make_subscript("x12") == "x_12"
-        @test LinearMPC.make_subscript("state") == "state"
+                empc = ExplicitMPC(mpc; range=LinearMPC.ParameterRange(mpc), build_tree=false)
+                free_ids, fix_ids, lx, ly = LinearMPC.get_parameter_plot(empc, :y1r, :x1)
+                @test free_ids == [1, 3]
+                @test all(i ∉ free_ids for i in fix_ids)
+                @test lx == "x_1"
+                @test ly == "y_1^r"
+                @test_throws ArgumentError LinearMPC.get_parameter_plot(empc, :unknown, :x1)
+                @test_throws ArgumentError LinearMPC.get_parameter_plot(empc, :x1, :unknown)
 
-        empc = ExplicitMPC(mpc; range=LinearMPC.ParameterRange(mpc), build_tree=false)
-        free_ids, fix_ids, lx, ly = LinearMPC.get_parameter_plot(empc, :y1r, :x1)
-        @test free_ids == [1, 3]
-        @test all(i ∉ free_ids for i in fix_ids)
-        @test lx == "x_1"
-        @test ly == "y_1^r"
-        @test_throws ArgumentError LinearMPC.get_parameter_plot(empc, :unknown, :x1)
-        @test_throws ArgumentError LinearMPC.get_parameter_plot(empc, :x1, :unknown)
+                hidden_zero = string(LinearMPC.fixed_parameters_string(empc, [1, 2], [0.0, 2.0]))
+                shown_zero = string(LinearMPC.fixed_parameters_string(empc, [1, 2], [0.0, 2.0]; show_zero=true))
+                @test !occursin("0.0", hidden_zero)
+                @test occursin("2.0", hidden_zero)
+                @test occursin("0.0", shown_zero)
 
-        hidden_zero = string(LinearMPC.fixed_parameters_string(empc, [1, 2], [0.0, 2.0]))
-        shown_zero = string(LinearMPC.fixed_parameters_string(empc, [1, 2], [0.0, 2.0]; show_zero=true))
-        @test !occursin("0.0", hidden_zero)
-        @test occursin("2.0", hidden_zero)
-        @test occursin("0.0", shown_zero)
+                attrs = RecipesBase.KW(:parameters => [:x1, :y1r], :control => :u1)
+                series = RecipesBase.apply_recipe(attrs, empc)
+                @test length(series) == 1
+                @test attrs[:CR_attr][1] == 1
+                @test attrs[:CR_attr][2] == [1, 3]
+                @test_throws ArgumentError RecipesBase.apply_recipe(RecipesBase.KW(:parameters => [:x1], :control => :u1), empc)
 
-        attrs = RecipesBase.KW(:parameters => [:x1, :y1r], :control => :u1)
-        series = RecipesBase.apply_recipe(attrs, empc)
-        @test length(series) == 1
-        @test attrs[:CR_attr][1] == 1
-        @test attrs[:CR_attr][2] == [1, 3]
-        @test_throws ArgumentError RecipesBase.apply_recipe(RecipesBase.KW(:parameters => [:x1], :control => :u1), empc)
-
-        cert = LinearMPC.certify(mpc; range=LinearMPC.ParameterRange(mpc))
-        cert_attrs = RecipesBase.KW(:parameters => [:x1, :y1r])
-        cert_series = RecipesBase.apply_recipe(cert_attrs, cert)
-        @test length(cert_series) == 1
-        @test cert_attrs[:CR_attr][1] == 0
+                cert = LinearMPC.certify(mpc; range=LinearMPC.ParameterRange(mpc))
+                cert_attrs = RecipesBase.KW(:parameters => [:x1, :y1r])
+                cert_series = RecipesBase.apply_recipe(cert_attrs, cert)
+                @test length(cert_series) == 1
+                @test cert_attrs[:CR_attr][1] == 0
+            end
+        finally
+            Base.delete_method(which(RecipesBase.is_key_supported, (Symbol,)))
+        end
     end
 
     @testset "MPQP preprocessing helpers" begin
