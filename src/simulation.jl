@@ -41,6 +41,7 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
     # Check if MPC has observer
     has_observer = !isnothing(mpc.state_observer)
     ny = has_observer ? size(mpc.state_observer.C,1) : mpc.model.ny
+    nd_sim = has_observer ? simulation_disturbance_dim(mpc) : mpc.model.nd
     if isnothing(scenario.get_measurement)
         get_measurement = if has_observer 
             (x,d) -> mpc.state_observer.C*x+mpc.state_observer.Dd*d+mpc.state_observer.h_offset
@@ -56,7 +57,7 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
     xs = zeros(mpc.model.nx,N);
     ys = zeros(mpc.model.ny,N);
     rs = repeat(mpc.model.C*mpc.model.xo,1,N)
-    ds = zeros(mpc.model.nd,N);
+    ds = zeros(nd_sim,N);
     ls = zeros(mpc.model.nu,N);
     us = zeros(mpc.model.nu,N)
     xhats = zeros(mpc.model.nx,N);
@@ -91,7 +92,7 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
     has_observer && set_state!(mpc,scenario.x0)
     for k = 1:N
         xs[:,k], yms[:,k] = x, get_measurement(x,ds[:,k])
-        ys[:,k] = has_observer ? mpc.model.C*x + mpc.model.Dd*ds[:,k] : yms[:,k]
+        ys[:,k] = has_observer ? mpc.state_observer.C*x + mpc.state_observer.Dd*ds[:,k] : yms[:,k]
 
         # Get state estimate
         xhat = has_observer ? correct_state!(mpc,yms[:,k],ds[:,k]) : x

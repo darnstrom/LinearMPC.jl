@@ -24,6 +24,7 @@ export set_binary_controls!
 export set_disturbance!, set_x0_uncertainty!
 export set_terminal_cost!,set_prestabilizing_feedback!
 export set_state_observer!
+export set_offset_free_observer!
 export set_operating_point!, set_offset!
 export move_block!,set_labels!
 export settings!
@@ -49,6 +50,7 @@ include("robust.jl");
 include("observer.jl");
 export predict_state!,correct_state!
 export set_state!,get_state,update_state!
+export get_estimated_disturbance
 
 using PrecompileTools
 @setup_workload begin
