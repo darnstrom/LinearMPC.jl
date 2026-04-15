@@ -6,8 +6,8 @@ Model predictive control requires _all_ the state of the system to be known. All
 ```math
 x_{k+1} = F x_k + G u_k + w_k, \qquad y_k = C x_k + e_k
 ```
-where the process noise $w_k \sim \mathcal{N}(0,Q)$ and the measurement noise $e_k \sim \mathcal{N}(0,R)$. Each time instance, the filter performs two steps: a _correction step_ and a _prediction step_. 
-In the correction steps, the current state estimate $\hat{x}$ is corrected based on a measurement $y$ according to   
+where the process noise $w_k \sim \mathcal{N}(0,Q)$ and the measurement noise $e_k \sim \mathcal{N}(0,R)$. Each time instance, the filter performs two steps: a _correction step_ and a _prediction step_.
+In the correction steps, the current state estimate $\hat{x}$ is corrected based on a measurement $y$ according to
 ```math
 \hat{x} \leftarrow \hat{x} + K(y-C \hat{x}),
 ```
@@ -29,7 +29,11 @@ mpc.set_state_observer(Q=Q, R=R)
 where `Q` and `R` are covariance matrices for the process noise and measurement noise, respectively. These are used as tuning variables, where the relative size of the elements in `Q` and `R` determines if the prediction or the measurements should be trusted more. By default, `set_state_observer!` uses $F$, $G$, and $C$ from the MPC structure. It is possible to override this by passing the optional arguments `F`,`G`,`C` to `set_state_observer!`.
 
 ## Offset-free tracking
-For offset-free tracking in the sense discussed by Pannocchia (2015), **LinearMPC.jl** also provides
+For offset-free tracking[^Pannocchia15], **LinearMPC.jl** also provides
+
+[^Pannocchia15]: Pannocchia, Gabriele. "Offset-free tracking MPC: A tutorial review and comparison of different formulations." _European control conference (ECC)_ (2015)
+
+Axehill, Daniel, and Hansson, Anders. "A preprocessing algorithm for MIQP solvers with applications to MPC." _43rd IEEE Conference on Decision and Control (CDC)_ (2004)
 
 ```julia
 set_offset_free_observer!(mpc; method=:state_disturbance, Q, R)
@@ -59,7 +63,7 @@ dhat = get_estimated_disturbance(mpc)
 The script `example/offset_free_tracking.jl` compares nominal tracking with the offset-free `:velocity` formulation on a disturbed double integrator.
 
 ## Getting, setting, correcting, and predicting state
-The current state of the observer is accessed with 
+The current state of the observer is accessed with
 ```julia
 x = get_state(mpc)
 ```
@@ -74,13 +78,13 @@ Given a measurement `y`, the state of the observer can be corrected with
 correct_state!(mpc,y)
 ```
 
-Given a control action `u`, the next state can be predicted with 
+Given a control action `u`, the next state can be predicted with
 ```julia
 predict_state!(mpc,u)
 ```
 
-## Using the observer  
-Typically, you want to do a correction step before computing a new control action, and then use the new control action to predict the next state. A typical sequence of calls are therefore 
+## Using the observer
+Typically, you want to do a correction step before computing a new control action, and then use the new control action to predict the next state. A typical sequence of calls are therefore
 ```julia
 x = correct_state!(mpc,y)
 u = compute_control(mpc,x)
@@ -88,9 +92,21 @@ predict_state!(mpc,u)
 ```
 
 ## Code generation
-If an observer has been set, the `codegen` function will in addition to C-code for the MPC also generate C-code for the observer. Specifically the C functions `mpc_correct_state(state, measurement, disturbance)` and  `mpc_predict_state(state, control, disturbance)` will be generated, where `state`, `measurement`, `control` and `disturbance` are floating-point arrays. The updated state will be available in the floating-point array `state` after calling the functions. 
+If an observer has been set, the `codegen` function will in addition to C-code for the MPC also generate C-code for the observer. Specifically the C functions `mpc_correct_state(state, measurement, disturbance)` and  `mpc_predict_state(state, control, disturbance)` will be generated, where `state`, `measurement`, `control` and `disturbance` are floating-point arrays. The updated state will be available in the floating-point array `state` after calling the functions.
 
-Similar to the previous section, the following is a typical sequence of calls when using an observer together with `mpc_compute_control` 
+For standard state observers, `state` has length `N_STATE` and `disturbance` has length `N_DISTURBANCE`, exactly as in the generated MPC API.
+
+For offset-free observers, the generated observer state is **augmented**. In that case, the generated C API also provides
+
+```c
+void mpc_get_estimated_state(c_float* state, c_float* observer_state);
+void mpc_get_estimated_disturbance(c_float* disturbance, c_float* observer_state, c_float* measured_disturbance);
+int mpc_compute_control_observer(...);
+```
+
+so that the estimated disturbance can be assembled automatically and control can be computed directly from the augmented observer state.
+
+Similar to the previous section, the following is a typical sequence of calls when using an observer together with `mpc_compute_control`
 
 ```c
 mpc_correct_state(state,measurement,disturbance)
@@ -98,3 +114,11 @@ mpc_compute_control(control,state,reference,disturbance)
 mpc_predict_state(state,control,disturbance)
 ```
 Note for cases when there is no distrubance, one can pass `NULL` instead of `disturbance` as last argument to the functions.
+
+For an offset-free observer the corresponding sequence is
+
+```c
+mpc_correct_state(observer_state, measurement, measured_disturbance);
+mpc_compute_control_observer(control, observer_state, reference, measured_disturbance);
+mpc_predict_state(observer_state, control, measured_disturbance);
+```
