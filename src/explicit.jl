@@ -54,7 +54,9 @@ function form_parameter(mpc::Union{MPC,ExplicitMPC},x,r,d,uprev,l=nothing)
     # Setup parameter vector θ
     nx,nr,nd,nuprev,nl = get_parameter_dims(mpc)
     r = format_reference(mpc, r)
+    d = get_control_disturbance(mpc, d)
     d = isnothing(d) ? zeros(nd) : d
+    length(d) == nd || throw(ArgumentError("Disturbance vector must have length $nd"))
     uprev = isnothing(uprev) ? mpc.uprev[1:nuprev] : uprev[1:nuprev]
     l_vec = format_linear_cost(mpc, l)
     return [x;r;d;uprev;l_vec]

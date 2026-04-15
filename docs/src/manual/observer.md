@@ -28,6 +28,36 @@ mpc.set_state_observer(Q=Q, R=R)
 
 where `Q` and `R` are covariance matrices for the process noise and measurement noise, respectively. These are used as tuning variables, where the relative size of the elements in `Q` and `R` determines if the prediction or the measurements should be trusted more. By default, `set_state_observer!` uses $F$, $G$, and $C$ from the MPC structure. It is possible to override this by passing the optional arguments `F`,`G`,`C` to `set_state_observer!`.
 
+## Offset-free tracking
+For offset-free tracking in the sense discussed by Pannocchia (2015), **LinearMPC.jl** also provides
+
+```julia
+set_offset_free_observer!(mpc; method=:state_disturbance, Q, R)
+```
+
+This augments the controller model with constant disturbance channels and creates an observer that estimates both the nominal state and the disturbance. The estimated disturbance is then fed automatically into `compute_control`, so the closed-loop call sequence stays the same as for a standard state observer:
+
+```julia
+x = correct_state!(mpc, y)
+u = compute_control(mpc, x; r=[0.5])
+predict_state!(mpc, u)
+```
+
+The keyword `method` selects the formulation:
+
+- `:state_disturbance` uses the equivalent disturbance-model realization of the state-disturbance observer
+- `:velocity` uses the equivalent disturbance-model realization of the velocity form with `Ke = I`
+- `:output_disturbance` adds a pure output-bias model when the rank condition is satisfied
+- `:general` accepts user-provided `Bd` and `Cd`
+
+The current disturbance estimate can be inspected with
+
+```julia
+dhat = get_estimated_disturbance(mpc)
+```
+
+The script `example/offset_free_tracking.jl` compares nominal tracking with the offset-free `:velocity` formulation on a disturbed double integrator.
+
 ## Getting, setting, correcting, and predicting state
 The current state of the observer is accessed with 
 ```julia

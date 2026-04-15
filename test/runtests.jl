@@ -643,6 +643,40 @@ Random.seed!(1234)
             @test norm(x-xref2) < 1e-9
         end
     end
+    @testset "Offset-free observer" begin
+        F,G = [1 0.1; 0 1], [0.005;0.1;;]
+        C = [1.0 0]
+        dynamics = (x,u,d) -> F*x + G*u + [0.01;0.0]
+
+        nominal = LinearMPC.MPC(F,G;Ts=0.1,C=C,Np=20)
+        set_objective!(nominal;Q=[1.0],R=[0.0],Rr=[0.1])
+        set_bounds!(nominal;umin=[-1.0],umax=[1.0])
+        sim_nominal = Simulation(dynamics, nominal; x0=zeros(2), N=100, r=[0.5])
+
+        tracked = LinearMPC.MPC(F,G;Ts=0.1,C=C,Np=20)
+        set_objective!(tracked;Q=[1.0],R=[0.0],Rr=[0.1])
+        set_bounds!(tracked;umin=[-1.0],umax=[1.0])
+        obs = LinearMPC.set_offset_free_observer!(tracked; method=:velocity,
+                                                  Q=[1e-3,1e-3], R=[1e-4])
+        sim_tracked = Simulation(dynamics, tracked; x0=zeros(2), N=100, r=[0.5])
+
+        @test obs.formulation == :velocity
+        @test size(tracked.model.Gd) == (2,1)
+        @test size(tracked.model.Dd) == (1,1)
+        @test length(LinearMPC.get_estimated_disturbance(tracked)) == 1
+        @test abs(sim_nominal.xs[1,end] - 0.5) > 5e-2
+        @test abs(sim_tracked.xs[1,end] - 0.5) < 1e-3
+
+        disturbance_mpc = LinearMPC.MPC(F,G;Ts=0.1,C=C,Gd=[1.0;0.0;;],Np=20)
+        set_objective!(disturbance_mpc;Q=[1.0],R=[0.0],Rr=[0.1])
+        set_bounds!(disturbance_mpc;umin=[-1.0],umax=[1.0])
+        LinearMPC.set_offset_free_observer!(disturbance_mpc; method=:velocity,
+                                            Q=[1e-3,1e-3], R=[1e-4])
+        LinearMPC.set_state!(disturbance_mpc, zeros(2))
+        y = LinearMPC.correct_state!(disturbance_mpc, zeros(1), [0.2])
+        u = compute_control(disturbance_mpc, y; r=[0.5], d=[0.2])
+        @test length(u) == 1
+    end
     @testset "x0 uncertainty" begin
         F,G = [1 0.1; 0 1], [0.005;0.1;;] # double integrator with Ts=0.1 
         mpc= LinearMPC.MPC(F,G;Ts=0.1,Np=25,C=[1 0;])

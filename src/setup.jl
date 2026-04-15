@@ -328,6 +328,153 @@ function set_state_observer!(mpc::Union{MPC,ExplicitMPC};
     mpc.state_observer = KalmanFilter(F,G,C;Gd,Dd,f_offset,h_offset,Q,R,x0)
 end
 
+function normalize_offset_free_method(method::Symbol)
+    aliases = Dict(
+        :state => :state_disturbance,
+        :state_disturbance => :state_disturbance,
+        :velocity => :velocity,
+        :output => :output_disturbance,
+        :output_disturbance => :output_disturbance,
+        :general => :general,
+    )
+    haskey(aliases, method) || throw(ArgumentError("Unknown offset-free method $method"))
+    return aliases[method]
+end
+
+function rebuild_model(model::Model, Gd, Dd, disturbance_labels)
+    labels = Labels(model.labels.x, model.labels.u, model.labels.y, Symbol.(disturbance_labels))
+    nd = size(Gd, 2)
+    return Model(model.F, model.G, float(Gd), model.f_offset, model.xo, model.uo,
+                 model.wmin, model.wmax, model.C, float(Dd), model.h_offset,
+                 model.true_dynamics, model.true_h,
+                 model.nx, model.nu, model.ny, nd, model.Ts, labels)
+end
+
+function strip_offset_free_model(model::Model, nd_measured::Int)
+    return rebuild_model(model, model.Gd[:,1:nd_measured], model.Dd[:,1:nd_measured], model.labels.d[1:nd_measured])
+end
+
+function append_offset_free_model(model::Model, Bd, Cd, disturbance_labels)
+    return rebuild_model(model, [model.Gd Bd], [model.Dd Cd], [model.labels.d; disturbance_labels])
+end
+
+function default_offset_free_labels(method::Symbol, nd::Int)
+    prefix = method == :output_disturbance ? "yoff" : "dof"
+    return Symbol.(prefix .* string.(1:nd))
+end
+
+function nominal_observer_gain(F, C; Q=nothing, R=nothing)
+    nx, ny = size(F, 1), size(C, 1)
+    return KalmanFilter(F, zeros(nx, ny), C; Q, R).K
+end
+
+function validate_offset_free_model(F, C, Bd, Cd)
+    nx = size(F, 1)
+    nd = size(Bd, 2)
+    ny = size(C, 1)
+    size(Bd, 1) == nx || throw(ArgumentError("Bd must have $nx rows"))
+    size(Cd) == (ny, nd) || throw(ArgumentError("Cd must have size ($ny, $nd)"))
+    rank([F - Matrix{Float64}(I, nx, nx) Bd; C Cd]) == nx + nd ||
+        throw(ArgumentError("Offset-free disturbance model violates rank([F-I Bd; C Cd]) = nx + nd"))
+end
+
+function build_offset_free_observer(model::Model, nd_measured::Int, method::Symbol;
+        Q=nothing, R=nothing, K=nothing, Bd=nothing, Cd=nothing,
+        Kx=nothing, Kd=nothing, x0=nothing, d0=nothing)
+
+    F, G, C = model.F, model.G, model.C
+    method = normalize_offset_free_method(method)
+    nx, ny = model.nx, model.ny
+
+    if method == :state_disturbance || method == :velocity
+        K = isnothing(K) ? nominal_observer_gain(F, C; Q, R) : float(K)
+        size(K) == (nx, ny) || throw(ArgumentError("K must have size ($nx, $ny)"))
+        Bd = K
+        Cd = Matrix{Float64}(I, ny, ny) - C*K
+        Kx = K
+        Kd = Matrix{Float64}(I, ny, ny)
+    elseif method == :output_disturbance
+        Bd = zeros(nx, ny)
+        Cd = Matrix{Float64}(I, ny, ny)
+    else
+        isnothing(Bd) && throw(ArgumentError("Method :general requires Bd"))
+        isnothing(Cd) && throw(ArgumentError("Method :general requires Cd"))
+        Bd = float(Bd)
+        Cd = float(Cd)
+    end
+
+    Bd = float(Bd)
+    Cd = float(Cd)
+    validate_offset_free_model(F, C, Bd, Cd)
+    ndo = size(Bd, 2)
+
+    x0 = isnothing(x0) ? zeros(nx) : float(x0)
+    d0 = isnothing(d0) ? zeros(ndo) : float(d0)
+    length(x0) == nx || throw(ArgumentError("x0 must have length $nx"))
+    length(d0) == ndo || throw(ArgumentError("d0 must have length $ndo"))
+
+    Faug = [F Bd; zeros(ndo, nx) Matrix{Float64}(I, ndo, ndo)]
+    Gaug = [G; zeros(ndo, model.nu)]
+    Gdaug = [model.Gd[:,1:nd_measured]; zeros(ndo, nd_measured)]
+    Caug = [C Cd]
+    xaug0 = [x0; d0]
+    faug = [model.f_offset; zeros(ndo)]
+
+    estimator = if !isnothing(Kx) || !isnothing(Kd) || method == :state_disturbance || method == :velocity
+        Kx = isnothing(Kx) ? zeros(nx, ny) : float(Kx)
+        Kd = isnothing(Kd) ? zeros(ndo, ny) : float(Kd)
+        size(Kx) == (nx, ny) || throw(ArgumentError("Kx must have size ($nx, $ny)"))
+        size(Kd) == (ndo, ny) || throw(ArgumentError("Kd must have size ($ndo, $ny)"))
+        KalmanFilter(Faug, Gaug, Gdaug, faug, Caug, model.Dd[:,1:nd_measured], model.h_offset,
+                     [Kx; Kd], xaug0)
+    else
+        KalmanFilter(Faug, Gaug, Caug; Gd=Gdaug, Dd=model.Dd[:,1:nd_measured],
+                     f_offset=faug, h_offset=model.h_offset, Q, R, x0=xaug0)
+    end
+
+    return OffsetFreeObserver(estimator, model.C, model.Dd[:,1:nd_measured], model.h_offset,
+                              nx, nd_measured, ndo, method), Bd, Cd
+end
+
+"""
+    set_offset_free_observer!(mpc; method=:state_disturbance, Q, R, K, Bd, Cd, Kx, Kd, x0, d0, disturbance_labels)
+
+Create an offset-free observer/controller pair following the formulations reviewed by
+Pannocchia (2015). The controller model is augmented with constant disturbance channels,
+and the observer estimates both the nominal state and the disturbance.
+
+Supported methods are:
+- `:state_disturbance` (default), using the equivalent disturbance-model realization from Theorem 9
+- `:velocity`, using the equivalent disturbance-model realization from Theorem 15 with `Ke = I`
+- `:output_disturbance`, using a pure output-bias disturbance model
+- `:general`, using user-provided `Bd` and `Cd`
+
+For `:state_disturbance` and `:velocity`, the nominal observer gain `K` can be provided
+directly or obtained from the existing steady-state Kalman filter tuning through `Q` and `R`.
+"""
+function set_offset_free_observer!(mpc::MPC;
+        method::Symbol=:state_disturbance,
+        Q=nothing, R=nothing, K=nothing,
+        Bd=nothing, Cd=nothing,
+        Kx=nothing, Kd=nothing,
+        x0=nothing, d0=nothing,
+        disturbance_labels=nothing)
+
+    nd_measured = mpc.state_observer isa OffsetFreeObserver ? mpc.state_observer.nd_measured : mpc.model.nd
+    mpc.model = strip_offset_free_model(mpc.model, nd_measured)
+
+    observer, Bd, Cd = build_offset_free_observer(mpc.model, nd_measured, method;
+                                                  Q, R, K, Bd, Cd, Kx, Kd, x0, d0)
+
+    labels = isnothing(disturbance_labels) ? default_offset_free_labels(observer.formulation, size(Bd, 2)) : disturbance_labels
+    length(labels) == size(Bd, 2) || throw(ArgumentError("Need $(size(Bd, 2)) disturbance labels"))
+
+    mpc.model = append_offset_free_model(mpc.model, Bd, Cd, labels)
+    mpc.state_observer = observer
+    mpc.mpqp_issetup = false
+    return observer
+end
+
 """
     set_operating_point!(mpc;xo,uo)
 Sets the operating point to the state xo and control uo and linearize
