@@ -667,6 +667,50 @@ Random.seed!(1234)
         @test abs(sim_nominal.xs[1,end] - 0.5) > 5e-2
         @test abs(sim_tracked.xs[1,end] - 0.5) < 1e-3
 
+        srcdir = tempname()
+        LinearMPC.codegen(tracked, dir=srcdir)
+        src = [f for f in readdir(srcdir) if last(f,1) == "c"]
+
+        if !isnothing(Sys.which("gcc"))
+            testlib = "mpctest."* Base.Libc.Libdl.dlext
+            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+
+            xaug = randn(3)
+            uin = randn(1)
+            y = randn(1)
+            ref = [0.5]
+
+            LinearMPC.set_state!(tracked.state_observer, xaug)
+            xref_pred = copy(LinearMPC.predict!(tracked.state_observer.estimator, uin))
+            xpred = copy(xaug)
+
+            global templib = joinpath(srcdir, testlib)
+            ccall(("mpc_predict_state", templib), Cvoid,
+                  (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), xpred, uin, C_NULL)
+            @test norm(xpred-xref_pred) < 1e-9
+
+            LinearMPC.set_state!(tracked.state_observer, xaug)
+            xref_corr = copy(LinearMPC.correct!(tracked.state_observer.estimator, y))
+            xcorr = copy(xaug)
+            ccall(("mpc_correct_state", templib), Cvoid,
+                  (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), xcorr, y, C_NULL)
+            @test norm(xcorr-xref_corr) < 1e-9
+
+            LinearMPC.set_state!(tracked.state_observer, xaug)
+            tracked.uprev .= 0
+            uref = compute_control(tracked, tracked.state_observer.x; r=ref)
+            uc = zeros(1)
+            ccall(("mpc_compute_control_observer", templib), Cint,
+                  (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}),
+                  uc, xaug, ref, C_NULL)
+            @test norm(uc-uref) < 1e-9
+
+            dref = zeros(1)
+            ccall(("mpc_get_estimated_disturbance", templib), Cvoid,
+                  (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), dref, xaug, C_NULL)
+            @test abs(dref[1] - xaug[3]) < 1e-9
+        end
+
         disturbance_mpc = LinearMPC.MPC(F,G;Ts=0.1,C=C,Gd=[1.0;0.0;;],Np=20)
         set_objective!(disturbance_mpc;Q=[1.0],R=[0.0],Rr=[0.1])
         set_bounds!(disturbance_mpc;umin=[-1.0],umax=[1.0])

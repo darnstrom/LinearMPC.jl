@@ -121,11 +121,14 @@ function correct!(observer::OffsetFreeObserver,y,d=nothing)
     return observer.x
 end
 
-function codegen(kf::KalmanFilter,fh,fsrc)
+function render_observer_codegen(kf::KalmanFilter,fh,fsrc)
     ny,nx = size(kf.C)
     nu = size(kf.G,2)
     nd = size(kf.Gd,2)
     @printf(fh, "#define N_MEASUREMENT %d\n",ny);
+    @printf(fh, "#define N_OBSERVER_STATE %d\n",nx);
+    @printf(fh, "#define N_OBSERVER_CONTROL %d\n",nu);
+    @printf(fh, "#define N_OBSERVER_DISTURBANCE %d\n",nd);
     @printf(fh, "extern c_float MPC_PLANT_DYNAMICS[%d];\n",nx*(1+nx+nu+nd));
     @printf(fh, "extern c_float MPC_MEASUREMENT_FUNCTION[%d];\n",ny*(1+nx+nd));
     @printf(fh, "extern c_float K_TRANSPOSE_OBSERVER[%d];\n",ny*nx);
@@ -141,8 +144,60 @@ function codegen(kf::KalmanFilter,fh,fsrc)
     close(fmpc_src)
 end
 
-function codegen(::OffsetFreeObserver, fh, fsrc)
-    throw(ArgumentError("Code generation for OffsetFreeObserver is not yet supported"))
+codegen(kf::KalmanFilter,fh,fsrc) = render_observer_codegen(kf,fh,fsrc)
+codegen(kf::KalmanFilter, mpc::Union{MPC,ExplicitMPC}, fh, fsrc) = render_observer_codegen(kf,fh,fsrc)
+
+function codegen(observer::OffsetFreeObserver, mpc::Union{MPC,ExplicitMPC}, fh, fsrc)
+    render_observer_codegen(observer.estimator, fh, fsrc)
+
+    @printf(fh, "#define N_MEASURED_DISTURBANCE %d\n", observer.nd_measured)
+    @printf(fh, "#define N_OFFSET_FREE_DISTURBANCE %d\n", observer.nd_offsetfree)
+    @printf(fh, "void mpc_get_estimated_state(c_float* state, c_float* observer_state);\n")
+    @printf(fh, "void mpc_get_estimated_disturbance(c_float* disturbance, c_float* observer_state, c_float* measured_disturbance);\n")
+    if mpc.nl > 0
+        @printf(fh, "int mpc_compute_control_observer(c_float* control, c_float* observer_state, c_float* reference, c_float* measured_disturbance, c_float* linear_cost);\n")
+    else
+        @printf(fh, "int mpc_compute_control_observer(c_float* control, c_float* observer_state, c_float* reference, c_float* measured_disturbance);\n")
+    end
+
+    write(fsrc, """
+void mpc_get_estimated_state(c_float* state, c_float* observer_state){
+    int i;
+    for(i=0;i<N_STATE;i++) state[i] = observer_state[i];
+}
+
+void mpc_get_estimated_disturbance(c_float* disturbance, c_float* observer_state, c_float* measured_disturbance){
+    int i;
+    for(i=0;i<N_MEASURED_DISTURBANCE;i++) disturbance[i] = measured_disturbance ? measured_disturbance[i] : 0;
+    for(i=0;i<N_OFFSET_FREE_DISTURBANCE;i++) disturbance[N_MEASURED_DISTURBANCE+i] = observer_state[N_STATE+i];
+}
+""")
+
+    if mpc.nl > 0
+        write(fsrc, """
+int mpc_compute_control_observer(c_float* control, c_float* observer_state, c_float* reference, c_float* measured_disturbance, c_float* linear_cost){
+    c_float state[N_STATE];
+    c_float disturbance[N_DISTURBANCE];
+    mpc_get_estimated_state(state, observer_state);
+    mpc_get_estimated_disturbance(disturbance, observer_state, measured_disturbance);
+    return mpc_compute_control(control, state, reference, disturbance, linear_cost);
+}
+""")
+    else
+        write(fsrc, """
+int mpc_compute_control_observer(c_float* control, c_float* observer_state, c_float* reference, c_float* measured_disturbance){
+    c_float state[N_STATE];
+    c_float disturbance[N_DISTURBANCE];
+    mpc_get_estimated_state(state, observer_state);
+    mpc_get_estimated_disturbance(disturbance, observer_state, measured_disturbance);
+    return mpc_compute_control(control, state, reference, disturbance);
+}
+""")
+    end
+end
+
+function codegen(observer::OffsetFreeObserver, fh, fsrc)
+    throw(ArgumentError("Need the MPC to generate code for OffsetFreeObserver"))
 end
 
 function get_control_disturbance(mpc::Union{MPC,ExplicitMPC}, d=nothing)

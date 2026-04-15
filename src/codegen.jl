@@ -138,7 +138,7 @@ int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_
 
     if !isnothing(mpc.state_observer)
         @printf(fh, "#define N_CONTROL %d\n",mpc.model.nu);
-        codegen(mpc.state_observer,fh,fsrc)
+        codegen(mpc.state_observer,mpc,fh,fsrc)
     end
 
     @printf(fh, "#endif // ifndef %s\n", hguard);
@@ -226,7 +226,7 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
     close(fmpc_src)
 
     if !isnothing(mpc.state_observer)
-        codegen(mpc.state_observer,fh,fsrc)
+        codegen(mpc.state_observer,mpc,fh,fsrc)
     end
 
     @printf(fh, "#endif // ifndef %s\n", hguard);
