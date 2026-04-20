@@ -64,7 +64,9 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
     write(fh, "typedef $float_type c_float;\n")
     @printf(fh, "#define N_STATE %d\n",mpc.model.nx);
     @printf(fh, "#define N_REFERENCE %d\n",mpc.nr);
+    @printf(fh, "#define N_DISTURBANCE_BASE %d\n",mpc.model.nd);
     @printf(fh, "#define N_DISTURBANCE %d\n",mpc.nd);
+    mpc.settings.disturbance_preview && @printf(fh, "#define N_DISTURBANCE_PREVIEW_HORIZON %d\n",mpc.Np);
     @printf(fh, "#define N_CONTROL_PREV %d\n",mpc.nuprev);
     @printf(fh, "#define N_LINEAR_COST %d\n",mpc.nl);
 
@@ -167,7 +169,9 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
     @printf(fh, "#define N_THETA %d\n",nth);
     @printf(fh, "#define N_STATE %d\n",mpc.model.nx);
     @printf(fh, "#define N_REFERENCE %d\n",mpc.nr);
+    @printf(fh, "#define N_DISTURBANCE_BASE %d\n",mpc.model.nd);
     @printf(fh, "#define N_DISTURBANCE %d\n",mpc.nd);
+    mpc.settings.disturbance_preview && @printf(fh, "#define N_DISTURBANCE_PREVIEW_HORIZON %d\n",mpc.Np);
     @printf(fh, "#define N_CONTROL_PREV %d\n",mpc.nuprev);
     @printf(fh, "#define N_LINEAR_COST %d\n",mpc.nl);
 

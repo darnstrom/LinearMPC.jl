@@ -564,12 +564,51 @@ Random.seed!(1234)
             run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
 
             u = zeros(1)
+            theta = zeros(7)
             global templib = joinpath(srcdir, testlib)
+            ccall(("mpc_update_parameter", templib), Cint,
+                  (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}),
+                  theta, u, x, r, d_traj)
+            @test theta ≈ [x; r; vec(d_traj)]
+
             ccall(("mpc_compute_control", templib), Cint,
                   (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}),
                   u, x, r, d_traj)
 
             @test u ≈ u_julia
+        end
+    end
+
+    @testset "Codegen Constant Disturbance Uses First Column" begin
+        A = [1.0;;]
+        B = [1.0;;]
+        Gd = [2.0;;]
+        C = [1.0;;]
+        mpc = LinearMPC.MPC(A, B; Gd, C, Np=4, Nc=4)
+        set_bounds!(mpc; umin=[-2.0], umax=[2.0])
+        set_objective!(mpc; Q=[1.0], R=[0.1])
+        setup!(mpc)
+
+        x = [0.5]
+        r = [0.25]
+        d_traj = [3.0 4.0 5.0 6.0]
+
+        srcdir = tempname()
+        LinearMPC.codegen(mpc; dir=srcdir)
+        src = [f for f in readdir(srcdir) if last(f,1) == "c"]
+        @test !isempty(src)
+
+        if(!isnothing(Sys.which("gcc")))
+            testlib = "mpctest."* Base.Libc.Libdl.dlext
+            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+
+            u = zeros(1)
+            theta = zeros(3)
+            global templib = joinpath(srcdir, testlib)
+            ccall(("mpc_update_parameter", templib), Cint,
+                  (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}),
+                  theta, u, x, r, d_traj)
+            @test theta ≈ [x; r; d_traj[:,1]]
         end
     end
 
