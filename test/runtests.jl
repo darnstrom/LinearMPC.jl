@@ -407,6 +407,186 @@ Random.seed!(1234)
         @test_nowarn compute_control(mpc, [0.0]; d=[0.0 1.0])
     end
 
+    @testset "Disturbance Preview Multiple Disturbances" begin
+        # Test with nd > 1: two independent disturbances
+        A = [0.9 0.0; 0.0 0.8]
+        B = [1.0; 0.0]
+        Gd = [1.0 0.0; 0.0 1.0]
+        C = [1.0 0.0; 0.0 1.0]
+        mpc = LinearMPC.MPC(A, B; Gd, C, Np=4, Nc=4)
+        set_bounds!(mpc; umin=[-2.0], umax=[2.0])
+        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1])
+        mpc.settings.disturbance_preview = true
+        setup!(mpc)
+
+        # nd should be nd_base * Np = 2 * 4 = 8
+        nx, nr, nd, nuprev, nl = LinearMPC.get_parameter_dims(mpc)
+        @test nd == 2 * 4
+
+        # Constant disturbance vector should be tiled into preview
+        d_const = [0.5, -0.3]
+        u_const = compute_control(mpc, [0.0, 0.0]; d=d_const)
+        @test length(u_const) == 1
+
+        # Disturbance trajectory matrix (nd_base × Np)
+        d_traj = [0.0 0.5 1.0 1.0; 0.0 0.0 -0.5 -0.5]
+        u_traj = compute_control(mpc, [0.0, 0.0]; d=d_traj)
+        @test length(u_traj) == 1
+
+        # Different disturbance trajectories should yield different controls
+        @test norm(u_traj - u_const) > 1e-5
+    end
+
+    @testset "Disturbance Preview + Reference Preview Combined" begin
+        A = [1.0 1.0; 0.0 1.0]
+        B = [0.0; 1.0]
+        Gd = [0.5; 0.0]
+        C = [1.0 0.0]
+        mpc = LinearMPC.MPC(A, B; Gd, C, Np=5, Nc=5)
+        set_bounds!(mpc; umin=[-2.0], umax=[2.0])
+        set_objective!(mpc; Q=[5.0], R=[0.1])
+        mpc.settings.reference_preview = true
+        mpc.settings.disturbance_preview = true
+        setup!(mpc)
+
+        nx, nr, nd, nuprev, nl = LinearMPC.get_parameter_dims(mpc)
+        @test nx == 2
+        @test nr == 1 * 5   # ny × Np
+        @test nd == 1 * 5   # nd_base × Np
+
+        x = [0.0, 0.0]
+        r_traj = [0.0 0.5 1.0 1.0 1.0]
+        d_traj = [0.0 0.2 0.4 0.4 0.4]
+        u_both = compute_control(mpc, x; r=r_traj, d=d_traj)
+        @test length(u_both) == 1
+
+        # Without any preview for comparison
+        mpc.settings.reference_preview = false
+        mpc.settings.disturbance_preview = false
+        setup!(mpc)
+        u_neither = compute_control(mpc, x; r=[0.0], d=[0.0])
+        @test norm(u_both - u_neither) > 1e-4
+
+        # Restore both previews and verify explicit MPC matches
+        mpc.settings.reference_preview = true
+        mpc.settings.disturbance_preview = true
+        setup!(mpc)
+        empc = LinearMPC.ExplicitMPC(mpc; range=LinearMPC.ParameterRange(mpc), build_tree=true)
+        u_explicit = compute_control(empc, x; r=r_traj, d=d_traj)
+        @test u_explicit ≈ u_both atol=1e-10
+    end
+
+    @testset "Disturbance Preview + Reference Preview Simulation" begin
+        A = [1.0 1.0; 0.0 1.0]
+        B = [0.0; 1.0]
+        Gd = [0.5; 0.0]
+        C = [1.0 0.0]
+        N_sim = 15
+        mpc = LinearMPC.MPC(A, B; Gd, C, Np=5, Nc=5)
+        set_bounds!(mpc; umin=[-2.0], umax=[2.0])
+        set_objective!(mpc; Q=[5.0], R=[0.1])
+        mpc.settings.reference_preview = true
+        mpc.settings.disturbance_preview = true
+        setup!(mpc)
+
+        r_traj = [zeros(1, 5) ones(1, N_sim - 5)]
+        d_traj = [zeros(1, 8) 0.3 * ones(1, N_sim - 8)]
+        sim = LinearMPC.Simulation(mpc; x0=[0.0, 0.0], N=N_sim, r=r_traj, d=d_traj)
+        @test size(sim.xs) == (2, N_sim)
+        @test size(sim.us) == (1, N_sim)
+    end
+
+    @testset "Codegen Throws Error for Disturbance Preview with Observer" begin
+        # Codegen must throw when disturbance_preview is combined with a state observer
+        F, G = [1.0 1.0; 0.0 1.0], [0.0; 1.0]
+        Gd = [1.0; 0.0]
+        C = [1.0 0.0]
+        mpc = LinearMPC.MPC(F, G; Gd, C, Np=4, Nc=4)
+        set_bounds!(mpc; umin=[-0.5], umax=[0.5])
+        set_objective!(mpc; Q=[1.0], R=[0.1])
+        mpc.settings.disturbance_preview = true
+        LinearMPC.set_state_observer!(mpc; Q=[1.0, 1.0], R=[0.1])
+        setup!(mpc)
+
+        @test_throws ArgumentError LinearMPC.codegen(mpc; dir=tempname())
+
+        # Explicit MPC codegen must also throw
+        empc = LinearMPC.ExplicitMPC(mpc; range=LinearMPC.ParameterRange(mpc), build_tree=false)
+        @test_throws ArgumentError LinearMPC.codegen(empc; dir=tempname())
+    end
+
+    @testset "Disturbance Preview get_parameter_names" begin
+        A = [1.0 1.0; 0.0 1.0]
+        B = [0.0; 1.0]
+        Gd = [0.5; 0.0]
+        C = [1.0 0.0]
+        mpc = LinearMPC.MPC(A, B; Gd, C, Np=3, Nc=3)
+        set_labels!(mpc; x=[:x1, :x2], u=[:u1], y=[:y1], d=[:d1])
+        set_objective!(mpc; Q=[1.0], R=[0.1])
+        mpc.settings.disturbance_preview = true
+        setup!(mpc)
+
+        names = LinearMPC.get_parameter_names(mpc)
+        # Expected: x1, x2, y1r, d1_0, d1_1, d1_2
+        @test :x1 ∈ names && :x2 ∈ names
+        @test :y1r ∈ names
+        @test :d1_0 ∈ names && :d1_1 ∈ names && :d1_2 ∈ names
+        @test length(names) == 2 + 1 + 3  # nx + nr + nd_base*Np
+
+        # label2id should find disturbance-preview parameter by time-step label
+        id, label_str = LinearMPC.label2id(mpc, :d1_1)
+        @test !isnothing(id)
+    end
+
+    @testset "Disturbance Preview format_disturbance nd=0" begin
+        # When the model has no disturbances, format_disturbance returns empty regardless
+        mpc = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=4, Nc=4)
+        set_objective!(mpc; Q=[1.0], R=[0.1])
+        mpc.settings.disturbance_preview = true
+        setup!(mpc)
+
+        @test isempty(LinearMPC.format_disturbance(mpc, nothing))
+        @test isempty(LinearMPC.format_disturbance(mpc, zeros(0)))
+    end
+
+    @testset "Observer + Disturbance Preview Matrix Input" begin
+        # Test that get_control_disturbance correctly handles matrix disturbance
+        # inputs with an OffsetFreeObserver and disturbance_preview enabled.
+        F, G = [1.0 1.0; 0.0 1.0], [0.0; 1.0]
+        Gd = [1.0; 0.0]  # nd_measured = 1
+        C = [1.0 0.0]
+        mpc = LinearMPC.MPC(F, G; Gd, C, Np=4, Nc=4)
+        set_bounds!(mpc; umin=[-0.5], umax=[0.5])
+        set_objective!(mpc; Q=[1.0], R=[0.1])
+
+        # Attach offset-free observer: 1 measured + 1 estimated disturbance
+        LinearMPC.set_offset_free_observer!(mpc; method=:state_disturbance, Q=[1e-3, 1e-3], R=[1e-4])
+        mpc.settings.disturbance_preview = true
+        setup!(mpc)
+
+        @test mpc.model.nd == 2          # nd_measured + nd_offsetfree
+        @test mpc.state_observer isa LinearMPC.OffsetFreeObserver
+        @test mpc.state_observer.nd_measured == 1
+        @test mpc.state_observer.nd_offsetfree == 1
+
+        x = zeros(mpc.model.nx)  # 2-element state (not augmented)
+
+        # Vector disturbance: length = nd_measured = 1
+        # get_control_disturbance appends the estimated disturbance
+        d_scalar = [0.5]
+        u_scalar = compute_control(mpc, x; d=d_scalar)
+        @test length(u_scalar) == 1
+
+        # Matrix disturbance: nd_measured × Np = 1×4
+        # get_control_disturbance appends estimated disturbance row → 2×4
+        d_mat = [0.0 0.0 0.0 0.0]  # zero measured disturbance (contrasts with d_scalar = [0.5])
+        u_mat = compute_control(mpc, x; d=d_mat)
+        @test length(u_mat) == 1
+
+        # Zero-disturbance preview should yield different control than constant 0.5 disturbance
+        @test norm(u_mat - u_scalar) > 1e-6
+    end
+
     @testset "Reference Preview + Prestabilizing Feedback" begin
         Ac = diagm(1=>ones(2))
         Bc = [0.0; 0.0; 1.0]

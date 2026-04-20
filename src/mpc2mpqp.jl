@@ -501,9 +501,10 @@ function ref_preview_cost(mpc,Γ,C_full,Q_full,Qf_full,H,f_theta,H_theta)
     end
     f_theta = Float64[f_theta[:,1:nxp] Fr f_theta[:,nxp+1:end]]
 
+    tail = size(H_theta, 1) - nxp
     H_theta = Float64[H_theta[1:nxp, 1:nxp] zeros(nxp,nrp) H_theta[1:nxp,nxp+1:end];
-                      zeros(nrp,nxp) Hr zeros(nrp,ndp+nup);
-                      H_theta[nxp+1:end,1:nxp] zeros(ndp+nup,nrp) H_theta[nxp+1:end,nxp+1:end]]
+                      zeros(nrp,nxp) Hr zeros(nrp,tail);
+                      H_theta[nxp+1:end,1:nxp] zeros(tail,nrp) H_theta[nxp+1:end,nxp+1:end]]
     return f_theta, H_theta
 end
 
