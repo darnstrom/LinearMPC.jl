@@ -332,6 +332,81 @@ Random.seed!(1234)
         @test_nowarn compute_control(mpc, [1.0, 0.0]; r=[0.0 0.0; 0.0 0.0])  # Correct matrix
     end
 
+    @testset "Disturbance Preview" begin
+        A = [1.0 1.0; 0.0 1.0]
+        B = [0.0; 1.0]
+        Gd = [0.0; 1.0]
+        C = [1.0 0.0]
+        mpc = LinearMPC.MPC(A, B; Gd, C, Np=5, Nc=5)
+        set_bounds!(mpc; umin=[-0.5], umax=[0.5])
+        set_objective!(mpc; Q=[10.0], R=[0.1])
+
+        @test mpc.settings.disturbance_preview == false
+        control_standard = compute_control(mpc, [0.0, 0.0]; d=[0.0])
+        @test length(control_standard) == 1
+
+        mpc.settings.disturbance_preview = true
+        setup!(mpc)
+
+        control_single = compute_control(mpc, [0.0, 0.0]; d=[0.0])
+        d_traj = [0.0 1.0 1.0 1.0 1.0]
+        control_preview = compute_control(mpc, [0.0, 0.0]; d=d_traj)
+        @test length(control_preview) == 1
+
+        nx, nr, nd, nuprev = LinearMPC.get_parameter_dims(mpc)
+        @test nx == 2
+        @test nr == 1
+        @test nd == 5
+        @test nuprev == 0
+
+        @test control_preview[1] < control_single[1] - 1e-2
+        @test norm(control_preview - control_single) > 1e-2
+
+        empc = LinearMPC.ExplicitMPC(mpc; range=LinearMPC.ParameterRange(mpc), build_tree=true)
+        control_explicit = compute_control(empc, [0.0, 0.0]; d=d_traj)
+        @test control_explicit ≈ control_preview atol=1e-10
+    end
+
+    @testset "Disturbance Preview Simulation" begin
+        A = [1.0 1.0; 0.0 1.0]
+        B = [0.0; 1.0]
+        Gd = [0.0; 1.0]
+        C = [1.0 0.0]
+        mpc = LinearMPC.MPC(A, B; Gd, C, Np=5, Nc=5)
+        set_bounds!(mpc; umin=[-0.5], umax=[0.5])
+        set_objective!(mpc; Q=[10.0], R=[0.1])
+
+        N_sim = 20
+        d_traj = [zeros(1, 8) ones(1, 12)]
+
+        mpc.settings.disturbance_preview = true
+        setup!(mpc)
+        sim_preview = LinearMPC.Simulation(mpc; x0=[0.0, 0.0], N=N_sim, d=d_traj)
+        empc = LinearMPC.ExplicitMPC(mpc; range=LinearMPC.ParameterRange(mpc), build_tree=true)
+        sim_explicit_preview = LinearMPC.Simulation(empc; x0=[0.0, 0.0], N=N_sim, d=d_traj)
+
+        mpc.settings.disturbance_preview = false
+        setup!(mpc)
+        sim_no_preview = LinearMPC.Simulation(mpc; x0=[0.0, 0.0], N=N_sim, d=d_traj)
+
+        @test norm(sim_preview.us - sim_no_preview.us) > 1e-2
+        @test norm(sim_preview.ys - sim_explicit_preview.ys) < 1e-6
+        @test norm(sim_preview.ys) / norm(sim_no_preview.ys) < 0.9
+    end
+
+    @testset "Disturbance Preview Error Handling" begin
+        mpc = LinearMPC.MPC([1.0;;], [1.0;;]; Gd=[1.0;;], C=[1.0;;], Np=4, Nc=4)
+        set_bounds!(mpc; umin=[-2.0], umax=[2.0])
+        set_objective!(mpc; Q=[1.0], R=[0.1])
+        mpc.settings.disturbance_preview = true
+        setup!(mpc)
+
+        @test_throws ErrorException compute_control(mpc, [0.0]; d=[0.0, 1.0])
+        @test_throws ErrorException compute_control(mpc, [0.0]; d=ones(2, 2))
+        @test_nowarn compute_control(mpc, [0.0]; d=[0.0])
+        @test_nowarn compute_control(mpc, [0.0]; d=[0.0 1.0])
+    end
+
     @testset "Reference Preview + Prestabilizing Feedback" begin
         Ac = diagm(1=>ones(2))
         Bc = [0.0; 0.0; 1.0]
@@ -460,6 +535,41 @@ Random.seed!(1234)
             ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), u, x, r_traj, d)
                       
             @test norm(u - u_julia) < 1e-10 || Sys.isapple() # TODO u=NaN on macOS-latest sometimes 
+        end
+    end
+
+    @testset "Codegen Disturbance Preview" begin
+        A = [1.0 1.0; 0.0 1.0]
+        B = [0.0; 1.0]
+        Gd = [0.0; 1.0]
+        C = [1.0 0.0]
+        mpc = LinearMPC.MPC(A, B; Gd, C, Np=4, Nc=4)
+        set_bounds!(mpc; umin=[-0.5], umax=[0.5])
+        set_objective!(mpc; Q=[10.0], R=[0.1])
+        mpc.settings.disturbance_preview = true
+        setup!(mpc)
+
+        x = [0.0, 0.0]
+        r = [0.0]
+        d_traj = [0.0 1.0 1.0 1.0]
+        u_julia = compute_control(mpc, x; r=r, d=d_traj)
+
+        srcdir = tempname()
+        LinearMPC.codegen(mpc; dir=srcdir)
+        src = [f for f in readdir(srcdir) if last(f,1) == "c"]
+        @test !isempty(src)
+
+        if(!isnothing(Sys.which("gcc")))
+            testlib = "mpctest."* Base.Libc.Libdl.dlext
+            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+
+            u = zeros(1)
+            global templib = joinpath(srcdir, testlib)
+            ccall(("mpc_compute_control", templib), Cint,
+                  (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}),
+                  u, x, r, d_traj)
+
+            @test u ≈ u_julia
         end
     end
 
@@ -1008,6 +1118,17 @@ Random.seed!(1234)
         mpc.settings.reference_preview = false
         @test LinearMPC.format_reference(mpc, [7.0 8.0 9.0; 1.0 2.0 3.0]) ≈ [7.0, 1.0]
 
+        dmpc = LinearMPC.MPC([1.0;;], [1.0;;]; Gd=[1.0;;], C=[1.0;;], Np=4, Nc=4)
+        set_objective!(dmpc; Q=[1.0], R=[1.0])
+        dmpc.settings.disturbance_preview = true
+        @test LinearMPC.format_disturbance(dmpc, [3.0]) ≈ [3.0, 3.0, 3.0, 3.0]
+        @test LinearMPC.format_disturbance(dmpc, [1.0 2.0]) ≈ [1.0, 2.0, 2.0, 2.0]
+        @test_throws ErrorException LinearMPC.format_disturbance(dmpc, [1.0, 2.0])
+        @test_throws ErrorException LinearMPC.format_disturbance(dmpc, ones(2, 2))
+
+        dmpc.settings.disturbance_preview = false
+        @test LinearMPC.format_disturbance(dmpc, [7.0 8.0 9.0]) ≈ [7.0]
+
         lmpc = LinearMPC.MPC([1.0 1.0; 0.0 1.0], [0.0; 1.0]; C=[1.0 0.0], Np=4, Nc=3)
         set_objective!(lmpc; Q=[1.0], R=[0.1])
         lmpc.settings.linear_cost = true
@@ -1040,6 +1161,7 @@ Random.seed!(1234)
                 rs = [1.0 2.0 3.0; 10.0 20.0 30.0]
                 @test LinearMPC.get_preview(rs, 1, 4) == [2.0 3.0 3.0 3.0; 20.0 30.0 30.0 30.0]
                 @test LinearMPC.get_reference_preview(rs, 1, 4) == LinearMPC.get_preview(rs, 1, 4)
+                @test LinearMPC.get_disturbance_preview(rs, 2, 3) == [2.0 3.0 3.0; 20.0 30.0 30.0]
                 ls = [1.0 2.0 3.0 4.0]
                 @test LinearMPC.get_linear_cost_preview(ls, 2, 3) == [2.0 3.0 4.0]
 

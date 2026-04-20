@@ -209,6 +209,11 @@ function get_control_disturbance(mpc::Union{MPC,ExplicitMPC}, d=nothing)
         return [d_measured; get_estimated_disturbance(observer)]
     elseif length(d) == observer.nd_measured
         return [d; get_estimated_disturbance(observer)]
+    elseif d isa AbstractMatrix && size(d, 1) == observer.nd_measured
+        d_est = get_estimated_disturbance(observer)
+        return isempty(d_est) ? d : [d; repeat(d_est, 1, size(d, 2))]
+    elseif d isa AbstractMatrix && size(d, 1) == mpc.model.nd
+        return d
     elseif length(d) == mpc.model.nd
         return d
     else
