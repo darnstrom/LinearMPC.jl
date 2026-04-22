@@ -46,6 +46,7 @@ MPC controller settings.
 - `reference_condensation::Bool = false`: Collapse reference trajectory to setpoint 
 - `reference_tracking::Bool = true`: Enable reference tracking
 - `reference_preview::Bool = false`: Enable time-varying reference preview
+- `disturbance_preview::Bool = false`: Enable time-varying disturbance preview
 - `soft_weight::Float64 = 1e6`: Penalty weight for soft constraint violations
 - `solver_opts::Dict{Symbol,Any}`: Additional solver options
 """
@@ -55,6 +56,7 @@ Base.@kwdef mutable struct MPCSettings
     reference_condensation::Bool= false
     reference_tracking::Bool= true
     reference_preview::Bool = false
+    disturbance_preview::Bool = false
     linear_cost::Bool = false
     soft_weight::Float64= 1e6
     solver_opts::Dict{Symbol,Any} = Dict()
@@ -100,6 +102,7 @@ mutable struct MPC
 
     # parameters
     nr::Int
+    nd::Int
     nuprev::Int
     nl::Int
 
@@ -148,7 +151,7 @@ mutable struct MPC
 end
 
 function MPC(model::Model;Np=10,Nc=Np)
-    MPC(model,0,0,0,Np,Nc,
+    MPC(model,0,0,0,0,Np,Nc,
         MPCWeights(model.nu,model.nx,model.ny),
         zeros(0),zeros(0),zeros(0),-1,
         Constraint[],MPCSettings(),MPQP(),

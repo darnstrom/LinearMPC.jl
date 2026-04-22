@@ -78,6 +78,7 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
         ds[:,1:size(scenario.d,2)].= scenario.d
         ds[:,size(scenario.d,2)+1:end] .= scenario.d[:,end] # hold last
     end
+    d_preview = mpc.settings.disturbance_preview && !isempty(scenario.d)
 
     # Setup linear cost trajectory
     if(!isempty(scenario.l))
@@ -98,11 +99,12 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
         xhat = has_observer ? correct_state!(mpc,yms[:,k],ds[:,k]) : x
         xhats[:,k] = xhat
 
-        # Get linear cost and reference preview
+        # Get linear cost, reference preview, and disturbance preview
         rk = r_preview ? get_preview(rs, k, mpc.Np) : rs[:,k]
+        dk = d_preview ? get_preview(ds, k-1, mpc.Np) : ds[:,k]
         lk = l_preview ? get_preview(ls, k, mpc.Nc) : nothing
 
-        solve_times[k] = @elapsed u = compute_control(mpc,xhat;r=rk, d=ds[:,k],l=lk)
+        solve_times[k] = @elapsed u = compute_control(mpc,xhat;r=rk, d=dk,l=lk)
 
         has_observer && predict_state!(mpc,u,ds[:,k])
 
@@ -137,6 +139,13 @@ end
 Extract reference preview from reference trajectory starting at time step k.
 """
 get_reference_preview(rs, k, Np) = get_preview(rs, k , Np)
+
+"""
+    get_disturbance_preview(ds, k, Np)
+
+Extract disturbance preview from disturbance trajectory starting at time step k.
+"""
+get_disturbance_preview(ds, k, Np) = get_preview(ds, k-1, Np)
 
 """
     get_linear_cost_preview(ls, k, Nc)

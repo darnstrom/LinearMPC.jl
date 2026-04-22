@@ -45,22 +45,87 @@ function state_predictor(F,G,Np,Nc)
     return Φ::Matrix{Float64},Γ::Matrix{Float64}
 end
 
+function disturbance_predictor(F,E,Np)
+    nx,nd = size(E)
+    Ψ = zeros((Np+1)*nx, Np*nd)
+    for k in 1:Np
+        rows = k*nx+1:(k+1)*nx
+        prev = (k-1)*nx+1:k*nx
+        Ψ[rows, :] .= F*Ψ[prev, :]
+        Ψ[rows, (k-1)*nd+1:k*nd] .+= E
+    end
+    return Ψ::Matrix{Float64}
+end
+
+function disturbance_preview_predictor(mpc::MPC, F)
+    nd = mpc.model.nd
+    nxe = size(F,1)
+    nd == 0 && return zeros((mpc.Np+1)*nxe, 0)
+    E = [mpc.model.Gd; zeros(nxe-mpc.model.nx, nd)]
+    return disturbance_predictor(F, E, mpc.Np)
+end
+
+take_cols(W, start, len) = len == 0 ? zeros(size(W,1), 0) : W[:, start:start+len-1]
+
+function insert_preview_parameter_blocks(mpc::MPC, W, Wr, Wd)
+    nx = mpc.model.nx
+    nr_base = mpc.settings.reference_preview ? 0 : mpc.nr
+    nd_base = mpc.settings.disturbance_preview ? 0 : mpc.nd
+
+    idx = nx + nr_base + nd_base
+    parts = Matrix{Float64}[take_cols(W, 1, nx)]
+
+    if mpc.settings.reference_preview && !isempty(Wr)
+        push!(parts, Wr)
+    else
+        push!(parts, take_cols(W, nx+1, nr_base))
+    end
+
+    if mpc.settings.disturbance_preview && !isempty(Wd)
+        push!(parts, Wd)
+    else
+        push!(parts, take_cols(W, nx+nr_base+1, nd_base))
+    end
+
+    push!(parts, take_cols(W, idx+1, size(W,2)-idx))
+    return hcat(parts...)
+end
+
+function disturbance_preview_direct(A, ks, Np, nd)
+    m = size(A,1)
+    W = zeros(m*length(ks), nd*Np)
+    (isempty(A) || nd == 0) && return W
+
+    for (i,k) in enumerate(ks)
+        if 2 <= k <= Np+1
+            rows = (i-1)*m+1:i*m
+            cols = (k-2)*nd+1:(k-1)*nd
+            W[rows, cols] .= -A
+        end
+    end
+    return W
+end
+
 function get_parameter_dims(mpc::MPC)
     # Use stored values if QP is set up, otherwise compute from settings
     # This ensures consistency between the QP and parameter vector at runtime
     if mpc.mpqp_issetup
-        return mpc.model.nx, mpc.nr, mpc.model.nd, mpc.nuprev, mpc.nl
+        return mpc.model.nx, mpc.nr, mpc.nd, mpc.nuprev, mpc.nl
     end
     nr = mpc.settings.reference_tracking ?  mpc.model.ny : 0
     if mpc.settings.reference_preview && !mpc.settings.reference_condensation && nr > 0
         nr = nr * mpc.Np  # Reference preview uses Np time steps
     end
+    nd = mpc.model.nd
+    if mpc.settings.disturbance_preview && nd > 0
+        nd = nd * mpc.Np
+    end
     nuprev = !iszero(mpc.weights.Rr) || any(!iszero(c.Aup) for c in mpc.constraints) ? mpc.model.nu : 0
     nl = mpc.settings.linear_cost ? mpc.model.nu * mpc.Nc : 0
-    return mpc.model.nx,nr,mpc.model.nd,nuprev,nl
+    return mpc.model.nx,nr,nd,nuprev,nl
 end
 
-function get_parameter_names(mpc::MPC)
+function get_parameter_names(mpc::Union{MPC,ExplicitMPC})
     nx,nr,nd,nuprev,nl = get_parameter_dims(mpc)
     names = copy(mpc.model.labels.x)
     if nr > 0
@@ -73,7 +138,15 @@ function get_parameter_names(mpc::MPC)
             push!(names,Symbol.(string.(mpc.model.labels.y).*"r")...)
         end
     end
-    nd>0 && push!(names,mpc.model.labels.d...)
+    if nd > 0
+        if mpc.settings.disturbance_preview
+            for k in 0:mpc.Np-1
+                push!(names, Symbol.(string.(mpc.model.labels.d).*"_$k")...)
+            end
+        else
+            push!(names,mpc.model.labels.d...)
+        end
+    end
     nuprev>0 && push!(names,Symbol.(string.(mpc.model.labels.u).*"p")...)
     if nl > 0
         for k in 0:mpc.Nc-1
@@ -85,28 +158,23 @@ end
 
 # Create A u <= b+W*theta
 # correspoding to  lb<=u_i<=ub for i ∈ {1,2,...,Nc}
-function create_controlbounds(mpc::MPC, Γ, Φ)
+function create_controlbounds(mpc::MPC, F, Γ, Φ)
     nu,nx,Nb = mpc.model.nu, mpc.model.nx, mpc.Nc
     _,_,_,_,nl = get_parameter_dims(mpc)
     nxe = sum(get_parameter_dims(mpc))-nl
     mpc.settings.reference_preview && (nxe-=mpc.nr) # reference not part of extended state
+    mpc.settings.disturbance_preview && (nxe-=mpc.nd) # disturbance not part of extended state
     !iszero(mpc.model.f_offset) && (nxe+=1); # constant offset in dynamics
 
     #-K*X + V = -K*(Γ V + Φ x0) + V 
     #         = (I-K*Γ)V -K Φ x0
+    Kfull = kron(I(Nb),[mpc.K zeros(nu,nxe-nx)])
     if(!iszero(mpc.K))
-        K = kron(I(Nb),[mpc.K zeros(nu,nxe-nx)])
-        A = (I-K*Γ[1:Nb*nxe, 1:Nb*nu])
-        W = K*Φ[1:Nb*nxe,:]
-        if mpc.settings.reference_tracking && mpc.settings.reference_preview
-            # append rows to W from reference that are not part of extended state
-            W = [W[:,1:nx] zeros(size(W,1),mpc.nr) W[:,nx+1:end]]
-        end
-        nl > 0 && (W = [W zeros(size(W,1), nl)]) # append zero rows for linear cost
+        A = (I-Kfull*Γ[1:Nb*nxe, 1:Nb*nu])
+        W = Kfull*Φ[1:Nb*nxe,:]
     else
-        nth =  mpc.settings.reference_preview ? nxe+nl+mpc.nr : nxe+nl
         A = zeros(0,mpc.Nc*nu)
-        W = zeros(Nb*nu,nth)
+        W = zeros(Nb*nu,nxe)
     end
     # Create bounds
     ub = repeat(mpc.umax,Nb,1)
@@ -119,12 +187,21 @@ function create_controlbounds(mpc::MPC, Γ, Φ)
         ub -= ut
         lb += lt
     end
-    return A,ub,lb, W 
+
+    Wr = mpc.settings.reference_preview ? zeros(size(W,1), mpc.nr) : zeros(size(W,1), 0)
+    Wd = if mpc.settings.disturbance_preview
+        Kfull*disturbance_preview_predictor(mpc, F)[1:Nb*nxe, :]
+    else
+        zeros(size(W,1), 0)
+    end
+    W = insert_preview_parameter_blocks(mpc, W, Wr, Wd)
+    nl > 0 && (W = [W zeros(size(W,1), nl)])
+    return A,ub,lb, W
 end
 
 # Create A u <= b+W*theta
 # correspoding to lb <= Au*uk+ Ax*xk <=ub for k ∈ ks
-function create_general_constraints(mpc::MPC,Γ,Φ)
+function create_general_constraints(mpc::MPC,F,Γ,Φ)
     # extract data
     Np, Nc= mpc.Np, mpc.Nc
     m= length(mpc.constraints)
@@ -138,12 +215,19 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
     else
         nrx = mpc.nr
     end
+    if mpc.settings.disturbance_preview
+        nxe-=mpc.nd # disturbance not part of extended state
+        ndx = 0
+    else
+        ndx = mpc.nd
+    end
     !iszero(mpc.model.f_offset) && (nxe+=1); # constant offset in dynamics
 
     ubtot,lbtot = zeros(0,1),zeros(0,1);
     Axtot,Autot = zeros(0,nxe*(Np+1)), zeros(0,nu*Nc);
     issoft,isbinary = falses(0),falses(0)
     prios = zeros(Int,0)
+    Wd_direct = zeros(0, mpc.settings.disturbance_preview ? mpc.nd : 0)
 
     eyeX, eyeU = I(Np+1), I(Nc);
     eyeU = [eyeU;zeros(Bool,1+Np-Nc,Nc)] # Zeros address that Nc < Np (terminal state)
@@ -158,7 +242,7 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
 
         Ax = c.Ax-c.Au*mpc.K
         Ar = isempty(c.Ar) || nrx == 0 ? zeros(mi,nrx) : c.Ar
-        Ad = isempty(c.Ad) ? zeros(mi,mpc.model.nd) : c.Ad
+        Ad = isempty(c.Ad) || ndx == 0 ? zeros(mi,ndx) : c.Ad
         Aup = isempty(c.Aup) ? zeros(mi,mpc.nuprev) : c.Aup
         Ah = iszero(mpc.model.f_offset) ? zeros(mi,0) : zeros(mi,1)
 
@@ -178,11 +262,13 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
         issoft = [issoft;repeat([c.soft],mi*Ni)]
         isbinary = [isbinary;repeat([c.binary],mi*Ni)]
         prios = [prios;repeat([c.prio],mi*Ni)]
+        mpc.settings.disturbance_preview && (Wd_direct = [Wd_direct; disturbance_preview_direct(isempty(c.Ad) ? zeros(mi, mpc.model.nd) : c.Ad, ks, Np, mpc.model.nd)])
     end
     A=Axtot*Γ+Autot;
     W = -Axtot*Φ;
 
     # Add extra row due to reference preview
+    Wr = zeros(size(W,1), 0)
     if mpc.settings.reference_tracking && mpc.settings.reference_preview
         Wr = zeros(0,mpc.nr)
         if mpc.settings.reference_condensation
@@ -207,8 +293,10 @@ function create_general_constraints(mpc::MPC,Γ,Φ)
                 Wr = [Wr; Wrn] 
             end
         end
-        W = [W[:,1:nx] Wr W[:,nx+1:end]]
     end
+
+    Wd = mpc.settings.disturbance_preview ? -Axtot*disturbance_preview_predictor(mpc, F) + Wd_direct : zeros(size(W,1), 0)
+    W = insert_preview_parameter_blocks(mpc, W, Wr, Wd)
 
     # Append zero columns for linear cost parameters (they don't affect constraints)
     nl > 0 && (W = [W zeros(size(W,1), nl)])
@@ -218,14 +306,14 @@ end
 
 # Compute A,b,W such that the constraints for a given MPC structure
 # are on the form A U<=b W th
-function create_constraints(mpc::MPC,Φ,Γ)
+function create_constraints(mpc::MPC,F,Φ,Γ)
 
     n = size(Γ,2);
     nth = sum(get_parameter_dims(mpc))
     !iszero(mpc.model.f_offset) && (nth +=1); # constant offset in dynamics
     # Control bounds
     if(!isempty(mpc.umax))
-        A,bu,bl,W = create_controlbounds(mpc,Γ,Φ)
+        A,bu,bl,W = create_controlbounds(mpc,F,Γ,Φ)
         issoft= falses(n);
         prios = zeros(Int,n)
         isbinary_single = falses(mpc.model.nu) 
@@ -243,7 +331,7 @@ function create_constraints(mpc::MPC,Φ,Γ)
 
     # General constraints
     if(!isempty(mpc.constraints))
-        Ag,bug,blg,Wg,softg,binaryg,priog = create_general_constraints(mpc,Γ,Φ);
+        Ag,bug,blg,Wg,softg,binaryg,priog = create_general_constraints(mpc,F,Γ,Φ);
         my = Int(size(Ag,1));
         prios = [prios;priog]
         issoft = [issoft; softg];
@@ -267,7 +355,7 @@ end
 # Create H, f_theta, H_theta such that the objective function for a given
 # MPC problem is formulated as 0.5 U' H U+th'F_theta' U + 0.5 th' H_theta th
 # (where th contains x0, r and u(k-1))
-function create_objective(mpc::MPC,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
+function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
 
     Q,R,S,Qf = w.Q, w.R, w.S, w.Qf
     N,Nc = mpc.Np,mpc.Nc
@@ -333,6 +421,9 @@ function create_objective(mpc::MPC,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
     # ==== Reference tracking terms ====
     if nrp > 0 && mpc.settings.reference_preview
         f_theta,H_theta = ref_preview_cost(mpc,Γ,C_full,Q_full,Qf_full,H,f_theta,H_theta)
+    end
+    if ndp > 0 && mpc.settings.disturbance_preview
+        f_theta,H_theta = disturbance_preview_cost(mpc,F,Γ,C_full,Q_full,Qf_full,f_theta,H_theta)
     end
 
     # ==== Linear cost on control inputs ====
@@ -410,9 +501,37 @@ function ref_preview_cost(mpc,Γ,C_full,Q_full,Qf_full,H,f_theta,H_theta)
     end
     f_theta = Float64[f_theta[:,1:nxp] Fr f_theta[:,nxp+1:end]]
 
+    tail = size(H_theta, 1) - nxp
     H_theta = Float64[H_theta[1:nxp, 1:nxp] zeros(nxp,nrp) H_theta[1:nxp,nxp+1:end];
-                      zeros(nrp,nxp) Hr zeros(nrp,ndp+nup);
-                      H_theta[nxp+1:end,1:nxp] zeros(ndp+nup,nrp) H_theta[nxp+1:end,nxp+1:end]]
+                      zeros(nrp,nxp) Hr zeros(nrp,tail);
+                      H_theta[nxp+1:end,1:nxp] zeros(tail,nrp) H_theta[nxp+1:end,nxp+1:end]]
+    return f_theta, H_theta
+end
+
+function disturbance_preview_cost(mpc,F,Γ,C_full,Q_full,Qf_full,f_theta,H_theta)
+    N = mpc.Np
+    nxp, nrp, ndp, _, _ = get_parameter_dims(mpc)
+    nxe = size(F,1)
+
+    Ψ = disturbance_preview_predictor(mpc, F)
+    Ψ_future = Ψ[nxe+1:end, :]
+    Γ_future = Γ[nxe+1:end, :]
+    CY = kron(I(N), C_full)
+    Γy = CY*Γ_future
+    Yd = CY*Ψ_future + kron(I(N), mpc.model.Dd[1:size(C_full,1), :])
+
+    Qy = kron(I(N), Q_full)
+    Qy[end-size(Qf_full,1)+1:end,end-size(Qf_full,2)+1:end] .= Qf_full
+
+    Fd = Γy'*Qy*Yd
+    Hd = Yd'*Qy*Yd
+    split = nxp + nrp
+    tail = size(H_theta,1) - split
+
+    f_theta = Float64[f_theta[:,1:split] Fd f_theta[:,split+1:end]]
+    H_theta = Float64[H_theta[1:split, 1:split] zeros(split,ndp) H_theta[1:split,split+1:end];
+                      zeros(ndp,split) Hd zeros(ndp,tail);
+                      H_theta[split+1:end,1:split] zeros(tail,ndp) H_theta[split+1:end,split+1:end]]
     return f_theta, H_theta
 end
 
@@ -436,12 +555,12 @@ Consider instead to:
     if isempty(mpc.objectives) # Normal, single objective, MPC
         weights = create_extended_cost(mpc,mpc.weights)
         nxe,nue= size(G)
-        objective  = create_objective(mpc,Φ,Γ,C,weights,nue,nxe)
+        objective  = create_objective(mpc,F,Φ,Γ,C,weights,nue,nxe)
     else
         objective = create_variational_objective(mpc,Φ,Γ,C)
     end
 
-    constraints = create_constraints(mpc,Φ,Γ)
+    constraints = create_constraints(mpc,F,Φ,Γ)
 
     if(!isempty(mpc.move_blocks))
         objective,constraints = apply_move_block(mpc,objective,constraints)
@@ -463,7 +582,7 @@ function create_extended_system(mpc::MPC)
     F,G = mpc.model.F-mpc.model.G*mpc.K, mpc.model.G
     C = mpc.model.C
     nx,nr,nd,nuprev,nl = get_parameter_dims(mpc)
-    mpc.nr, mpc.nuprev, mpc.nl = nr, nuprev, nl
+    mpc.nr, mpc.nd, mpc.nuprev, mpc.nl = nr, nd, nuprev, nl
     nu = mpc.model.nu 
 
     if(nr > 0) # Reference tracking -> add reference to states
@@ -474,10 +593,10 @@ function create_extended_system(mpc::MPC)
         end
     end
 
-    if(nd > 0) # add measureable disturbance
-        F = cat(F,I(nd),dims=(1,2))
-        F[1:nx,end-nd+1:end] .= mpc.model.Gd
-        G = [G;zeros(nd,nu)]
+    if(mpc.model.nd > 0 && !mpc.settings.disturbance_preview) # add measurable disturbance
+        F = cat(F,I(mpc.model.nd),dims=(1,2))
+        F[1:nx,end-mpc.model.nd+1:end] .= mpc.model.Gd
+        G = [G;zeros(mpc.model.nd,nu)]
         C = [C mpc.model.Dd]
     end
 
@@ -514,8 +633,8 @@ function create_extended_cost(mpc::MPC, weights::MPCWeights;uids=1:mpc.model.nu)
         S = [S;zeros(mpc.model.ny,nui)]
     end
 
-    if(nd > 0) # add measureable disturbance 
-        S = [S;zeros(nd,nui)]
+    if(mpc.model.nd > 0 && !mpc.settings.disturbance_preview) # add measurable disturbance
+        S = [S;zeros(mpc.model.nd,nui)]
     end
 
     if(nuprev > 0) # Penalizing Δu -> add uold to states 
@@ -761,4 +880,3 @@ function create_variational_objective(mpc::MPC,Φ,Γ,Cp)
     end
     return DenseObjective(H, zeros(nU),f_theta,zeros(0,0))
 end
-

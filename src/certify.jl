@@ -39,7 +39,7 @@ end
 
     x= isnothing(x) ? zeros(cert.mpc.model.nx) : x
     r= isnothing(r) ? zeros(cert.mpc.nr) : r
-    d= isnothing(d) ? zeros(cert.mpc.model.nd) : d
+    d= isnothing(d) ? zeros(cert.mpc.nd) : d
     uprev= isnothing(uprev) ? zeros(cert.mpc.nuprev) : uprev
 
     parameters = Symbol.(parameters)

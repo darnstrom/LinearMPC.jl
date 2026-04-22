@@ -7,7 +7,9 @@ Optional arguments:
 * `r` - reference value. Can be:
   - Vector of length `ny` for constant reference
   - Matrix of size `(ny, Np)` for reference preview (when `mpc.settings.reference_preview = true`)
-* `d` - measured disturbance
+* `d` - measured disturbance. Can be:
+  - Vector of length `nd` for constant disturbance
+  - Matrix of size `(nd, Np)` for disturbance preview (when `mpc.settings.disturbance_preview = true`)
 * `uprev` - previous control action
 * `l` - linear cost on control (requires `mpc.settings.linear_cost = true`). Can be:
   - Vector of length `nu` for constant linear cost across horizon
@@ -26,6 +28,10 @@ u = compute_control(mpc, x; r=[1.0, 0.0])
 r_trajectory = [1.0 1.5 2.0 2.0 2.0;   # ny × Np matrix
                 0.0 0.0 0.5 1.0 1.0]
 u = compute_control(mpc, x; r=r_trajectory)
+
+# Disturbance preview (requires mpc.settings.disturbance_preview = true)
+d_trajectory = [0.0 0.2 0.4 0.4 0.4]  # nd × Np matrix
+u = compute_control(mpc, x; d=d_trajectory)
 
 # With linear cost (requires mpc.settings.linear_cost = true)
 u = compute_control(mpc, x; l=[1.0])  # Constant cost
@@ -138,6 +144,64 @@ function condense_reference(mpc::Union{MPC,ExplicitMPC}, r)
         return mpc.traj2setpoint*r
     else
         return r
+    end
+end
+
+"""
+    format_disturbance(mpc, d)
+
+Format disturbance input for MPC controller. Handles both single disturbance
+and disturbance preview scenarios.
+"""
+function format_disturbance(mpc::Union{MPC,ExplicitMPC}, d)
+    d = get_control_disturbance(mpc, d)
+    nd_base = mpc.model.nd
+    nd_base == 0 && return zeros(0)
+
+    if isnothing(d)
+        d = zeros(nd_base)
+    end
+    isempty(d) && return d
+
+    if mpc.settings.disturbance_preview
+        if d isa AbstractVector
+            if length(d) == nd_base
+                return vec(repeat(d, 1, mpc.Np))
+            else
+                error("Disturbance vector length ($(length(d))) must match number of disturbances ($(nd_base))")
+            end
+        elseif d isa AbstractMatrix
+            if size(d, 1) != nd_base
+                error("Disturbance matrix must have $(nd_base) rows (number of disturbances)")
+            end
+
+            if size(d, 2) >= mpc.Np
+                return vec(d[:, 1:mpc.Np])
+            else
+                d_extended = zeros(nd_base, mpc.Np)
+                d_extended[:, 1:size(d, 2)] = d
+                d_extended[:, (size(d, 2)+1):end] .= repeat(d[:, end], 1, mpc.Np - size(d, 2))
+                return vec(d_extended)
+            end
+        else
+            error("Disturbance must be a vector or matrix for disturbance preview")
+        end
+    else
+        if d isa AbstractVector
+            if length(d) == nd_base
+                return d
+            else
+                error("Disturbance vector length ($(length(d))) must match number of disturbances ($(nd_base))")
+            end
+        elseif d isa AbstractMatrix
+            if size(d, 1) == nd_base
+                return d[:, 1]
+            else
+                error("Disturbance matrix must have $(nd_base) rows (number of disturbances)")
+            end
+        else
+            error("Disturbance must be a vector or matrix")
+        end
     end
 end
 
@@ -260,28 +324,25 @@ matrixify(x::Number, n::Int) = diagm(fill(float(x),n))
 matrixify(v::AbstractVector, n::Int=length(v)) = diagm(float(v))
 matrixify(M::AbstractMatrix, n::Int=size(M,1)) = float(M)
 
+function prettify_parameter_label(label::Symbol)
+    str = string(label)
+    if endswith(str, "p")
+        return string(Symbol(str[1:end-1]))*"^-"
+    elseif endswith(str, "r")
+        return string(Symbol(str[1:end-1]))*"^r"
+    elseif occursin(r"r_\d+$", str)
+        base, step = split(str, "_"; limit=2)
+        return string(Symbol(base[1:end-1]))*"^r_"*step
+    else
+        return str
+    end
+end
+
 # get paramer id of a label
 function label2id(mpc, label::Symbol)
-
-    id = findfirst(x->x==label,mpc.model.labels.x)
-    isnothing(id)  || return id,string(label);
-
-    if(mpc.nr > 0 && string(label)[end] == 'r')
-        l = Symbol(split(string(label),'r')[1])
-        id = findfirst(x->x==l,mpc.model.labels.y)
-        isnothing(id)  || return mpc.model.nx + id,string(l)*"^r";
-    end
-
-    id = findfirst(x->x==label,mpc.model.labels.d)
-    isnothing(id)  || return mpc.model.nx+mpc.nr+id,string(label);
-
-    if(mpc.nuprev > 0 && string(label)[end] == 'p')
-        l = Symbol(split(string(label),'p')[1])
-        id = findfirst(x->x==l,mpc.model.labels.u)
-        isnothing(id)  || return mpc.model.nx+mpc.nr+mpc.model.nd+id,string(l)*"^-";
-    end
-
-    return nothing,string(label)
+    names = get_parameter_names(mpc)
+    id = findfirst(x -> x == label, names)
+    return isnothing(id) ? (nothing, string(label)) : (id, prettify_parameter_label(label))
 end
 
 function make_subscript(label::String)

@@ -2,6 +2,7 @@ mutable struct ExplicitMPC
     model::Model
 
     nr::Int
+    nd::Int
     nuprev::Int
     nl::Int
     Np::Int
@@ -37,7 +38,7 @@ function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false, opts=ParametricD
     opts.daqp_settings = merge(Dict(:sing_tol => 1e-11),opts.daqp_settings)
     sol,info = ParametricDAQP.mpsolve(mpQP, TH;opts)
     nx,nr,nd,nuprev,nl = get_parameter_dims(mpc)
-    empc = ExplicitMPC(mpc.model, nr, nuprev, nl, mpc.Np, mpc.Nc, mpc.move_blocks, sol, mpQP, TH,
+    empc = ExplicitMPC(mpc.model, nr, nd, nuprev, nl, mpc.Np, mpc.Nc, mpc.move_blocks, sol, mpQP, TH,
                        nothing, mpc.settings, mpc.K, zeros(mpc.model.nu), mpc.traj2setpoint, mpc.state_observer)
 
     # Build binary search tree
@@ -47,15 +48,14 @@ function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false, opts=ParametricD
 end
 
 function get_parameter_dims(mpc::ExplicitMPC)
-    return mpc.model.nx, mpc.nr, mpc.model.nd, mpc.nuprev, mpc.nl
+    return mpc.model.nx, mpc.nr, mpc.nd, mpc.nuprev, mpc.nl
 end
 
 function form_parameter(mpc::Union{MPC,ExplicitMPC},x,r,d,uprev,l=nothing)
     # Setup parameter vector θ
     nx,nr,nd,nuprev,nl = get_parameter_dims(mpc)
     r = format_reference(mpc, r)
-    d = get_control_disturbance(mpc, d)
-    d = isnothing(d) ? zeros(nd) : d
+    d = format_disturbance(mpc, d)
     length(d) == nd || throw(ArgumentError("Disturbance vector must have length $nd"))
     uprev = isnothing(uprev) ? mpc.uprev[1:nuprev] : uprev[1:nuprev]
     l_vec = format_linear_cost(mpc, l)
@@ -88,12 +88,8 @@ function get_parameter_plot(mpc,l1,l2)
 end
 
 function fixed_parameters_string(mpc,fix_ids,fix_vals;show_zero = false)
-    xlabels = [string(l) for l in mpc.model.labels.x]
-    rlabels = [string(l)*"^r " for l in mpc.model.labels.y[1:mpc.nr]]
-    dlabels = [string(l) for l in mpc.model.labels.d]
-    ulabels = [string(l)*"^- " for l in mpc.model.labels.u[1:mpc.nuprev]]
-    ls = [xlabels;rlabels;dlabels;ulabels]
-    str = [latexify(make_subscript(ls[fix_ids[i]])*"="*string(fix_vals[i]))*", "
+    labels = prettify_parameter_label.(get_parameter_names(mpc))
+    str = [latexify(make_subscript(labels[fix_ids[i]])*"="*string(fix_vals[i]))*", "
            for i in 1:length(fix_ids) if show_zero || fix_vals[i] != 0 ]
     return isempty(str) ? "" : reduce(*,str)[1:end-2]
 end
@@ -112,7 +108,7 @@ using RecipesBase
 
     x= isnothing(x) ? zeros(mpc.model.nx) : x
     r= isnothing(r) ? zeros(mpc.nr) : r
-    d= isnothing(d) ? zeros(mpc.model.nd) : d
+    d= isnothing(d) ? zeros(mpc.nd) : d
     uprev= isnothing(uprev) ? zeros(mpc.nuprev) : uprev
 
     parameters,control = Symbol.(parameters),Symbol(control)

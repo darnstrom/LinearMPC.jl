@@ -64,7 +64,9 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
     write(fh, "typedef $float_type c_float;\n")
     @printf(fh, "#define N_STATE %d\n",mpc.model.nx);
     @printf(fh, "#define N_REFERENCE %d\n",mpc.nr);
-    @printf(fh, "#define N_DISTURBANCE %d\n",mpc.model.nd);
+    @printf(fh, "#define N_DISTURBANCE_BASE %d\n",mpc.model.nd);
+    @printf(fh, "#define N_DISTURBANCE %d\n",mpc.nd);
+    mpc.settings.disturbance_preview && @printf(fh, "#define N_DISTURBANCE_PREVIEW_HORIZON %d\n",mpc.Np);
     @printf(fh, "#define N_CONTROL_PREV %d\n",mpc.nuprev);
     @printf(fh, "#define N_LINEAR_COST %d\n",mpc.nl);
 
@@ -137,6 +139,7 @@ int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_
     end
 
     if !isnothing(mpc.state_observer)
+        mpc.settings.disturbance_preview && throw(ArgumentError("Codegeneration not supported for disturbance preview with a state observer."))
         @printf(fh, "#define N_CONTROL %d\n",mpc.model.nu);
         codegen(mpc.state_observer,mpc,fh,fsrc)
     end
@@ -166,7 +169,9 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
     @printf(fh, "#define N_THETA %d\n",nth);
     @printf(fh, "#define N_STATE %d\n",mpc.model.nx);
     @printf(fh, "#define N_REFERENCE %d\n",mpc.nr);
-    @printf(fh, "#define N_DISTURBANCE %d\n",mpc.model.nd);
+    @printf(fh, "#define N_DISTURBANCE_BASE %d\n",mpc.model.nd);
+    @printf(fh, "#define N_DISTURBANCE %d\n",mpc.nd);
+    mpc.settings.disturbance_preview && @printf(fh, "#define N_DISTURBANCE_PREVIEW_HORIZON %d\n",mpc.Np);
     @printf(fh, "#define N_CONTROL_PREV %d\n",mpc.nuprev);
     @printf(fh, "#define N_LINEAR_COST %d\n",mpc.nl);
 
@@ -226,6 +231,7 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
     close(fmpc_src)
 
     if !isnothing(mpc.state_observer)
+        mpc.settings.disturbance_preview && throw(ArgumentError("Codegeneration not supported for disturbance preview with a state observer."))
         codegen(mpc.state_observer,mpc,fh,fsrc)
     end
 

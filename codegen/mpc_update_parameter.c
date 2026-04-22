@@ -16,7 +16,12 @@ void mpc_update_parameter(c_float* parameter, c_float* control, c_float* state, 
 #else
     for(j=0;j<N_REFERENCE;i++, j++) parameter[i] = reference[j];
 #endif
-    for(j=0;j<N_DISTURBANCE;i++, j++) parameter[i] = disturbance[j];
+#ifdef N_DISTURBANCE_PREVIEW_HORIZON
+    for(j=0;j<N_DISTURBANCE_BASE*N_DISTURBANCE_PREVIEW_HORIZON;i++, j++) parameter[i] = disturbance[j];
+#else
+    // If a disturbance trajectory is passed in column-major form, use the first column only.
+    for(j=0;j<N_DISTURBANCE_BASE;i++, j++) parameter[i] = disturbance[j];
+#endif
     for(j=0;j<N_CONTROL_PREV;i++, j++) parameter[i] = control[j];
 #if N_LINEAR_COST > 0
 #ifdef N_MOVE_BLOCKS
