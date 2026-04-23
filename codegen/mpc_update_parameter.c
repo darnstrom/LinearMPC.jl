@@ -1,5 +1,9 @@
-#if N_LINEAR_COST > 0
+#if N_LINEAR_COST > 0 && N_AFFINE_PARAMETER > 0
+void mpc_update_parameter(c_float* parameter, c_float* control, c_float* state, c_float* reference, c_float* disturbance, c_float* linear_cost, c_float* affine_parameter){
+#elif N_LINEAR_COST > 0
 void mpc_update_parameter(c_float* parameter, c_float* control, c_float* state, c_float* reference, c_float* disturbance, c_float* linear_cost){
+#elif N_AFFINE_PARAMETER > 0
+void mpc_update_parameter(c_float* parameter, c_float* control, c_float* state, c_float* reference, c_float* disturbance, c_float* affine_parameter){
 #else
 void mpc_update_parameter(c_float* parameter, c_float* control, c_float* state, c_float* reference, c_float* disturbance){
 #endif
@@ -42,5 +46,8 @@ void mpc_update_parameter(c_float* parameter, c_float* control, c_float* state, 
 #else
     for(j=0;j<N_LINEAR_COST;i++, j++) parameter[i] = linear_cost[j];
 #endif
+#endif
+#if N_AFFINE_PARAMETER > 0
+    for(j=0;j<N_AFFINE_PARAMETER;i++, j++) parameter[i] = affine_parameter[j];
 #endif
 }

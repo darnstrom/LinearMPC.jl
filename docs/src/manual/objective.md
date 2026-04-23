@@ -102,3 +102,38 @@ u = mpc.compute_control(x, l=[0.5])
 l_trajectory = np.array([[0.1, 0.2, 0.5, 0.8, 1.0]])  # Cost varies over prediction horizon
 u = mpc.compute_control(x, l=l_trajectory)
 ```
+
+## Affine parameters in objective and constraints
+LinearMPC also supports a stagewise affine parameter trajectory $p_k$ entering the problem as
+```math
+(E p_k + e)^T u_k
+```
+in the objective, and through additional constraint terms such as
+```math
+\underline{b} \le A_x x_k + A_u u_k + A_p p_k \le \overline{b}.
+```
+
+The matrices `E` and `Ap` are stagewise coefficients. A constant parameter vector is broadcast across the prediction horizon, while an `(np, Np)` matrix gives a time-varying parameter preview.
+
+```@tab
+# julia
+set_objective!(mpc; Q=[1.0], R=[0.1], E=[1.0 0.0], e=[0.2])
+add_constraint!(mpc; Au=[1.0;;], Ap=[0.5 1.0], ub=[1.0], ks=1:mpc.Np)
+
+u = compute_control(mpc, x; p=[0.3, -0.1])
+
+# Time-varying parameter preview
+p_preview = [0.3 0.2 0.1 0.1;
+             -0.1 -0.1 0.0 0.1]
+u = compute_control(mpc, x; p=p_preview)
+# python
+mpc.set_objective(Q=[1.0], R=[0.1], E=[[1.0, 0.0]], e=[0.2])
+mpc.add_constraint(Au=[[1.0]], Ap=[[0.5, 1.0]], ub=[1.0], ks=range(1, mpc.Np + 1))
+
+u = mpc.compute_control(x, p=[0.3, -0.1])
+
+# Time-varying parameter preview
+p_preview = np.array([[0.3, 0.2, 0.1, 0.1],
+                      [-0.1, -0.1, 0.0, 0.1]])
+u = mpc.compute_control(x, p=p_preview)
+```

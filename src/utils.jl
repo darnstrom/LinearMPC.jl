@@ -1,5 +1,5 @@
 """
-    compute_control(mpc,x;r,d,uprev,l)
+    compute_control(mpc,x;r,d,uprev,l,p)
 
 For a given MPC `mpc` and state `x`, compute the optimal control action.
 
@@ -16,6 +16,10 @@ Optional arguments:
   - Matrix of size `(nu, Np)` for time-varying linear cost (mean computed per move block)
   - Matrix of size `(nu, Nc)` for pre-blocked linear cost
   - Nothing (default) for no linear cost
+* `p` - affine parameter trajectory. Can be:
+  - Vector of length `np` for a constant parameter across the horizon
+  - Matrix of size `(np, Np)` for time-varying affine parameters
+  - Nothing (default) for no affine parameter contribution
 
 All arguments default to zero.
 
@@ -39,10 +43,13 @@ u = compute_control(mpc, x; l=[1.0])  # Constant cost
 # Time-varying linear cost
 l_trajectory = [1.0 0.5 0.0 -0.5 -1.0]  # nu × Np matrix
 u = compute_control(mpc, x; l=l_trajectory)
+
+# Affine parameter preview
+u = compute_control(mpc, x; p=[0.5, -0.25])
 ```
 """
-function compute_control(mpc::MPC,x;r=nothing,d=nothing,uprev=nothing,l=nothing, check=true)
-    θ = form_parameter(mpc,x,r,d,uprev,l)
+function compute_control(mpc::MPC,x;r=nothing,d=nothing,uprev=nothing,l=nothing,p=nothing, check=true)
+    θ = form_parameter(mpc,x,r,d,uprev,l,p)
     udaqp,fval,exitflag,info = solve(mpc,θ)
     check && @assert(exitflag>=1)
     # mpc.uprev = udaqp[1:mpc.model.nu]-mpc.K*θ[1:mpc.model.nx]
@@ -51,17 +58,17 @@ function compute_control(mpc::MPC,x;r=nothing,d=nothing,uprev=nothing,l=nothing,
     return copy(mpc.uprev)
 end
 
-function compute_control(empc::ExplicitMPC,x;r=nothing,d=nothing,uprev=nothing,l=nothing, check=true)
+function compute_control(empc::ExplicitMPC,x;r=nothing,d=nothing,uprev=nothing,l=nothing,p=nothing, check=true)
     if isnothing(empc.bst)
         @error "Need to build a binary search tree to evaluate control law"
     else
-        empc.uprev .= ParametricDAQP.evaluate(empc.bst,form_parameter(empc,x,r,d,uprev,l))
+        empc.uprev .= ParametricDAQP.evaluate(empc.bst,form_parameter(empc,x,r,d,uprev,l,p))
         return copy(empc.uprev) 
     end
 end
 
-function compute_control_trajectory(mpc::MPC,x;r=nothing,d=nothing,uprev=nothing,l=nothing, check=true)
-    θ = form_parameter(mpc,x,r,d,uprev,l)
+function compute_control_trajectory(mpc::MPC,x;r=nothing,d=nothing,uprev=nothing,l=nothing,p=nothing, check=true)
+    θ = form_parameter(mpc,x,r,d,uprev,l,p)
     udaqp,_,exitflag,_ = solve(mpc,θ)
     check && @assert(exitflag>=1)
     # mpc.uprev = udaqp[1:mpc.model.nu]-mpc.K*θ[1:mpc.model.nx]
@@ -286,6 +293,52 @@ function format_linear_cost(mpc::Union{MPC,ExplicitMPC}, l)
     end
 end
 
+function get_affine_parameter_base_dim(mpc::MPC)
+    mpc.mpqp_issetup && return mpc.np == 0 ? 0 : mpc.np ÷ mpc.Np
+    dims = Int[size(mpc.weights.E, 2)]
+    append!(dims, (size(c.Ap, 2) for c in mpc.constraints))
+    append!(dims, (size(first(c).E, 2) for c in mpc.objectives))
+    return maximum(dims)
+end
+
+get_affine_parameter_base_dim(mpc::ExplicitMPC) = mpc.np == 0 ? 0 : mpc.np ÷ mpc.Np
+
+"""
+    format_affine_parameters(mpc, p)
+
+Format affine parameter input for MPC controller.
+"""
+function format_affine_parameters(mpc::Union{MPC,ExplicitMPC}, p)
+    np_total = mpc isa MPC && !mpc.mpqp_issetup ? get_affine_parameter_base_dim(mpc) * mpc.Np : mpc.np
+    np_total == 0 && return zeros(0)
+    isnothing(p) && return zeros(np_total)
+
+    np_base = get_affine_parameter_base_dim(mpc)
+    Np = mpc.Np
+
+    if p isa AbstractVector && length(p) == np_base
+        return vec(repeat(p, 1, Np))
+    end
+
+    if p isa AbstractVector && length(p) == np_total
+        return float(p)
+    end
+
+    if p isa AbstractMatrix
+        size(p, 1) == np_base || error("Affine parameter matrix must have $np_base rows")
+        if size(p, 2) >= Np
+            return vec(p[:, 1:Np])
+        end
+
+        p_extended = zeros(np_base, Np)
+        p_extended[:, 1:size(p, 2)] = p
+        p_extended[:, size(p, 2)+1:end] .= repeat(p[:, end], 1, Np - size(p, 2))
+        return vec(p_extended)
+    end
+
+    error("Affine parameters must be a vector or matrix")
+end
+
 """
     xdaqp,fval,exitflag,info = solve(mpc,θ)
 
@@ -309,8 +362,8 @@ function solve(mpc::MPC,θ)
 end
 
 function range2region(range)
-    lb = [range.xmin;range.rmin;range.dmin;range.umin;range.lmin]
-    ub = [range.xmax;range.rmax;range.dmax;range.umax;range.lmax]
+    lb = [range.xmin;range.rmin;range.dmin;range.umin;range.lmin;range.pmin]
+    ub = [range.xmax;range.rmax;range.dmax;range.umax;range.lmax;range.pmax]
     return (A = zeros(length(ub), 0), b=zeros(0), lb=lb,ub=ub)
 end
 

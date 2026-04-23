@@ -8,6 +8,7 @@ struct Constraint
     Aw::Matrix{Float64}
     Ad::Matrix{Float64}
     Aup::Matrix{Float64}
+    Ap::Matrix{Float64}
     ub::Vector{Float64}
     lb::Vector{Float64}
     ks::AbstractVector{Int64}
@@ -24,17 +25,19 @@ struct MPCWeights
     S::Matrix{Float64}
     Qf::Matrix{Float64}
     Qfx::Matrix{Float64}
+    E::Matrix{Float64}
+    e::Vector{Float64}
 end
 
 function MPCWeights(nu,nx,nr)
     return MPCWeights(Matrix{Float64}(I,nr,nr),Matrix{Float64}(I,nu,nu),zeros(nu,nu),
-                      zeros(nx,nu),zeros(nr,nr),zeros(nx,nx))
+                      zeros(nx,nu),zeros(nr,nr),zeros(nx,nx),zeros(nu,0),zeros(nu))
 end
 
 function MPCWeights(Q::AbstractArray,R::AbstractArray,Rr::AbstractArray=zeros(size(R));
-        S = zeros(0,0), Qf = zeros(0,0), Qfx = zeros(0,0))
+        S = zeros(0,0), Qf = zeros(0,0), Qfx = zeros(0,0), E = zeros(size(R, 1), 0), e = zeros(size(R, 1)))
     Qf = isempty(Qf) ? copy(Q) : Qf 
-    return MPCWeights(matrixify(Q),matrixify(R),matrixify(Rr),S,Qf,Qfx)
+    return MPCWeights(matrixify(Q),matrixify(R),matrixify(Rr),float(S),matrixify(Qf),matrixify(Qfx),float(E),float(e))
 end
 
 """
@@ -105,6 +108,7 @@ mutable struct MPC
     nd::Int
     nuprev::Int
     nl::Int
+    np::Int
 
     # Horizons 
     Np::Int # Prediction
@@ -151,7 +155,7 @@ mutable struct MPC
 end
 
 function MPC(model::Model;Np=10,Nc=Np)
-    MPC(model,0,0,0,0,Np,Nc,
+    MPC(model,0,0,0,0,0,Np,Nc,
         MPCWeights(model.nu,model.nx,model.ny),
         zeros(0),zeros(0),zeros(0),-1,
         Constraint[],MPCSettings(),MPQP(),
@@ -187,12 +191,15 @@ struct ParameterRange
 
     lmin::Vector{Float64}
     lmax::Vector{Float64}
+
+    pmin::Vector{Float64}
+    pmax::Vector{Float64}
 end
 
 
 function ParameterRange(mpc::MPC)
 
-    nx,nr,nd,nuprev,nl = get_parameter_dims(mpc);
+    nx,nr,nd,nuprev,nl,np = get_parameter_dims(mpc);
 
     xmin,xmax = -100*ones(nx),100*ones(nx)
     rmin,rmax = -100*ones(nr),100*ones(nr)
@@ -206,10 +213,12 @@ function ParameterRange(mpc::MPC)
         umin,umax = zeros(0),zeros(0)
     end
     lmin,lmax = -100*ones(nl),100*ones(nl)
+    pmin,pmax = -100*ones(np),100*ones(np)
 
     return ParameterRange(xmin,xmax,
                           rmin,rmax,
                           dmin,dmax,
                           umin,umax,
-                          lmin,lmax)
+                          lmin,lmax,
+                          pmin,pmax)
 end

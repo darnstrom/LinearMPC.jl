@@ -1225,6 +1225,62 @@ Random.seed!(1234)
             @test u ≈ u_julia
         end
     end
+
+    @testset "Affine Parameters" begin
+        mpc = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=4, Nc=4)
+        set_bounds!(mpc; umin=[0.0], umax=[2.0])
+        set_objective!(mpc; Q=[0.0], R=[1e-6], E=[-1.0;;], e=[-0.1])
+        add_constraint!(mpc; Au=[1.0;;], Ap=[1.0;;], ub=[1.0], ks=1:mpc.Np)
+        setup!(mpc)
+
+        nx, nr, nd, nuprev, nl, np = LinearMPC.get_parameter_dims(mpc)
+        @test (nx, nr, nd, nuprev, nl, np) == (1, 1, 0, 0, 0, 4)
+        @test LinearMPC.format_affine_parameters(mpc, [0.25]) == fill(0.25, 4)
+        @test LinearMPC.format_affine_parameters(mpc, [0.25 0.5]) == [0.25, 0.5, 0.5, 0.5]
+
+        u_nom = compute_control(mpc, [0.0]; r=[0.0], p=[0.0])
+        u_tight = compute_control(mpc, [0.0]; r=[0.0], p=[0.75])
+        u_preview = compute_control(mpc, [0.0]; r=[0.0], p=[0.75 0.0 0.0 0.0])
+
+        @test u_nom[1] ≈ 1.0 atol=1e-6
+        @test u_tight[1] ≈ 0.25 atol=1e-6
+        @test u_preview ≈ u_tight
+
+        pr = LinearMPC.ParameterRange(mpc)
+        @test length(pr.pmin) == np
+        region = LinearMPC.range2region(pr)
+        @test region.lb == [pr.xmin; pr.rmin; pr.dmin; pr.umin; pr.lmin; pr.pmin]
+        @test region.ub == [pr.xmax; pr.rmax; pr.dmax; pr.umax; pr.lmax; pr.pmax]
+    end
+
+    @testset "Affine Parameter Codegen" begin
+        mpc = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=3, Nc=3)
+        set_bounds!(mpc; umin=[0.0], umax=[2.0])
+        set_objective!(mpc; Q=[0.0], R=[1.0], E=[-2.0;;])
+        setup!(mpc)
+
+        x = [0.0]
+        r = [0.0]
+        d = zeros(0)
+        p = [0.5, 0.0, 0.0]
+        u_julia = compute_control(mpc, x; r=r, p=p)
+
+        srcdir = tempname()
+        LinearMPC.codegen(mpc; dir=srcdir)
+
+        if !isnothing(Sys.which("gcc"))
+            testlib = "mpctest." * Base.Libc.Libdl.dlext
+            src = [f for f in readdir(srcdir) if last(f,1) == "c"]
+            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+
+            u = zeros(1)
+            global templib_affine = joinpath(srcdir, testlib)
+            ccall(("mpc_compute_control", templib_affine), Cint,
+                  (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}),
+                  u, x, r, d, p)
+            @test u ≈ u_julia
+        end
+    end
     @testset "MPQP preprocessing" begin
         A = [0 1; 10 0]
         B = [0; 1]
@@ -1534,8 +1590,9 @@ Random.seed!(1234)
         region = LinearMPC.range2region(pr_param)
         @test pr_param.umin == [-2.0]
         @test length(pr_param.lmin) == parametric.nl
-        @test region.lb == [pr_param.xmin; pr_param.rmin; pr_param.dmin; pr_param.umin; pr_param.lmin]
-        @test region.ub == [pr_param.xmax; pr_param.rmax; pr_param.dmax; pr_param.umax; pr_param.lmax]
+        @test isempty(pr_param.pmin)
+        @test region.lb == [pr_param.xmin; pr_param.rmin; pr_param.dmin; pr_param.umin; pr_param.lmin; pr_param.pmin]
+        @test region.ub == [pr_param.xmax; pr_param.rmax; pr_param.dmax; pr_param.umax; pr_param.lmax; pr_param.pmax]
 
         mpc = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=2)
         xs = [1.0 2.0]
@@ -1543,7 +1600,7 @@ Random.seed!(1234)
         rs = [0.0 1.0]
         @test LinearMPC.evaluate_cost(mpc, xs, us, rs; Q=[2.0;;], R=[3.0;;], Rr=[4.0;;], S=[5.0;;]) ≈ 10.5
 
-        c = LinearMPC.Constraint([1.0;;], [1.0 0.0], zeros(0, 0), zeros(0, 0), zeros(0, 0), zeros(0, 0), [1.0], [-1.0], 1:1, false, false, 0)
+        c = LinearMPC.Constraint([1.0;;], [1.0 0.0], zeros(0, 0), zeros(0, 0), zeros(0, 0), zeros(0, 0), zeros(0, 0), [1.0], [-1.0], 1:1, false, false, 0)
         @test LinearMPC.constraint_violation(c, [0.8, 0.0], [0.5]) ≈ 0.3
         @test LinearMPC.constraint_violation(c, [0.8 0.2; 0.0 0.0], [0.5 0.0]) ≈ [0.3, 0.0]
         @test_throws AssertionError LinearMPC.constraint_violation(c, [0.8 0.0], [0.5 0.0 0.1])
