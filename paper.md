@@ -29,7 +29,7 @@ Model Predictive Control is the dominant advanced control strategy in industry, 
 
 # State of the field
 
-Existing tools address parts of the above-mentioned workflow. `ModelPredictiveControl.jl` [@ModelPredictiveControl] provides a high-level Julia interface for MPC design but does not target embedded deployment. Similarly, `do-mpc` [@Fiedler:2023] provides a high-level Python interace for MPC design, but without any support for code generation to deploy on embedded hardware. `acados` [@Verschueren:2022] provides fast embedded solvers for nonlinear optimal control, but is not tailored for _linear_ MPC applications. MATLAB's Model Predictive Control Toolbox offers a mature commercial solution. However, there is a gap for a tool that combines (i) an expressive, high-level Julia interface for rapid prototyping, (ii) generation of lightweight, allocation-free C code for any embedded target, (iii) state-of-the-art explicit MPC computation, and (iv) complexity certification for hard real-time guarantees. `LinearMPC.jl` fills this gap by providing a unified workflow from design to deployment for linear MPC.
+Existing tools address parts of the above-mentioned workflow. `ModelPredictiveControl.jl` [@ModelPredictiveControl] provides a high-level Julia interface for MPC design but does not target embedded deployment. Similarly, `do-mpc` [@Fiedler:2023] provides a high-level Python interface for MPC design, but without any support for code generation to deploy on embedded hardware. The `acados` framework [@Verschueren:2022] provides fast embedded solvers for nonlinear optimal control, but is not tailored for _linear_ MPC applications. MATLAB's Model Predictive Control Toolbox offers a mature commercial solution. However, there is a gap for a tool that combines (i) an expressive, high-level Julia interface for rapid prototyping, (ii) generation of lightweight, allocation-free C code for any embedded target, (iii) state-of-the-art explicit MPC computation, and (iv) complexity certification for hard real-time guarantees. `LinearMPC.jl` fills this gap by providing a unified workflow from design to deployment for linear MPC.
 
 # Software design
 
@@ -73,9 +73,9 @@ where $\hat{x}$ is the current state estimate and $r$ is the desired reference. 
 
 # Research impact statement:
 
-`LinearMPC.jl` has been used to generate high-performing and real-time certified MPC controllers for nano-quadcopters [@Wikner:2026], and for handling prioritized constraints in MPC applications [@arnstrom2025prioritized]. Moreover, the sister package `lmpc`, which is a Python wrapper of `LinearMPC.jl`, has been used in investigate novel methods for learning-based control [@schmidtobreick2025warm]. 
+`LinearMPC.jl` has been used to generate high-performing and real-time certified MPC controllers for nano-quadcopters [@Wikner:2026], and for handling prioritized constraints in MPC applications [@arnstrom2025prioritized]. Moreover, the sister package `lmpc`, which is a Python wrapper of `LinearMPC.jl`, has been used to investigate novel methods for learning-based control [@schmidtobreick2025warm].
 
-Zooming out, the underlying solver `DAQP` has been used in several real-world applications, including automotive, robotics, and aerospace applications. The parametric solver `PDAQP` has recently been integrate into `cvxpygen` to support generating closed-form solutions to parametric optimization problems [@schaller2025automatic].
+Zooming out, the underlying solver `DAQP` has been used in several real-world applications, including automotive, robotics, and aerospace applications. The parametric solver `PDAQP` has recently been integrated into `cvxpygen` to support generating closed-form solutions to parametric optimization problems [@schaller2025automatic].
 
 # Example usage
 
