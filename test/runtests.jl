@@ -1156,13 +1156,31 @@ Random.seed!(1234)
         @test sim_with_p.us[end] > 0.1
     end
 
+    @testset "Generalized Parameters in State Objective" begin
+        mpc = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=4, Nc=4)
+        set_bounds!(mpc; umin=[-2.0], umax=[2.0])
+        set_objective!(mpc; Q=[0.0], R=[1e-6], Ex=[1.0;;], ex=[0.1])
+        setup!(mpc)
+
+        nx, nr, nd, nuprev, np = LinearMPC.get_parameter_dims(mpc)
+        @test (nx, nr, nd, nuprev, np) == (1, 1, 0, 0, 4)
+
+        u_nom = compute_control(mpc, [1.0]; r=[0.0], p=[0.0])
+        u_pos = compute_control(mpc, [1.0]; r=[0.0], p=[1.0])
+        u_neg = compute_control(mpc, [1.0]; r=[0.0], p=[-1.0])
+        u_traj = compute_control(mpc, [1.0]; r=[0.0], p=ones(1, 4))
+
+        @test u_pos[1] < u_nom[1] < u_neg[1]
+        @test u_traj ≈ u_pos
+    end
+
     @testset "Generalized Parameter Codegen" begin
         A = [1 1; 0 1]
         B = [0; 1]
         C = [1.0 0; 0 1.0]
         mpc = LinearMPC.MPC(A, B; C, Np=10, Nc=10)
         set_bounds!(mpc; umin=[-2.0], umax=[2.0])
-        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1], E=[1.0;;])
+        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1], Ex=[0.2; 0.1;;], E=[1.0;;])
 
         move_block!(mpc, [2, 3, 3, 2])
         setup!(mpc)

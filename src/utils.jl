@@ -202,8 +202,9 @@ end
 
 function get_affine_parameter_base_dim(mpc::MPC)
     mpc.mpqp_issetup && return mpc.np == 0 ? 0 : mpc.np ÷ mpc.Np
-    dims = Int[size(mpc.weights.E, 2)]
+    dims = Int[size(mpc.weights.Ex, 2), size(mpc.weights.E, 2)]
     append!(dims, (size(c.Ap, 2) for c in mpc.constraints))
+    append!(dims, (size(first(c).Ex, 2) for c in mpc.objectives))
     append!(dims, (size(first(c).E, 2) for c in mpc.objectives))
     return maximum(dims)
 end

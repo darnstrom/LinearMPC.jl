@@ -108,29 +108,32 @@ function set_bounds!(mpc::MPC; umin=zeros(0), umax=zeros(0), ymin = zeros(0), ym
 end
 
 """
-    set_objective!(mpc;Q,R,Rr,S,Qf,E,e)
+    set_objective!(mpc;Q,R,Rr,S,Qf,Ex,ex,E,e)
 
-Set the weights in the objective function `xN' C' Qf C xN^T + ∑ (C xₖ - rₖ)' Q (C xₖ - rₖ)  + uₖ' R uₖ + Δuₖ' Rr Δuₖ + xₖ' S uₖ + (E pₖ + e)'uₖ
+Set the weights in the objective function `xN' C' Qf C xN^T + ∑ (C xₖ - rₖ)' Q (C xₖ - rₖ)  + uₖ' R uₖ + Δuₖ' Rr Δuₖ + xₖ' S uₖ + (Ex pₖ + ex)'xₖ + (E pₖ + e)'uₖ
 
 A vector is interpreted as a diagonal matrix.
 """
 function set_objective!(mpc::MPC;Q = zeros(0,0), R=zeros(0,0), Rr=zeros(0,0), S= zeros(0,0),Qf=zeros(0,0), Qfx=zeros(0,0),
-        E = zeros(0,0), e = zeros(0))
+        Ex = zeros(0,0), ex = zeros(0), E = zeros(0,0), e = zeros(0))
     Qw = isempty(Q) ? copy(mpc.weights.Q) : matrixify(Q,mpc.model.ny)
     Rw = isempty(R) ? copy(mpc.weights.R) : matrixify(R,mpc.model.nu)
     Rrw = isempty(Rr) ? copy(mpc.weights.Rr) : matrixify(Rr,mpc.model.nu)
     Sw = isempty(S) ? copy(mpc.weights.S) : float(S)
     Qfw = isempty(Qf) ? copy(mpc.weights.Qf) : matrixify(Qf,mpc.model.ny)
     Qfxw = isempty(Qfx) ? copy(mpc.weights.Qfx) : matrixify(Qfx,mpc.model.nx)
+    Exw = isempty(Ex) ? copy(mpc.weights.Ex) : float(Ex)
+    exw = isempty(ex) ? copy(mpc.weights.ex) : float(ex)
     Ew = isempty(E) ? copy(mpc.weights.E) : float(E)
     ew = isempty(e) ? copy(mpc.weights.e) : float(e)
-    mpc.weights = MPCWeights(Qw,Rw,Rrw,Sw,Qfw,Qfxw,Ew,ew)
+    mpc.weights = MPCWeights(Qw,Rw,Rrw,Sw,Qfw,Qfxw,Exw,exw,Ew,ew)
     mpc.mpqp_issetup = false
 end
 
 
 function set_objective!(mpc::MPC, uids::Vector{Int};Q = zeros(0,0), R=zeros(0,0), 
-        Rr=zeros(0,0), S= zeros(0,0), Qf=zeros(0,0), Qfx=zeros(0,0), E = zeros(0,0), e = zeros(0))
+        Rr=zeros(0,0), S= zeros(0,0), Qf=zeros(0,0), Qfx=zeros(0,0),
+        Ex = zeros(0,0), ex = zeros(0), E = zeros(0,0), e = zeros(0))
     nu,ny,nx = length(uids), mpc.model.ny, mpc.model.nx
     Q   = isempty(Q)   ? zeros(mpc.model.ny,mpc.model.ny) : matrixify(Q,ny)
     R   = isempty(R)   ? zeros(nu,nu) : matrixify(R,nu)
@@ -138,11 +141,13 @@ function set_objective!(mpc::MPC, uids::Vector{Int};Q = zeros(0,0), R=zeros(0,0)
     S   = isempty(S)   ? zeros(nx,nu) : float(S)
     Qf  = isempty(Qf)  ? copy(Q) : matrixify(Qf,ny)
     Qfx = isempty(Qfx) ? zeros(nx,nx) :  matrixify(Qfx,nx)
+    Ex  = isempty(Ex)  ? zeros(nx,0) : float(Ex)
+    ex  = isempty(ex)  ? zeros(nx) : float(ex)
     E   = isempty(E)   ? zeros(nu,0) : float(E)
     e   = isempty(e)   ? zeros(nu) : float(e)
 
     mpc.weights.Rr[uids,uids] .= Rr # To be able to keep track of nuprev
-    push!(mpc.objectives, (MPCWeights(Q,R,Rr,S,Qf,Qfx,E,e),uids))
+    push!(mpc.objectives, (MPCWeights(Q,R,Rr,S,Qf,Qfx,Ex,ex,E,e),uids))
     mpc.mpqp_issetup = false
 end
 
