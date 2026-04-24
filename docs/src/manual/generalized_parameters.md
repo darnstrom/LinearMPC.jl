@@ -3,7 +3,7 @@
 LinearMPC supports a stagewise generalized parameter trajectory $p_k$ that can enter both the objective and the constraints. In the objective, the term
 
 ```math
-(Ex p_k + ex)^T x_k + (E p_k + e)^T u_k
+(Ex p_k + ex)^T x_k + (Eu p_k + eu)^T u_k
 ```
 
 lets you model economic MPC effects such as time-varying electricity prices without a separate linear-cost feature.
@@ -89,7 +89,7 @@ Np = 24
 
 mpc = LinearMPC.MPC(A, B; C, Np=Np, Nc=Np)
 set_bounds!(mpc; umin=[0.0], umax=[1.0])
-set_objective!(mpc; Q=[0.05], E=[1.0;;], Ex=[0.02;;])
+set_objective!(mpc; Q=[0.05], Eu=[1.0;;], Ex=[0.02;;])
 setup!(mpc)
 # python
 from lmpc import MPC
@@ -107,7 +107,7 @@ Np = 24
 
 mpc = MPC(A, B, C=C, Np=Np, Nc=Np)
 mpc.set_bounds(umin=[0.0], umax=[1.0])
-mpc.set_objective(Q=[0.05], E=[[1.0]], Ex=[[0.02]])
+mpc.set_objective(Q=[0.05], Eu=[[1.0]], Ex=[[0.02]])
 mpc.setup()
 ```
 

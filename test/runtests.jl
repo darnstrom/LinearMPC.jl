@@ -1094,7 +1094,7 @@ Random.seed!(1234)
         C = [1.0 0; 0 1.0]
         mpc = LinearMPC.MPC(A, B; C, Np=5, Nc=3)
         set_bounds!(mpc; umin=[0.0], umax=[2.0])
-        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1], E=[1.0;;])
+        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1], Eu=[1.0;;])
         setup!(mpc)
 
         nx, nr, nd, nuprev, np = LinearMPC.get_parameter_dims(mpc)
@@ -1126,7 +1126,7 @@ Random.seed!(1234)
         C = [1.0 0; 0 1.0]
         mpc = LinearMPC.MPC(A, B; C, Np=5, Nc=3)
         set_bounds!(mpc; umin=[-2.0], umax=[2.0])
-        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1], E=[1.0;;])
+        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1], Eu=[1.0;;])
         set_terminal_cost!(mpc)
         setup!(mpc)
 
@@ -1180,7 +1180,7 @@ Random.seed!(1234)
         C = [1.0 0; 0 1.0]
         mpc = LinearMPC.MPC(A, B; C, Np=10, Nc=10)
         set_bounds!(mpc; umin=[-2.0], umax=[2.0])
-        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1], Ex=[0.2; 0.1;;], E=[1.0;;])
+        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1], Ex=[0.2; 0.1;;], Eu=[1.0;;])
 
         move_block!(mpc, [2, 3, 3, 2])
         setup!(mpc)
@@ -1215,7 +1215,7 @@ Random.seed!(1234)
     @testset "Generalized Parameters in Constraints" begin
         mpc = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=4, Nc=4)
         set_bounds!(mpc; umin=[0.0], umax=[2.0])
-        set_objective!(mpc; Q=[0.0], R=[1e-6], E=[-1.0;;], e=[-0.1])
+        set_objective!(mpc; Q=[0.0], R=[1e-6], Eu=[-1.0;;], eu=[-0.1])
         add_constraint!(mpc; Au=[1.0;;], Ap=[1.0;;], ub=[1.0], ks=1:mpc.Np)
         setup!(mpc)
 
@@ -1242,7 +1242,7 @@ Random.seed!(1234)
     @testset "Generalized Parameter Codegen for Explicit Preview" begin
         mpc = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=3, Nc=3)
         set_bounds!(mpc; umin=[0.0], umax=[2.0])
-        set_objective!(mpc; Q=[0.0], R=[1.0], E=[-2.0;;])
+        set_objective!(mpc; Q=[0.0], R=[1.0], Eu=[-2.0;;])
         setup!(mpc)
 
         x = [0.0]
@@ -1543,7 +1543,7 @@ Random.seed!(1234)
 
         parametric = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=3, Nc=2)
         set_input_bounds!(parametric; umin=[-2.0], umax=[2.0])
-        set_objective!(parametric; Q=[1.0], R=[1.0], Rr=[0.5], E=[1.0;;])
+        set_objective!(parametric; Q=[1.0], R=[1.0], Rr=[0.5], Eu=[1.0;;])
         setup!(parametric)
         pr_param = LinearMPC.ParameterRange(parametric)
         region = LinearMPC.range2region(pr_param)

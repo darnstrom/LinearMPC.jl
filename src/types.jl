@@ -27,8 +27,8 @@ struct MPCWeights
     Qfx::Matrix{Float64}
     Ex::Matrix{Float64}
     ex::Vector{Float64}
-    E::Matrix{Float64}
-    e::Vector{Float64}
+    Eu::Matrix{Float64}
+    eu::Vector{Float64}
 end
 
 function MPCWeights(nu,nx,nr)
@@ -39,10 +39,10 @@ end
 function MPCWeights(Q::AbstractArray,R::AbstractArray,Rr::AbstractArray=zeros(size(R));
         S = zeros(0,0), Qf = zeros(0,0), Qfx = zeros(0,0),
         Ex = zeros(size(Q, 1), 0), ex = zeros(size(Q, 1)),
-        E = zeros(size(R, 1), 0), e = zeros(size(R, 1)))
+        Eu = zeros(size(R, 1), 0), eu = zeros(size(R, 1)))
     Qf = isempty(Qf) ? copy(Q) : Qf 
     return MPCWeights(matrixify(Q),matrixify(R),matrixify(Rr),float(S),matrixify(Qf),matrixify(Qfx),
-                      float(Ex),float(ex),float(E),float(e))
+                      float(Ex),float(ex),float(Eu),float(eu))
 end
 
 """

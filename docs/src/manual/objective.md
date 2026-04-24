@@ -72,20 +72,20 @@ u = mpc.compute_control(x, r=r_trajectory)
 ## Generalized parameters in objective and constraints
 LinearMPC also supports a stagewise generalized parameter trajectory $p_k$ entering the problem as
 ```math
-(Ex p_k + ex)^T x_k + (E p_k + e)^T u_k
+(Ex p_k + ex)^T x_k + (Eu p_k + eu)^T u_k
 ```
 in the objective, and through additional constraint terms such as
 ```math
 \underline{b} \le A_x x_k + A_u u_k + A_p p_k \le \overline{b}.
 ```
 
-The matrices `Ex`, `E`, and `Ap` are stagewise coefficients. A constant parameter vector is broadcast across the prediction horizon, while an `(np, Np)` matrix gives a time-varying parameter preview.
+The matrices `Ex`, `Eu`, and `Ap` are stagewise coefficients. A constant parameter vector is broadcast across the prediction horizon, while an `(np, Np)` matrix gives a time-varying parameter preview.
 
-This replaces the older dedicated linear control-cost feature. Economic terms such as time-varying electricity prices can now be modeled directly with `E`, `e`, and `p`.
+This replaces the older dedicated linear control-cost feature. Economic terms such as time-varying electricity prices can now be modeled directly with `Eu`, `eu`, and `p`.
 
 ```@tab
 # julia
-set_objective!(mpc; Q=[1.0], R=[0.1], Ex=[0.5 0.0], ex=[0.1], E=[1.0 0.0], e=[0.2])
+set_objective!(mpc; Q=[1.0], R=[0.1], Ex=[0.5 0.0], ex=[0.1], Eu=[1.0 0.0], eu=[0.2])
 add_constraint!(mpc; Au=[1.0;;], Ap=[0.5 1.0], ub=[1.0], ks=1:mpc.Np)
 
 u = compute_control(mpc, x; p=[0.3, -0.1])
@@ -95,7 +95,7 @@ p_preview = [0.3 0.2 0.1 0.1;
              -0.1 -0.1 0.0 0.1]
 u = compute_control(mpc, x; p=p_preview)
 # python
-mpc.set_objective(Q=[1.0], R=[0.1], Ex=[[0.5, 0.0]], ex=[0.1], E=[[1.0, 0.0]], e=[0.2])
+mpc.set_objective(Q=[1.0], R=[0.1], Ex=[[0.5, 0.0]], ex=[0.1], Eu=[[1.0, 0.0]], eu=[0.2])
 mpc.add_constraint(Au=[[1.0]], Ap=[[0.5, 1.0]], ub=[1.0], ks=range(1, mpc.Np + 1))
 
 u = mpc.compute_control(x, p=[0.3, -0.1])

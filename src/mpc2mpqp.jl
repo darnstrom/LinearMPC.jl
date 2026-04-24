@@ -451,17 +451,17 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
     np_base = get_affine_parameter_base_dim(mpc)
     Ex = isempty(w.Ex) ? zeros(mpc.model.nx, np_base) : w.Ex
     ex = isempty(w.ex) ? zeros(mpc.model.nx) : w.ex
-    E = isempty(w.E) ? zeros(nu, np_base) : w.E
-    e = isempty(w.e) ? zeros(nu) : w.e
+    Eu = isempty(w.Eu) ? zeros(nu, np_base) : w.Eu
+    eu = isempty(w.eu) ? zeros(nu) : w.eu
     size(Ex, 1) == mpc.model.nx || throw(ArgumentError("Affine objective matrix Ex must have $(mpc.model.nx) rows"))
     size(Ex, 2) == np_base || throw(ArgumentError("Affine objective matrix Ex must have $np_base columns"))
     length(ex) == mpc.model.nx || throw(ArgumentError("Affine objective vector ex must have length $(mpc.model.nx)"))
-    size(E, 1) == nu || throw(ArgumentError("Affine objective matrix E must have $nu rows"))
-    size(E, 2) == np_base || throw(ArgumentError("Affine objective matrix E must have $np_base columns"))
-    length(e) == nu || throw(ArgumentError("Affine objective vector e must have length $nu"))
+    size(Eu, 1) == nu || throw(ArgumentError("Affine objective matrix Eu must have $nu rows"))
+    size(Eu, 2) == np_base || throw(ArgumentError("Affine objective matrix Eu must have $np_base columns"))
+    length(eu) == nu || throw(ArgumentError("Affine objective vector eu must have length $nu"))
 
     Umap = kron([Matrix{Float64}(I, Nc, Nc); zeros(N-Nc, Nc)], Matrix{Float64}(I, nu, nu))
-    f .+= Umap' * repeat(e, N)
+    f .+= Umap' * repeat(eu, N)
 
     x_selector = [Matrix{Float64}(I, mpc.model.nx, mpc.model.nx) zeros(mpc.model.nx, nx-mpc.model.nx)]
     Xmap = kron(Matrix{Float64}(I, N, N), x_selector)
@@ -470,7 +470,7 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
 
     if npp > 0
         Fp = zeros(size(f_theta, 1), npp)
-        Fp .+= Umap' * kron(Matrix{Float64}(I, N, N), E)
+        Fp .+= Umap' * kron(Matrix{Float64}(I, N, N), Eu)
         Fp .+= Γx' * kron(Matrix{Float64}(I, N, N), Ex)
         f_theta = [f_theta Fp]
 
@@ -699,7 +699,7 @@ function create_extended_cost(mpc::MPC, weights::MPCWeights;uids=1:mpc.model.nu)
         S = [S;zeros(1,nui)]
     end
 
-    return MPCWeights(Q,R,zeros(0,0),S,Qf,zeros(0,0),weights.Ex,weights.ex,weights.E,weights.e)
+    return MPCWeights(Q,R,zeros(0,0),S,Qf,zeros(0,0),weights.Ex,weights.ex,weights.Eu,weights.eu)
 end
 
 function remove_redundant(c::DenseConstraints)
