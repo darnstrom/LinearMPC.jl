@@ -1,7 +1,7 @@
 # [Objective function](@id man_objective)
 The basic objective for computing a control action in the MPC controller is of the form
 ```math
-\sum_{k=0}^{N-1} {\left((Cx_{k}-r)^T Q (C x_{k}-r) + u_{k}^T R u_{k} + \Delta u_{k}^T R_r \Delta u_k + l_k^T u_k\right)},
+\sum_{k=0}^{N-1} {\left((Cx_{k}-r)^T Q (C x_{k}-r) + u_{k}^T R u_{k} + \Delta u_{k}^T R_r \Delta u_k\right)},
 ```
 where $N$ is the prediction horizon of the controller.
 
@@ -69,42 +69,8 @@ r_trajectory = np.array([[1.0, 1.5, 2.0, 2.0, 2.0],   # Reference for output 1
 u = mpc.compute_control(x, r=r_trajectory)
 ```
 
-## Linear control cost
-The term $l_k^T u_k$ adds an optional linear cost on the control signal. This is useful in economic MPC where control actions have time-varying costs (e.g., electricity prices).
-
-Enable linear cost with:
-
-```@tab
-# julia
-mpc.settings.linear_cost = true
-setup!(mpc)
-# python
-mpc.settings({"linear_cost": True})
-mpc.setup()
-```
-
-Then provide the linear cost to `compute_control`:
-
-```@tab
-# julia
-# Constant linear cost across horizon
-u = compute_control(mpc, x; l=[0.5])
-
-# Time-varying linear cost (nu × Np matrix)
-l_trajectory = [0.1 0.2 0.5 0.8 1.0]  # Cost varies over prediction horizon
-u = compute_control(mpc, x; l=l_trajectory)
-# python
-import numpy as np
-# Constant linear cost across horizon
-u = mpc.compute_control(x, l=[0.5])
-
-# Time-varying linear cost (nu x Np array)
-l_trajectory = np.array([[0.1, 0.2, 0.5, 0.8, 1.0]])  # Cost varies over prediction horizon
-u = mpc.compute_control(x, l=l_trajectory)
-```
-
-## Affine parameters in objective and constraints
-LinearMPC also supports a stagewise affine parameter trajectory $p_k$ entering the problem as
+## Generalized parameters in objective and constraints
+LinearMPC also supports a stagewise generalized parameter trajectory $p_k$ entering the problem as
 ```math
 (E p_k + e)^T u_k
 ```
@@ -114,6 +80,8 @@ in the objective, and through additional constraint terms such as
 ```
 
 The matrices `E` and `Ap` are stagewise coefficients. A constant parameter vector is broadcast across the prediction horizon, while an `(np, Np)` matrix gives a time-varying parameter preview.
+
+This replaces the older dedicated linear control-cost feature. Economic terms such as time-varying electricity prices can now be modeled directly with `E`, `e`, and `p`.
 
 ```@tab
 # julia

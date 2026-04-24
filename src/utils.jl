@@ -1,5 +1,5 @@
 """
-    compute_control(mpc,x;r,d,uprev,l,p)
+    compute_control(mpc,x;r,d,uprev,p)
 
 For a given MPC `mpc` and state `x`, compute the optimal control action.
 
@@ -11,15 +11,10 @@ Optional arguments:
   - Vector of length `nd` for constant disturbance
   - Matrix of size `(nd, Np)` for disturbance preview (when `mpc.settings.disturbance_preview = true`)
 * `uprev` - previous control action
-* `l` - linear cost on control (requires `mpc.settings.linear_cost = true`). Can be:
-  - Vector of length `nu` for constant linear cost across horizon
-  - Matrix of size `(nu, Np)` for time-varying linear cost (mean computed per move block)
-  - Matrix of size `(nu, Nc)` for pre-blocked linear cost
-  - Nothing (default) for no linear cost
-* `p` - affine parameter trajectory. Can be:
+* `p` - generalized parameter trajectory. Can be:
   - Vector of length `np` for a constant parameter across the horizon
-  - Matrix of size `(np, Np)` for time-varying affine parameters
-  - Nothing (default) for no affine parameter contribution
+  - Matrix of size `(np, Np)` for time-varying generalized parameters
+  - Nothing (default) for no generalized-parameter contribution
 
 All arguments default to zero.
 
@@ -37,19 +32,12 @@ u = compute_control(mpc, x; r=r_trajectory)
 d_trajectory = [0.0 0.2 0.4 0.4 0.4]  # nd × Np matrix
 u = compute_control(mpc, x; d=d_trajectory)
 
-# With linear cost (requires mpc.settings.linear_cost = true)
-u = compute_control(mpc, x; l=[1.0])  # Constant cost
-
-# Time-varying linear cost
-l_trajectory = [1.0 0.5 0.0 -0.5 -1.0]  # nu × Np matrix
-u = compute_control(mpc, x; l=l_trajectory)
-
-# Affine parameter preview
+# Generalized parameter preview
 u = compute_control(mpc, x; p=[0.5, -0.25])
 ```
 """
-function compute_control(mpc::MPC,x;r=nothing,d=nothing,uprev=nothing,l=nothing,p=nothing, check=true)
-    θ = form_parameter(mpc,x,r,d,uprev,l,p)
+function compute_control(mpc::MPC,x;r=nothing,d=nothing,uprev=nothing,p=nothing, check=true)
+    θ = form_parameter(mpc,x,r,d,uprev,p)
     udaqp,fval,exitflag,info = solve(mpc,θ)
     check && @assert(exitflag>=1)
     # mpc.uprev = udaqp[1:mpc.model.nu]-mpc.K*θ[1:mpc.model.nx]
@@ -58,17 +46,17 @@ function compute_control(mpc::MPC,x;r=nothing,d=nothing,uprev=nothing,l=nothing,
     return copy(mpc.uprev)
 end
 
-function compute_control(empc::ExplicitMPC,x;r=nothing,d=nothing,uprev=nothing,l=nothing,p=nothing, check=true)
+function compute_control(empc::ExplicitMPC,x;r=nothing,d=nothing,uprev=nothing,p=nothing, check=true)
     if isnothing(empc.bst)
         @error "Need to build a binary search tree to evaluate control law"
     else
-        empc.uprev .= ParametricDAQP.evaluate(empc.bst,form_parameter(empc,x,r,d,uprev,l,p))
+        empc.uprev .= ParametricDAQP.evaluate(empc.bst,form_parameter(empc,x,r,d,uprev,p))
         return copy(empc.uprev) 
     end
 end
 
-function compute_control_trajectory(mpc::MPC,x;r=nothing,d=nothing,uprev=nothing,l=nothing,p=nothing, check=true)
-    θ = form_parameter(mpc,x,r,d,uprev,l,p)
+function compute_control_trajectory(mpc::MPC,x;r=nothing,d=nothing,uprev=nothing,p=nothing, check=true)
+    θ = form_parameter(mpc,x,r,d,uprev,p)
     udaqp,_,exitflag,_ = solve(mpc,θ)
     check && @assert(exitflag>=1)
     # mpc.uprev = udaqp[1:mpc.model.nu]-mpc.K*θ[1:mpc.model.nx]
@@ -212,87 +200,6 @@ function format_disturbance(mpc::Union{MPC,ExplicitMPC}, d)
     end
 end
 
-"""
-    format_linear_cost(mpc, l)
-
-Format linear cost input for MPC controller.
-
-# Arguments
-- `mpc`: MPC or ExplicitMPC controller
-- `l`: Linear cost input. Can be:
-  - `nothing`: Returns zero vector
-  - Vector of length `nu`: Broadcast across control horizon
-  - Vector of length `nl`: Used directly (already blocked)
-  - Matrix of size `(nu, Np)`: Mean computed over each move block
-  - Matrix of size `(nu, Nc)`: Used directly
-"""
-function format_linear_cost(mpc::Union{MPC,ExplicitMPC}, l)
-    # Use stored mpc.nl (set during setup!) to ensure consistency with the QP
-    mpc.nl == 0 && return zeros(0)
-    isnothing(l) && return zeros(mpc.nl)
-
-    nu = mpc.model.nu
-    Nc_blocked = mpc.nl ÷ nu  # Number of blocked control moves
-    move_blocks = mpc.move_blocks
-    Np = mpc.Np
-
-    # Handle single vector (constant linear cost)
-    if l isa AbstractVector && length(l) == nu
-        return repeat(l, Nc_blocked)
-    end
-
-    # Handle already-blocked input
-    if l isa AbstractVector && length(l) == mpc.nl
-        return l
-    end
-
-    # Matrix input
-    if l isa AbstractMatrix
-        size(l, 1) != nu && error("Linear cost matrix must have $nu rows")
-        ncols = size(l, 2)
-
-        if ncols == Nc_blocked
-            # Already blocked size - use directly
-            return vec(l)
-        elseif ncols >= Np || !isempty(move_blocks)
-            # Full Np horizon (or longer) - apply move blocking
-            l_mat = ncols >= Np ? l[:, 1:Np] : begin
-                # Pad with last column
-                tmp = zeros(nu, Np)
-                tmp[:, 1:ncols] = l
-                tmp[:, ncols+1:end] .= l[:, end]
-                tmp
-            end
-
-            if isempty(move_blocks)
-                # No blocking - use first Nc_blocked columns
-                return vec(l_mat[:, 1:Nc_blocked])
-            end
-
-            # Apply move blocking via direct mean computation
-            if any(x -> x != move_blocks[1], move_blocks)
-                throw(ArgumentError("Parametric linear cost + varying move blocks not supported."))
-            end
-            l_blocked = zeros(mpc.nl)
-            offset = 0
-            for (k, mb) in enumerate(move_blocks[1])
-                block_inds = (offset + 1):min(offset + mb, Np)
-                l_blocked[(k-1)*nu+1:k*nu] = vec(mean(l_mat[:, block_inds], dims=2))
-                offset += mb
-            end
-            return l_blocked
-        else
-            # Smaller than Np but not Nc_blocked - pad to Nc_blocked
-            l_ext = zeros(nu, Nc_blocked)
-            l_ext[:, 1:ncols] = l
-            l_ext[:, ncols+1:end] .= l[:, end]
-            return vec(l_ext)
-        end
-    else
-        error("Linear cost must be a vector or matrix")
-    end
-end
-
 function get_affine_parameter_base_dim(mpc::MPC)
     mpc.mpqp_issetup && return mpc.np == 0 ? 0 : mpc.np ÷ mpc.Np
     dims = Int[size(mpc.weights.E, 2)]
@@ -306,7 +213,7 @@ get_affine_parameter_base_dim(mpc::ExplicitMPC) = mpc.np == 0 ? 0 : mpc.np ÷ mp
 """
     format_affine_parameters(mpc, p)
 
-Format affine parameter input for MPC controller.
+Format generalized parameter input for MPC controller.
 """
 function format_affine_parameters(mpc::Union{MPC,ExplicitMPC}, p)
     np_total = mpc isa MPC && !mpc.mpqp_issetup ? get_affine_parameter_base_dim(mpc) * mpc.Np : mpc.np
@@ -325,7 +232,7 @@ function format_affine_parameters(mpc::Union{MPC,ExplicitMPC}, p)
     end
 
     if p isa AbstractMatrix
-        size(p, 1) == np_base || error("Affine parameter matrix must have $np_base rows")
+        size(p, 1) == np_base || error("Generalized parameter matrix must have $np_base rows")
         if size(p, 2) >= Np
             return vec(p[:, 1:Np])
         end
@@ -336,7 +243,7 @@ function format_affine_parameters(mpc::Union{MPC,ExplicitMPC}, p)
         return vec(p_extended)
     end
 
-    error("Affine parameters must be a vector or matrix")
+    error("Generalized parameters must be a vector or matrix")
 end
 
 """
@@ -362,8 +269,8 @@ function solve(mpc::MPC,θ)
 end
 
 function range2region(range)
-    lb = [range.xmin;range.rmin;range.dmin;range.umin;range.lmin;range.pmin]
-    ub = [range.xmax;range.rmax;range.dmax;range.umax;range.lmax;range.pmax]
+    lb = [range.xmin;range.rmin;range.dmin;range.umin;range.pmin]
+    ub = [range.xmax;range.rmax;range.dmax;range.umax;range.pmax]
     return (A = zeros(length(ub), 0), b=zeros(0), lb=lb,ub=ub)
 end
 

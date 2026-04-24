@@ -4,7 +4,6 @@ mutable struct ExplicitMPC
     nr::Int
     nd::Int
     nuprev::Int
-    nl::Int
     np::Int
     Np::Int
     Nc::Int
@@ -38,8 +37,8 @@ function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false, opts=ParametricD
     # Compute mpQP solution
     opts.daqp_settings = merge(Dict(:sing_tol => 1e-11),opts.daqp_settings)
     sol,info = ParametricDAQP.mpsolve(mpQP, TH;opts)
-    nx,nr,nd,nuprev,nl,np = get_parameter_dims(mpc)
-    empc = ExplicitMPC(mpc.model, nr, nd, nuprev, nl, np, mpc.Np, mpc.Nc, mpc.move_blocks, sol, mpQP, TH,
+    nx,nr,nd,nuprev,np = get_parameter_dims(mpc)
+    empc = ExplicitMPC(mpc.model, nr, nd, nuprev, np, mpc.Np, mpc.Nc, mpc.move_blocks, sol, mpQP, TH,
                        nothing, mpc.settings, mpc.K, zeros(mpc.model.nu), mpc.traj2setpoint, mpc.state_observer)
 
     # Build binary search tree
@@ -49,19 +48,18 @@ function ExplicitMPC(mpc::MPC; range=nothing, build_tree=false, opts=ParametricD
 end
 
 function get_parameter_dims(mpc::ExplicitMPC)
-    return mpc.model.nx, mpc.nr, mpc.nd, mpc.nuprev, mpc.nl, mpc.np
+    return mpc.model.nx, mpc.nr, mpc.nd, mpc.nuprev, mpc.np
 end
 
-function form_parameter(mpc::Union{MPC,ExplicitMPC},x,r,d,uprev,l=nothing,p=nothing)
+function form_parameter(mpc::Union{MPC,ExplicitMPC},x,r,d,uprev,p=nothing)
     # Setup parameter vector θ
-    nx,nr,nd,nuprev,nl,np = get_parameter_dims(mpc)
+    nx,nr,nd,nuprev,np = get_parameter_dims(mpc)
     r = format_reference(mpc, r)
     d = format_disturbance(mpc, d)
     length(d) == nd || throw(ArgumentError("Disturbance vector must have length $nd"))
     uprev = isnothing(uprev) ? mpc.uprev[1:nuprev] : uprev[1:nuprev]
-    l_vec = format_linear_cost(mpc, l)
     p_vec = format_affine_parameters(mpc, p)
-    return [x;r;d;uprev;l_vec;p_vec]
+    return [x;r;d;uprev;p_vec]
 end
 
 function build_tree!(mpc::ExplicitMPC; daqp_settings=nothing, clipping=true)
