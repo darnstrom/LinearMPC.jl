@@ -328,8 +328,8 @@ Random.seed!(1234)
         @test_throws ErrorException compute_control(mpc, [1.0, 0.0]; r=[0.0 0.0 0.0])  # Wrong matrix dimensions
         
         # Test with correct dimensions
-        @test_nowarn compute_control(mpc, [1.0, 0.0]; r=[0.0, 0.0])  # Correct vector
-        @test_nowarn compute_control(mpc, [1.0, 0.0]; r=[0.0 0.0; 0.0 0.0])  # Correct matrix
+        @test length(compute_control(mpc, [1.0, 0.0]; r=[0.0, 0.0])) == 1
+        @test length(compute_control(mpc, [1.0, 0.0]; r=[0.0 0.0; 0.0 0.0])) == 1
     end
 
     @testset "Disturbance Preview" begin
@@ -403,8 +403,8 @@ Random.seed!(1234)
 
         @test_throws ErrorException compute_control(mpc, [0.0]; d=[0.0, 1.0])
         @test_throws ErrorException compute_control(mpc, [0.0]; d=ones(2, 2))
-        @test_nowarn compute_control(mpc, [0.0]; d=[0.0])
-        @test_nowarn compute_control(mpc, [0.0]; d=[0.0 1.0])
+        @test length(compute_control(mpc, [0.0]; d=[0.0])) == 1
+        @test length(compute_control(mpc, [0.0]; d=[0.0 1.0])) == 1
     end
 
     @testset "Disturbance Preview Multiple Disturbances" begin
@@ -1102,7 +1102,7 @@ Random.seed!(1234)
         @test nr == 2  # Reference dimension (no preview)
         @test nd == 0  # No disturbance
         @test nuprev == 0  # No rate penalty
-        @test np == 1 * 5  # np_base × Np = 1 × 5
+        @test np == 1
 
         control_no_param = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0])
         control_zero_param = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0], p=zeros(1))
@@ -1118,6 +1118,26 @@ Random.seed!(1234)
 
         control_omit = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0])
         @test control_omit[] ≈ control_zero_param[]
+    end
+
+    @testset "Generalized Parameter Preview" begin
+        A = [1 1; 0 1]
+        B = [0; 1]
+        C = [1.0 0; 0 1.0]
+        mpc = LinearMPC.MPC(A, B; C, Np=5, Nc=3)
+        set_bounds!(mpc; umin=[-2.0], umax=[2.0])
+        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1], Eu=[1.0;;])
+        mpc.settings.parameter_preview = true
+        setup!(mpc)
+
+        nx, nr, nd, nuprev, np = LinearMPC.get_parameter_dims(mpc)
+        @test (nx, nr, nd, nuprev, np) == (2, 2, 0, 0, 5)
+        @test LinearMPC.format_affine_parameters(mpc, [0.25]) == fill(0.25, 5)
+        @test LinearMPC.format_affine_parameters(mpc, [0.25 0.5]) == [0.25, 0.5, 0.5, 0.5, 0.5]
+
+        u_const = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0], p=[1.0])
+        u_preview = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0], p=[1.0 0.0 0.0 0.0 0.0])
+        @test norm(u_const - u_preview) > 1e-3
     end
 
     @testset "Generalized Parameter Simulation" begin
@@ -1163,7 +1183,7 @@ Random.seed!(1234)
         setup!(mpc)
 
         nx, nr, nd, nuprev, np = LinearMPC.get_parameter_dims(mpc)
-        @test (nx, nr, nd, nuprev, np) == (1, 1, 0, 0, 4)
+        @test (nx, nr, nd, nuprev, np) == (1, 1, 0, 0, 1)
 
         u_nom = compute_control(mpc, [1.0]; r=[0.0], p=[0.0])
         u_pos = compute_control(mpc, [1.0]; r=[0.0], p=[1.0])
@@ -1181,6 +1201,7 @@ Random.seed!(1234)
         mpc = LinearMPC.MPC(A, B; C, Np=10, Nc=10)
         set_bounds!(mpc; umin=[-2.0], umax=[2.0])
         set_objective!(mpc; Q=[1.0, 1.0], R=[0.1], Ex=[0.2; 0.1;;], Eu=[1.0;;])
+        mpc.settings.parameter_preview = true
 
         move_block!(mpc, [2, 3, 3, 2])
         setup!(mpc)
@@ -1220,9 +1241,9 @@ Random.seed!(1234)
         setup!(mpc)
 
         nx, nr, nd, nuprev, np = LinearMPC.get_parameter_dims(mpc)
-        @test (nx, nr, nd, nuprev, np) == (1, 1, 0, 0, 4)
-        @test LinearMPC.format_affine_parameters(mpc, [0.25]) == fill(0.25, 4)
-        @test LinearMPC.format_affine_parameters(mpc, [0.25 0.5]) == [0.25, 0.5, 0.5, 0.5]
+        @test (nx, nr, nd, nuprev, np) == (1, 1, 0, 0, 1)
+        @test LinearMPC.format_affine_parameters(mpc, [0.25]) == [0.25]
+        @test LinearMPC.format_affine_parameters(mpc, [0.25 0.5]) == [0.25]
 
         u_nom = compute_control(mpc, [0.0]; r=[0.0], p=[0.0])
         u_tight = compute_control(mpc, [0.0]; r=[0.0], p=[0.75])
@@ -1243,6 +1264,7 @@ Random.seed!(1234)
         mpc = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=3, Nc=3)
         set_bounds!(mpc; umin=[0.0], umax=[2.0])
         set_objective!(mpc; Q=[0.0], R=[1.0], Eu=[-2.0;;])
+        mpc.settings.parameter_preview = true
         setup!(mpc)
 
         x = [0.0]

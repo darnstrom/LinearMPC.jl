@@ -13,7 +13,7 @@ Optional arguments:
 * `uprev` - previous control action
 * `p` - generalized parameter trajectory. Can be:
   - Vector of length `np` for a constant parameter across the horizon
-  - Matrix of size `(np, Np)` for time-varying generalized parameters
+  - Matrix of size `(np, Np)` for time-varying generalized parameters when `mpc.settings.parameter_preview = true`
   - Nothing (default) for no generalized-parameter contribution
 
 All arguments default to zero.
@@ -34,6 +34,10 @@ u = compute_control(mpc, x; d=d_trajectory)
 
 # Generalized parameter preview
 u = compute_control(mpc, x; p=[0.5, -0.25])
+
+# Generalized parameter preview over the horizon
+mpc.settings.parameter_preview = true
+u = compute_control(mpc, x; p=[0.5 0.25 0.0 -0.25 -0.5])
 ```
 """
 function compute_control(mpc::MPC,x;r=nothing,d=nothing,uprev=nothing,p=nothing, check=true)
@@ -201,7 +205,9 @@ function format_disturbance(mpc::Union{MPC,ExplicitMPC}, d)
 end
 
 function get_affine_parameter_base_dim(mpc::MPC)
-    mpc.mpqp_issetup && return mpc.np == 0 ? 0 : mpc.np ÷ mpc.Np
+    if mpc.mpqp_issetup
+        return mpc.settings.parameter_preview ? (mpc.np == 0 ? 0 : mpc.np ÷ mpc.Np) : mpc.np
+    end
     dims = Int[size(mpc.weights.Ex, 2), size(mpc.weights.Eu, 2)]
     append!(dims, (size(c.Ap, 2) for c in mpc.constraints))
     append!(dims, (size(first(c).Ex, 2) for c in mpc.objectives))
@@ -209,7 +215,7 @@ function get_affine_parameter_base_dim(mpc::MPC)
     return maximum(dims)
 end
 
-get_affine_parameter_base_dim(mpc::ExplicitMPC) = mpc.np == 0 ? 0 : mpc.np ÷ mpc.Np
+get_affine_parameter_base_dim(mpc::ExplicitMPC) = mpc.settings.parameter_preview ? (mpc.np == 0 ? 0 : mpc.np ÷ mpc.Np) : mpc.np
 
 """
     format_affine_parameters(mpc, p)
@@ -217,15 +223,19 @@ get_affine_parameter_base_dim(mpc::ExplicitMPC) = mpc.np == 0 ? 0 : mpc.np ÷ mp
 Format generalized parameter input for MPC controller.
 """
 function format_affine_parameters(mpc::Union{MPC,ExplicitMPC}, p)
-    np_total = mpc isa MPC && !mpc.mpqp_issetup ? get_affine_parameter_base_dim(mpc) * mpc.Np : mpc.np
+    np_base = get_affine_parameter_base_dim(mpc)
+    np_total = if mpc isa MPC && !mpc.mpqp_issetup
+        mpc.settings.parameter_preview ? np_base * mpc.Np : np_base
+    else
+        mpc.np
+    end
     np_total == 0 && return zeros(0)
     isnothing(p) && return zeros(np_total)
 
-    np_base = get_affine_parameter_base_dim(mpc)
     Np = mpc.Np
 
     if p isa AbstractVector && length(p) == np_base
-        return vec(repeat(p, 1, Np))
+        return mpc.settings.parameter_preview ? vec(repeat(p, 1, Np)) : float(p)
     end
 
     if p isa AbstractVector && length(p) == np_total
@@ -234,6 +244,9 @@ function format_affine_parameters(mpc::Union{MPC,ExplicitMPC}, p)
 
     if p isa AbstractMatrix
         size(p, 1) == np_base || error("Generalized parameter matrix must have $np_base rows")
+        if !mpc.settings.parameter_preview
+            return vec(p[:, 1])
+        end
         if size(p, 2) >= Np
             return vec(p[:, 1:Np])
         end

@@ -1,6 +1,6 @@
 # Generalized Parameters
 
-LinearMPC supports a stagewise generalized parameter trajectory $p_k$ that can enter both the objective and the constraints. In the objective, the term
+LinearMPC supports a generalized parameter vector `p` that can enter both the objective and the constraints. By default it is kept constant over the horizon, and setting `parameter_preview = true` upgrades it to a stagewise trajectory $p_k$. In the objective, the term
 
 ```math
 (Ex p_k + ex)^T x_k + (Eu p_k + eu)^T u_k
@@ -120,6 +120,8 @@ The electricity price becomes the generalized parameter preview `p`:
 N_sim = 72
 prices = generate_test_prices(3)
 r = fill(21.0, 1, N_sim)
+mpc.settings.parameter_preview = true
+setup!(mpc)
 p = prices'
 sim = Simulation(mpc; x0=[18.0], N=N_sim, r, p)
 # python
@@ -128,6 +130,8 @@ from lmpc import Simulation
 N_sim = 72
 prices = generate_test_prices(3)
 r = np.full((1, N_sim), 21.0)
+mpc.settings({"parameter_preview": True})
+mpc.setup()
 p = prices.reshape(1, -1)
 sim = Simulation(mpc, x0=[18.0], N=N_sim, r=r, p=p)
 ```

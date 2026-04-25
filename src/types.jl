@@ -55,6 +55,7 @@ MPC controller settings.
 - `reference_tracking::Bool = true`: Enable reference tracking
 - `reference_preview::Bool = false`: Enable time-varying reference preview
 - `disturbance_preview::Bool = false`: Enable time-varying disturbance preview
+- `parameter_preview::Bool = false`: Enable time-varying generalized-parameter preview
 - `soft_weight::Float64 = 1e6`: Penalty weight for soft constraint violations
 - `solver_opts::Dict{Symbol,Any}`: Additional solver options
 """
@@ -65,6 +66,7 @@ Base.@kwdef mutable struct MPCSettings
     reference_tracking::Bool= true
     reference_preview::Bool = false
     disturbance_preview::Bool = false
+    parameter_preview::Bool = false
     soft_weight::Float64= 1e6
     solver_opts::Dict{Symbol,Any} = Dict()
     traj2setpoint::Matrix{Float64} = zeros(0,0)

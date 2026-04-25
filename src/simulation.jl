@@ -86,7 +86,7 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
         ps[:,1:Np_param] .= scenario.p[:,1:Np_param]
         ps[:,size(scenario.p,2)+1:end] .= scenario.p[:,end]
     end
-    p_preview = get_affine_parameter_base_dim(mpc) > 0 && !isempty(scenario.p)
+    p_preview = mpc.settings.parameter_preview && get_affine_parameter_base_dim(mpc) > 0 && !isempty(scenario.p)
 
     # Start the simulation
     has_observer && set_state!(mpc,scenario.x0)
@@ -101,7 +101,7 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
         # Get reference, disturbance, and generalized parameter previews
         rk = r_preview ? get_preview(rs, k, mpc.Np) : rs[:,k]
         dk = d_preview ? get_preview(ds, k-1, mpc.Np) : ds[:,k]
-        pk = p_preview ? get_preview(ps, k-1, mpc.Np) : nothing
+        pk = isempty(scenario.p) ? nothing : (p_preview ? get_preview(ps, k-1, mpc.Np) : ps[:,k])
 
         solve_times[k] = @elapsed u = compute_control(mpc,xhat; r=rk, d=dk, p=pk)
 

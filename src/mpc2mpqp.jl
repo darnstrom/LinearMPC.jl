@@ -122,6 +122,28 @@ function stage_preview_direct(A, ks, Np, np)
     return W
 end
 
+function parameter_preview_direct(mpc::MPC, A, ks, Np, np)
+    m = size(A,1)
+    W = zeros(m*length(ks), mpc.settings.parameter_preview ? np*Np : np)
+    (isempty(A) || np == 0) && return W
+
+    for (i,k) in enumerate(ks)
+        if 1 <= k <= Np+1
+            rows = (i-1)*m+1:i*m
+            if mpc.settings.parameter_preview
+                col_id = min(k, Np)
+                cols = (col_id-1)*np+1:col_id*np
+            else
+                cols = 1:np
+            end
+            W[rows, cols] .= -A
+        end
+    end
+    return W
+end
+
+stage_parameter_matrix(mpc::MPC, A, N) = mpc.settings.parameter_preview ? kron(Matrix{Float64}(I, N, N), A) : repeat(A, N, 1)
+
 function get_parameter_dims(mpc::MPC)
     # Use stored values if QP is set up, otherwise compute from settings
     # This ensures consistency between the QP and parameter vector at runtime
@@ -137,7 +159,7 @@ function get_parameter_dims(mpc::MPC)
         nd = nd * mpc.Np
     end
     nuprev = !iszero(mpc.weights.Rr) || any(!iszero(c.Aup) for c in mpc.constraints) ? mpc.model.nu : 0
-    np = get_affine_parameter_base_dim(mpc) * mpc.Np
+    np = get_affine_parameter_base_dim(mpc) * (mpc.settings.parameter_preview ? mpc.Np : 1)
     return mpc.model.nx,nr,nd,nuprev,np
 end
 
@@ -166,8 +188,14 @@ function get_parameter_names(mpc::Union{MPC,ExplicitMPC})
     nuprev>0 && push!(names,Symbol.(string.(mpc.model.labels.u).*"p")...)
     if np > 0
         np_base = get_affine_parameter_base_dim(mpc)
-        for k in 0:mpc.Np-1, i in 1:np_base
-            push!(names, Symbol("p$(i)_$k"))
+        if mpc.settings.parameter_preview
+            for k in 0:mpc.Np-1, i in 1:np_base
+                push!(names, Symbol("p$(i)_$k"))
+            end
+        else
+            for i in 1:np_base
+                push!(names, Symbol("p$i"))
+            end
         end
     end
     return names
@@ -283,7 +311,7 @@ function create_general_constraints(mpc::MPC,F,Γ,Φ)
         mpc.settings.disturbance_preview && (Wd_direct = [Wd_direct; disturbance_preview_direct(isempty(c.Ad) ? zeros(mi, mpc.model.nd) : c.Ad, ks, Np, mpc.model.nd)])
         if np > 0
             np_base = get_affine_parameter_base_dim(mpc)
-            Wp_direct = [Wp_direct; stage_preview_direct(isempty(c.Ap) ? zeros(mi, np_base) : c.Ap, ks, Np, np_base)]
+            Wp_direct = [Wp_direct; parameter_preview_direct(mpc, isempty(c.Ap) ? zeros(mi, np_base) : c.Ap, ks, Np, np_base)]
         end
     end
     A=Axtot*Γ+Autot;
@@ -470,8 +498,8 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
 
     if npp > 0
         Fp = zeros(size(f_theta, 1), npp)
-        Fp .+= Umap' * kron(Matrix{Float64}(I, N, N), Eu)
-        Fp .+= Γx' * kron(Matrix{Float64}(I, N, N), Ex)
+        Fp .+= Umap' * stage_parameter_matrix(mpc, Eu, N)
+        Fp .+= Γx' * stage_parameter_matrix(mpc, Ex, N)
         f_theta = [f_theta Fp]
 
         nth_current = size(H_theta, 1)

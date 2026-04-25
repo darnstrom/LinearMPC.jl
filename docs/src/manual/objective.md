@@ -79,7 +79,7 @@ in the objective, and through additional constraint terms such as
 \underline{b} \le A_x x_k + A_u u_k + A_p p_k \le \overline{b}.
 ```
 
-The matrices `Ex`, `Eu`, and `Ap` are stagewise coefficients. A constant parameter vector is broadcast across the prediction horizon, while an `(np, Np)` matrix gives a time-varying parameter preview.
+The matrices `Ex`, `Eu`, and `Ap` are stagewise coefficients. By default, the generalized parameter `p` is constant across the horizon, so only `np` new parameters are added. If you want a time-varying generalized-parameter trajectory, enable `parameter_preview` and provide an `(np, Np)` matrix.
 
 This replaces the older dedicated linear control-cost feature. Economic terms such as time-varying electricity prices can now be modeled directly with `Eu`, `eu`, and `p`.
 
@@ -91,6 +91,8 @@ add_constraint!(mpc; Au=[1.0;;], Ap=[0.5 1.0], ub=[1.0], ks=1:mpc.Np)
 u = compute_control(mpc, x; p=[0.3, -0.1])
 
 # Time-varying parameter preview
+mpc.settings.parameter_preview = true
+setup!(mpc)
 p_preview = [0.3 0.2 0.1 0.1;
              -0.1 -0.1 0.0 0.1]
 u = compute_control(mpc, x; p=p_preview)
@@ -101,6 +103,8 @@ mpc.add_constraint(Au=[[1.0]], Ap=[[0.5, 1.0]], ub=[1.0], ks=range(1, mpc.Np + 1
 u = mpc.compute_control(x, p=[0.3, -0.1])
 
 # Time-varying parameter preview
+mpc.settings({"parameter_preview": True})
+mpc.setup()
 p_preview = np.array([[0.3, 0.2, 0.1, 0.1],
                       [-0.1, -0.1, 0.0, 0.1]])
 u = mpc.compute_control(x, p=p_preview)

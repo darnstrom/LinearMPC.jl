@@ -88,7 +88,7 @@ function codegen(mpc::ExplicitMPC;fname="empc", dir="codegen", opt_settings=noth
     @printf(fh, "#define N_CONTROL_PREV %d\n",mpc.nuprev);
     @printf(fh, "#define N_AFFINE_PARAMETER %d\n",mpc.np);
     @printf(fh, "#define N_AFFINE_PARAMETER_BASE %d\n", get_affine_parameter_base_dim(mpc));
-    @printf(fh, "#define N_AFFINE_PARAMETER_HORIZON %d\n", mpc.Np);
+    mpc.settings.parameter_preview && @printf(fh, "#define N_AFFINE_PARAMETER_HORIZON %d\n", mpc.Np);
 
     @printf(fh, "extern c_float mpc_parameter[%d];\n", nth);
 
@@ -160,7 +160,7 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
     @printf(fh, "#define N_CONTROL_PREV %d\n",mpc.nuprev);
     @printf(fh, "#define N_AFFINE_PARAMETER %d\n",mpc.np);
     @printf(fh, "#define N_AFFINE_PARAMETER_BASE %d\n", get_affine_parameter_base_dim(mpc));
-    @printf(fh, "#define N_AFFINE_PARAMETER_HORIZON %d\n", mpc.Np);
+    mpc.settings.parameter_preview && @printf(fh, "#define N_AFFINE_PARAMETER_HORIZON %d\n", mpc.Np);
 
     @printf(fh, "#define N_CONTROL %d\n\n",mpc.model.nu);
 
