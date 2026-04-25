@@ -164,6 +164,31 @@ function MPC(F,G;Gd=zeros(0,0), C=zeros(0,0), Dd= zeros(0,0), f_offset=zeros(0),
     MPC(Model(F,G;Gd,f_offset,C,Dd,Ts);Np,Nc);
 end
 
+"""
+    MPC(nx, nu; nd=0, ny=nx, Np=10, Nc=Np)
+
+Create an MPC controller with `nx` states and `nu` controls without
+specifying system matrices upfront.  The dynamics are initialised to zero
+matrices and should be set afterwards with the [`@dynamics`](@ref) macro:
+
+```julia
+mpc = LinearMPC.MPC(2, 1; Np=10)
+@state mpc x;  @control mpc u
+A = [1.0 0.1; 0.0 1.0];  B = [0.0; 1.0]
+@dynamics mpc x_next = A*x + B*u
+```
+
+Use `nd` to declare disturbance inputs and `ny` to set the output dimension
+(defaults to `nx` when not provided, i.e. full-state output).
+"""
+function MPC(nx::Int, nu::Int; nd::Int=0, ny::Int=nx, Np=10, Nc=Np)
+    F  = zeros(nx, nx)
+    G  = zeros(nx, nu)
+    Gd = zeros(nx, nd)
+    C  = Matrix{Float64}(I, ny, nx)
+    MPC(Model(F, G; Gd=Gd, C=C); Np=Np, Nc=Nc)
+end
+
 function MPC(A,B,Ts::Float64; Bd = zeros(0,0), f_offset=zeros(0), C = zeros(0,0), Dd = zeros(0,0), Np=10, Nc=Np)
     MPC(Model(A,B,Ts;Bd,f_offset,C,Dd);Np,Nc)
 end

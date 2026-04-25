@@ -52,6 +52,11 @@ export predict_state!,correct_state!
 export set_state!,get_state,update_state!
 export get_estimated_disturbance
 
+include("macros.jl");
+export ControlRef, StateRef, OutputRef, DisturbanceRef, SignalExpr, DynamicsExpr
+export ControlVec, StateVec, DisturbanceVec
+export @control, @state, @output, @disturbance, @constraint, @objective, @dynamics
+
 using PrecompileTools
 @setup_workload begin
 
