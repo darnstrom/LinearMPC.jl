@@ -154,8 +154,8 @@ function codegen(observer::OffsetFreeObserver, mpc::Union{MPC,ExplicitMPC}, fh, 
     @printf(fh, "#define N_OFFSET_FREE_DISTURBANCE %d\n", observer.nd_offsetfree)
     @printf(fh, "void mpc_get_estimated_state(c_float* state, c_float* observer_state);\n")
     @printf(fh, "void mpc_get_estimated_disturbance(c_float* disturbance, c_float* observer_state, c_float* measured_disturbance);\n")
-    if mpc.nl > 0
-        @printf(fh, "int mpc_compute_control_observer(c_float* control, c_float* observer_state, c_float* reference, c_float* measured_disturbance, c_float* linear_cost);\n")
+    if mpc.np > 0
+        @printf(fh, "int mpc_compute_control_observer(c_float* control, c_float* observer_state, c_float* reference, c_float* measured_disturbance, c_float* affine_parameter);\n")
     else
         @printf(fh, "int mpc_compute_control_observer(c_float* control, c_float* observer_state, c_float* reference, c_float* measured_disturbance);\n")
     end
@@ -173,14 +173,14 @@ void mpc_get_estimated_disturbance(c_float* disturbance, c_float* observer_state
 }
 """)
 
-    if mpc.nl > 0
+    if mpc.np > 0
         write(fsrc, """
-int mpc_compute_control_observer(c_float* control, c_float* observer_state, c_float* reference, c_float* measured_disturbance, c_float* linear_cost){
+int mpc_compute_control_observer(c_float* control, c_float* observer_state, c_float* reference, c_float* measured_disturbance, c_float* affine_parameter){
     c_float state[N_STATE];
     c_float disturbance[N_DISTURBANCE];
     mpc_get_estimated_state(state, observer_state);
     mpc_get_estimated_disturbance(disturbance, observer_state, measured_disturbance);
-    return mpc_compute_control(control, state, reference, disturbance, linear_cost);
+    return mpc_compute_control(control, state, reference, disturbance, affine_parameter);
 }
 """)
     else

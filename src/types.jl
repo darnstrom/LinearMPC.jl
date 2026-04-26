@@ -8,6 +8,7 @@ struct Constraint
     Aw::Matrix{Float64}
     Ad::Matrix{Float64}
     Aup::Matrix{Float64}
+    Ap::Matrix{Float64}
     ub::Vector{Float64}
     lb::Vector{Float64}
     ks::AbstractVector{Int64}
@@ -24,17 +25,24 @@ struct MPCWeights
     S::Matrix{Float64}
     Qf::Matrix{Float64}
     Qfx::Matrix{Float64}
+    Ex::Matrix{Float64}
+    ex::Vector{Float64}
+    Eu::Matrix{Float64}
+    eu::Vector{Float64}
 end
 
 function MPCWeights(nu,nx,nr)
     return MPCWeights(Matrix{Float64}(I,nr,nr),Matrix{Float64}(I,nu,nu),zeros(nu,nu),
-                      zeros(nx,nu),zeros(nr,nr),zeros(nx,nx))
+                      zeros(nx,nu),zeros(nr,nr),zeros(nx,nx),zeros(nx,0),zeros(nx),zeros(nu,0),zeros(nu))
 end
 
 function MPCWeights(Q::AbstractArray,R::AbstractArray,Rr::AbstractArray=zeros(size(R));
-        S = zeros(0,0), Qf = zeros(0,0), Qfx = zeros(0,0))
+        S = zeros(0,0), Qf = zeros(0,0), Qfx = zeros(0,0),
+        Ex = zeros(size(Q, 1), 0), ex = zeros(size(Q, 1)),
+        Eu = zeros(size(R, 1), 0), eu = zeros(size(R, 1)))
     Qf = isempty(Qf) ? copy(Q) : Qf 
-    return MPCWeights(matrixify(Q),matrixify(R),matrixify(Rr),S,Qf,Qfx)
+    return MPCWeights(matrixify(Q),matrixify(R),matrixify(Rr),float(S),matrixify(Qf),matrixify(Qfx),
+                      float(Ex),float(ex),float(Eu),float(eu))
 end
 
 """
@@ -47,6 +55,7 @@ MPC controller settings.
 - `reference_tracking::Bool = true`: Enable reference tracking
 - `reference_preview::Bool = false`: Enable time-varying reference preview
 - `disturbance_preview::Bool = false`: Enable time-varying disturbance preview
+- `parameter_preview::Bool = false`: Enable time-varying generalized-parameter preview
 - `soft_weight::Float64 = 1e6`: Penalty weight for soft constraint violations
 - `solver_opts::Dict{Symbol,Any}`: Additional solver options
 """
@@ -57,7 +66,7 @@ Base.@kwdef mutable struct MPCSettings
     reference_tracking::Bool= true
     reference_preview::Bool = false
     disturbance_preview::Bool = false
-    linear_cost::Bool = false
+    parameter_preview::Bool = false
     soft_weight::Float64= 1e6
     solver_opts::Dict{Symbol,Any} = Dict()
     traj2setpoint::Matrix{Float64} = zeros(0,0)
@@ -104,7 +113,7 @@ mutable struct MPC
     nr::Int
     nd::Int
     nuprev::Int
-    nl::Int
+    np::Int
 
     # Horizons 
     Np::Int # Prediction
@@ -185,14 +194,14 @@ struct ParameterRange
     umin::Vector{Float64}
     umax::Vector{Float64}
 
-    lmin::Vector{Float64}
-    lmax::Vector{Float64}
+    pmin::Vector{Float64}
+    pmax::Vector{Float64}
 end
 
 
 function ParameterRange(mpc::MPC)
 
-    nx,nr,nd,nuprev,nl = get_parameter_dims(mpc);
+    nx,nr,nd,nuprev,np = get_parameter_dims(mpc);
 
     xmin,xmax = -100*ones(nx),100*ones(nx)
     rmin,rmax = -100*ones(nr),100*ones(nr)
@@ -205,11 +214,11 @@ function ParameterRange(mpc::MPC)
     else
         umin,umax = zeros(0),zeros(0)
     end
-    lmin,lmax = -100*ones(nl),100*ones(nl)
+    pmin,pmax = -100*ones(np),100*ones(np)
 
     return ParameterRange(xmin,xmax,
                           rmin,rmax,
                           dmin,dmax,
                           umin,umax,
-                          lmin,lmax)
+                          pmin,pmax)
 end

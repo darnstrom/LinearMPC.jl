@@ -164,11 +164,11 @@ makedocs(sitename = "LinearMPC.jl",
                                                       "Explict MPC" => "manual/explicit.md",
                                                       "Hybrid MPC" => "manual/hybrid.md",
                                                       "Robust MPC" => "manual/robust.md",
-                                                     "Game-Theoretic MPC" => "manual/game.md",
-                                                     "Linear control cost" => "manual/linear_cost.md",
-                                                     #"Complexity Certification" => "manual/compcert.md",
-                                                     "Solver Settings" => "manual/solver.md",
-                                                    ],
+                                                      "Game-Theoretic MPC" => "manual/game.md",
+                                                      "Generalized parameters" => "manual/generalized_parameters.md",
+                                                      #"Complexity Certification" => "manual/compcert.md",
+                                                      "Solver Settings" => "manual/solver.md",
+                                                     ],
                              "Benchmark" => "manual/benchmark.md"
                             ]
                 "Functions" => "functions.md"

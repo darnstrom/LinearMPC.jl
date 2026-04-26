@@ -26,9 +26,9 @@ void mpc_get_solution(c_float* th, c_float* control, c_float* xstar){
 #include "bnb.h"
 #endif
 
-#if N_LINEAR_COST > 0
-int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* disturbance, c_float* linear_cost){
-    mpc_update_parameter(mpc_parameter, control, state, reference, disturbance, linear_cost);
+#if N_AFFINE_PARAMETER > 0
+int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* disturbance, c_float* affine_parameter){
+    mpc_update_parameter(mpc_parameter, control, state, reference, disturbance, affine_parameter);
 #else
 int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_float* disturbance){
     mpc_update_parameter(mpc_parameter, control, state, reference, disturbance);

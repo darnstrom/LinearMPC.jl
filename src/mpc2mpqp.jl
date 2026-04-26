@@ -106,11 +106,49 @@ function disturbance_preview_direct(A, ks, Np, nd)
     return W
 end
 
+function stage_preview_direct(A, ks, Np, np)
+    m = size(A,1)
+    W = zeros(m*length(ks), np*Np)
+    (isempty(A) || np == 0) && return W
+
+    for (i,k) in enumerate(ks)
+        if 1 <= k <= Np+1
+            rows = (i-1)*m+1:i*m
+            col_id = min(k, Np)
+            cols = (col_id-1)*np+1:col_id*np
+            W[rows, cols] .= -A
+        end
+    end
+    return W
+end
+
+function parameter_preview_direct(mpc::MPC, A, ks, Np, np)
+    m = size(A,1)
+    W = zeros(m*length(ks), mpc.settings.parameter_preview ? np*Np : np)
+    (isempty(A) || np == 0) && return W
+
+    for (i,k) in enumerate(ks)
+        if 1 <= k <= Np+1
+            rows = (i-1)*m+1:i*m
+            if mpc.settings.parameter_preview
+                col_id = min(k, Np)
+                cols = (col_id-1)*np+1:col_id*np
+            else
+                cols = 1:np
+            end
+            W[rows, cols] .= -A
+        end
+    end
+    return W
+end
+
+stage_parameter_matrix(mpc::MPC, A, N) = mpc.settings.parameter_preview ? kron(Matrix{Float64}(I, N, N), A) : repeat(A, N, 1)
+
 function get_parameter_dims(mpc::MPC)
     # Use stored values if QP is set up, otherwise compute from settings
     # This ensures consistency between the QP and parameter vector at runtime
     if mpc.mpqp_issetup
-        return mpc.model.nx, mpc.nr, mpc.nd, mpc.nuprev, mpc.nl
+        return mpc.model.nx, mpc.nr, mpc.nd, mpc.nuprev, mpc.np
     end
     nr = mpc.settings.reference_tracking ?  mpc.model.ny : 0
     if mpc.settings.reference_preview && !mpc.settings.reference_condensation && nr > 0
@@ -121,12 +159,12 @@ function get_parameter_dims(mpc::MPC)
         nd = nd * mpc.Np
     end
     nuprev = !iszero(mpc.weights.Rr) || any(!iszero(c.Aup) for c in mpc.constraints) ? mpc.model.nu : 0
-    nl = mpc.settings.linear_cost ? mpc.model.nu * mpc.Nc : 0
-    return mpc.model.nx,nr,nd,nuprev,nl
+    np = get_affine_parameter_base_dim(mpc) * (mpc.settings.parameter_preview ? mpc.Np : 1)
+    return mpc.model.nx,nr,nd,nuprev,np
 end
 
 function get_parameter_names(mpc::Union{MPC,ExplicitMPC})
-    nx,nr,nd,nuprev,nl = get_parameter_dims(mpc)
+    nx,nr,nd,nuprev,np = get_parameter_dims(mpc)
     names = copy(mpc.model.labels.x)
     if nr > 0
         if mpc.settings.reference_preview && !mpc.settings.reference_condensation
@@ -148,9 +186,16 @@ function get_parameter_names(mpc::Union{MPC,ExplicitMPC})
         end
     end
     nuprev>0 && push!(names,Symbol.(string.(mpc.model.labels.u).*"p")...)
-    if nl > 0
-        for k in 0:mpc.Nc-1
-            push!(names, Symbol.(string.(mpc.model.labels.u).*"l_$k")...)
+    if np > 0
+        np_base = get_affine_parameter_base_dim(mpc)
+        if mpc.settings.parameter_preview
+            for k in 0:mpc.Np-1, i in 1:np_base
+                push!(names, Symbol("p$(i)_$k"))
+            end
+        else
+            for i in 1:np_base
+                push!(names, Symbol("p$i"))
+            end
         end
     end
     return names
@@ -160,8 +205,8 @@ end
 # correspoding to  lb<=u_i<=ub for i ∈ {1,2,...,Nc}
 function create_controlbounds(mpc::MPC, F, Γ, Φ)
     nu,nx,Nb = mpc.model.nu, mpc.model.nx, mpc.Nc
-    _,_,_,_,nl = get_parameter_dims(mpc)
-    nxe = sum(get_parameter_dims(mpc))-nl
+    _,_,_,_,np = get_parameter_dims(mpc)
+    nxe = sum(get_parameter_dims(mpc))-np
     mpc.settings.reference_preview && (nxe-=mpc.nr) # reference not part of extended state
     mpc.settings.disturbance_preview && (nxe-=mpc.nd) # disturbance not part of extended state
     !iszero(mpc.model.f_offset) && (nxe+=1); # constant offset in dynamics
@@ -195,7 +240,7 @@ function create_controlbounds(mpc::MPC, F, Γ, Φ)
         zeros(size(W,1), 0)
     end
     W = insert_preview_parameter_blocks(mpc, W, Wr, Wd)
-    nl > 0 && (W = [W zeros(size(W,1), nl)])
+    np > 0 && (W = [W zeros(size(W,1), np)])
     return A,ub,lb, W
 end
 
@@ -206,9 +251,9 @@ function create_general_constraints(mpc::MPC,F,Γ,Φ)
     Np, Nc= mpc.Np, mpc.Nc
     m= length(mpc.constraints)
     nu,nx = mpc.model.nu, mpc.model.nx
-    _,_,_,_,nl = get_parameter_dims(mpc)
+    _,_,_,_,np = get_parameter_dims(mpc)
 
-    nxe = sum(get_parameter_dims(mpc))-nl
+    nxe = sum(get_parameter_dims(mpc))-np
     if mpc.settings.reference_preview
         nxe-=mpc.nr # reference not part of extended state
         nrx = 0
@@ -228,6 +273,7 @@ function create_general_constraints(mpc::MPC,F,Γ,Φ)
     issoft,isbinary = falses(0),falses(0)
     prios = zeros(Int,0)
     Wd_direct = zeros(0, mpc.settings.disturbance_preview ? mpc.nd : 0)
+    Wp_direct = zeros(0, np)
 
     eyeX, eyeU = I(Np+1), I(Nc);
     eyeU = [eyeU;zeros(Bool,1+Np-Nc,Nc)] # Zeros address that Nc < Np (terminal state)
@@ -263,6 +309,10 @@ function create_general_constraints(mpc::MPC,F,Γ,Φ)
         isbinary = [isbinary;repeat([c.binary],mi*Ni)]
         prios = [prios;repeat([c.prio],mi*Ni)]
         mpc.settings.disturbance_preview && (Wd_direct = [Wd_direct; disturbance_preview_direct(isempty(c.Ad) ? zeros(mi, mpc.model.nd) : c.Ad, ks, Np, mpc.model.nd)])
+        if np > 0
+            np_base = get_affine_parameter_base_dim(mpc)
+            Wp_direct = [Wp_direct; parameter_preview_direct(mpc, isempty(c.Ap) ? zeros(mi, np_base) : c.Ap, ks, Np, np_base)]
+        end
     end
     A=Axtot*Γ+Autot;
     W = -Axtot*Φ;
@@ -298,8 +348,7 @@ function create_general_constraints(mpc::MPC,F,Γ,Φ)
     Wd = mpc.settings.disturbance_preview ? -Axtot*disturbance_preview_predictor(mpc, F) + Wd_direct : zeros(size(W,1), 0)
     W = insert_preview_parameter_blocks(mpc, W, Wr, Wd)
 
-    # Append zero columns for linear cost parameters (they don't affect constraints)
-    nl > 0 && (W = [W zeros(size(W,1), nl)])
+    np > 0 && (W = [W Wp_direct])
 
     return A,ubtot,lbtot,W,issoft,isbinary,prios
 end
@@ -374,7 +423,7 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
 
 
     # Get parameter dimensions
-    nxp, nrp, ndp, nup, nlp = get_parameter_dims(mpc)
+    nxp, nrp, ndp, nup, npp = get_parameter_dims(mpc)
 
     # ==== From u' R u ====
     H = kron(I(Nc),R);
@@ -426,17 +475,36 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
         f_theta,H_theta = disturbance_preview_cost(mpc,F,Γ,C_full,Q_full,Qf_full,f_theta,H_theta)
     end
 
-    # ==== Linear cost on control inputs ====
-    if nlp > 0 && mpc.settings.linear_cost
-        # Linear cost l'U adds directly to the linear term
-        # f_theta gets an identity block for the linear cost parameters
-        # This maps l = [l_0; l_1; ...; l_{Nc-1}] directly to U
-        f_theta = [f_theta Matrix{Float64}(I,nlp,nlp)]
+    # ==== Generalized parameter cost on state and control inputs ====
+    np_base = get_affine_parameter_base_dim(mpc)
+    Ex = isempty(w.Ex) ? zeros(mpc.model.nx, np_base) : w.Ex
+    ex = isempty(w.ex) ? zeros(mpc.model.nx) : w.ex
+    Eu = isempty(w.Eu) ? zeros(nu, np_base) : w.Eu
+    eu = isempty(w.eu) ? zeros(nu) : w.eu
+    size(Ex, 1) == mpc.model.nx || throw(ArgumentError("Affine objective matrix Ex must have $(mpc.model.nx) rows"))
+    size(Ex, 2) == np_base || throw(ArgumentError("Affine objective matrix Ex must have $np_base columns"))
+    length(ex) == mpc.model.nx || throw(ArgumentError("Affine objective vector ex must have length $(mpc.model.nx)"))
+    size(Eu, 1) == nu || throw(ArgumentError("Affine objective matrix Eu must have $nu rows"))
+    size(Eu, 2) == np_base || throw(ArgumentError("Affine objective matrix Eu must have $np_base columns"))
+    length(eu) == nu || throw(ArgumentError("Affine objective vector eu must have length $nu"))
 
-        # Extend H_theta with zero blocks (linear cost doesn't contribute to quadratic terms)
+    Umap = kron([Matrix{Float64}(I, Nc, Nc); zeros(N-Nc, Nc)], Matrix{Float64}(I, nu, nu))
+    f .+= Umap' * repeat(eu, N)
+
+    x_selector = [Matrix{Float64}(I, mpc.model.nx, mpc.model.nx) zeros(mpc.model.nx, nx-mpc.model.nx)]
+    Xmap = kron(Matrix{Float64}(I, N, N), x_selector)
+    Γx = Xmap * Γ[nx+1:end, :]
+    f .+= Γx' * repeat(ex, N)
+
+    if npp > 0
+        Fp = zeros(size(f_theta, 1), npp)
+        Fp .+= Umap' * stage_parameter_matrix(mpc, Eu, N)
+        Fp .+= Γx' * stage_parameter_matrix(mpc, Ex, N)
+        f_theta = [f_theta Fp]
+
         nth_current = size(H_theta, 1)
-        H_theta = [H_theta zeros(nth_current, nlp);
-                   zeros(nlp, nth_current+nlp)]
+        H_theta = [H_theta zeros(nth_current, npp);
+                   zeros(npp, nth_current+npp)]
     end
 
     # Add regularization for binary variables (won't change the solution)
@@ -471,7 +539,7 @@ function ref_preview_cost(mpc,Γ,C_full,Q_full,Qf_full,H,f_theta,H_theta)
 
     N,Nc = mpc.Np,mpc.Nc
     nu,ny = mpc.model.nu,mpc.model.ny
-    nxp, nrp, ndp, nup, nlp = get_parameter_dims(mpc)
+    nxp, nrp, ndp, nup, npp = get_parameter_dims(mpc)
 
     CQfull = kron(I(N+1),C_full'*Q_full);
     CQfull[end-size(C_full,2)+1:end,end-size(Qf_full,2)+1:end] .= C_full'*Qf_full
@@ -581,8 +649,8 @@ end
 function create_extended_system(mpc::MPC)
     F,G = mpc.model.F-mpc.model.G*mpc.K, mpc.model.G
     C = mpc.model.C
-    nx,nr,nd,nuprev,nl = get_parameter_dims(mpc)
-    mpc.nr, mpc.nd, mpc.nuprev, mpc.nl = nr, nd, nuprev, nl
+    nx,nr,nd,nuprev,np = get_parameter_dims(mpc)
+    mpc.nr, mpc.nd, mpc.nuprev, mpc.np = nr, nd, nuprev, np
     nu = mpc.model.nu 
 
     if(nr > 0) # Reference tracking -> add reference to states
@@ -624,7 +692,7 @@ end
 function create_extended_cost(mpc::MPC, weights::MPCWeights;uids=1:mpc.model.nu)
     Q,R,Rr,S = copy(weights.Q), copy(weights.R), copy(weights.Rr), copy(weights.S)
     Qf = iszero(weights.Qf) && iszero(weights.Qfx) ? Q : copy(weights.Qf)
-    nx,nr,nd,nuprev,nl = get_parameter_dims(mpc)
+    nx,nr,nd,nuprev,np = get_parameter_dims(mpc)
     nu = mpc.model.nu
     nui = length(uids)
 
@@ -659,7 +727,7 @@ function create_extended_cost(mpc::MPC, weights::MPCWeights;uids=1:mpc.model.nu)
         S = [S;zeros(1,nui)]
     end
 
-    return MPCWeights(Q,R,zeros(0,0),S,Qf,zeros(0,0))
+    return MPCWeights(Q,R,zeros(0,0),S,Qf,zeros(0,0),weights.Ex,weights.ex,weights.Eu,weights.eu)
 end
 
 function remove_redundant(c::DenseConstraints)

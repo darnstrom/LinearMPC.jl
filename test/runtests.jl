@@ -236,7 +236,7 @@ Random.seed!(1234)
         @test length(control_preview) == 1
         
         # Test parameter dimensions
-        nx, nr, nd, nuprev = LinearMPC.get_parameter_dims(mpc)
+        nx, nr, nd, nuprev, np = LinearMPC.get_parameter_dims(mpc)
         @test nx == 2  # State dimension
         @test nr == 2 * 5  # 2 outputs × 5 prediction horizon
         @test nd == 0  # No disturbance
@@ -328,8 +328,8 @@ Random.seed!(1234)
         @test_throws ErrorException compute_control(mpc, [1.0, 0.0]; r=[0.0 0.0 0.0])  # Wrong matrix dimensions
         
         # Test with correct dimensions
-        @test_nowarn compute_control(mpc, [1.0, 0.0]; r=[0.0, 0.0])  # Correct vector
-        @test_nowarn compute_control(mpc, [1.0, 0.0]; r=[0.0 0.0; 0.0 0.0])  # Correct matrix
+        @test length(compute_control(mpc, [1.0, 0.0]; r=[0.0, 0.0])) == 1
+        @test length(compute_control(mpc, [1.0, 0.0]; r=[0.0 0.0; 0.0 0.0])) == 1
     end
 
     @testset "Disturbance Preview" begin
@@ -353,7 +353,7 @@ Random.seed!(1234)
         control_preview = compute_control(mpc, [0.0, 0.0]; d=d_traj)
         @test length(control_preview) == 1
 
-        nx, nr, nd, nuprev = LinearMPC.get_parameter_dims(mpc)
+        nx, nr, nd, nuprev, np = LinearMPC.get_parameter_dims(mpc)
         @test nx == 2
         @test nr == 1
         @test nd == 5
@@ -403,8 +403,8 @@ Random.seed!(1234)
 
         @test_throws ErrorException compute_control(mpc, [0.0]; d=[0.0, 1.0])
         @test_throws ErrorException compute_control(mpc, [0.0]; d=ones(2, 2))
-        @test_nowarn compute_control(mpc, [0.0]; d=[0.0])
-        @test_nowarn compute_control(mpc, [0.0]; d=[0.0 1.0])
+        @test length(compute_control(mpc, [0.0]; d=[0.0])) == 1
+        @test length(compute_control(mpc, [0.0]; d=[0.0 1.0])) == 1
     end
 
     @testset "Disturbance Preview Multiple Disturbances" begin
@@ -420,7 +420,7 @@ Random.seed!(1234)
         setup!(mpc)
 
         # nd should be nd_base * Np = 2 * 4 = 8
-        nx, nr, nd, nuprev, nl = LinearMPC.get_parameter_dims(mpc)
+        nx, nr, nd, nuprev, np = LinearMPC.get_parameter_dims(mpc)
         @test nd == 2 * 4
 
         # Constant disturbance vector should be tiled into preview
@@ -449,7 +449,7 @@ Random.seed!(1234)
         mpc.settings.disturbance_preview = true
         setup!(mpc)
 
-        nx, nr, nd, nuprev, nl = LinearMPC.get_parameter_dims(mpc)
+        nx, nr, nd, nuprev, np = LinearMPC.get_parameter_dims(mpc)
         @test nx == 2
         @test nr == 1 * 5   # ny × Np
         @test nd == 1 * 5   # nd_base × Np
@@ -1088,121 +1088,130 @@ Random.seed!(1234)
         @test norm(sim.xs[:,end]-xo) < 1e-4
     end
 
-    @testset "Linear Cost" begin
-        # Test basic linear cost functionality
+    @testset "Generalized Parameters in Objective" begin
         A = [1 1; 0 1]
         B = [0; 1]
         C = [1.0 0; 0 1.0]
         mpc = LinearMPC.MPC(A, B; C, Np=5, Nc=3)
         set_bounds!(mpc; umin=[0.0], umax=[2.0])
-        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1])
-
-        # Test with linear cost disabled (default)
-        @test mpc.settings.linear_cost == false
-        control_no_lincost = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0])
-        @test length(control_no_lincost) == 1
-
-        # Enable linear cost
-        mpc.settings.linear_cost = true
+        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1], Eu=[1.0;;])
         setup!(mpc)
 
-        # Test parameter dimensions with linear cost
-        nx, nr, nd, nuprev, nl = LinearMPC.get_parameter_dims(mpc)
+        nx, nr, nd, nuprev, np = LinearMPC.get_parameter_dims(mpc)
         @test nx == 2  # State dimension
         @test nr == 2  # Reference dimension (no preview)
         @test nd == 0  # No disturbance
         @test nuprev == 0  # No rate penalty
-        @test nl == 1 * 3  # nu × Nc = 1 × 3
+        @test np == 1
 
-        # Test that linear cost affects control
-        control_zero_lincost = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0], l=zeros(1))
-        control_pos_lincost = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0], l=[1.0])
-        control_neg_lincost = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0], l=[-1.0])
+        control_no_param = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0])
+        control_zero_param = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0], p=zeros(1))
+        control_pos_param = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0], p=[1.0])
+        control_neg_param = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0], p=[-1.0])
 
-        # Linear cost should affect the control differently for positive vs negative
-        @test control_zero_lincost ≈ control_no_lincost
-        # The linear cost should decrease on increase the control action depending on the sign
-        @test control_pos_lincost[1] < control_zero_lincost[] < control_neg_lincost[1]
+        @test control_zero_param ≈ control_no_param
+        @test control_pos_param[1] < control_zero_param[] < control_neg_param[1]
 
-        # Test with linear cost trajectory matrix (nu × Nc)
-        l_traj = [1.0 1.0 1.0]  # Different cost at each time step
-        control_traj = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0], l=l_traj)
-        @test control_traj[] ≈ control_pos_lincost[] # A trajectory of ones should give same result as a single 1
+        p_traj = ones(1, 5)
+        control_traj = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0], p=p_traj)
+        @test control_traj[] ≈ control_pos_param[]
 
-        # Test that omitting linear cost gives same as zero linear cost
         control_omit = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0])
-        @test control_omit[] ≈ control_zero_lincost[]
+        @test control_omit[] ≈ control_zero_param[]
     end
 
-    @testset "Linear Cost Simulation" begin
-        # Test simulation with linear cost trajectory
+    @testset "Generalized Parameter Preview" begin
+        A = [1 1; 0 1]
+        B = [0; 1]
+        C = [1.0 0; 0 1.0]
+        mpc = LinearMPC.MPC(A, B; C, Np=5, Nc=3)
+        set_bounds!(mpc; umin=[-2.0], umax=[2.0])
+        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1], Eu=[1.0;;])
+        mpc.settings.parameter_preview = true
+        setup!(mpc)
+
+        nx, nr, nd, nuprev, np = LinearMPC.get_parameter_dims(mpc)
+        @test (nx, nr, nd, nuprev, np) == (2, 2, 0, 0, 5)
+        @test LinearMPC.format_affine_parameters(mpc, [0.25]) == fill(0.25, 5)
+        @test LinearMPC.format_affine_parameters(mpc, [0.25 0.5]) == [0.25, 0.5, 0.5, 0.5, 0.5]
+
+        u_const = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0], p=[1.0])
+        u_preview = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0], p=[1.0 0.0 0.0 0.0 0.0])
+        @test norm(u_const - u_preview) > 1e-3
+    end
+
+    @testset "Generalized Parameter Simulation" begin
         A = [0 -0.37; 0.37 0.74]
         B = [0.37; 0.26]
         C = [1.0 0; 0 1.0]
         mpc = LinearMPC.MPC(A, B; C, Np=5, Nc=3)
         set_bounds!(mpc; umin=[-2.0], umax=[2.0])
-        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1])
+        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1], Eu=[1.0;;])
         set_terminal_cost!(mpc)
-        mpc.settings.linear_cost = true
         setup!(mpc)
 
         N_sim = 20
         r_traj = zeros(2, N_sim)
 
-        l_traj = zeros(1, N_sim)
-        l_traj[1, :] .= -0.5
+        p_traj = zeros(1, N_sim)
+        p_traj[1, :] .= -0.5
 
-        # Simulation with linear cost
-        sim_with_l = LinearMPC.Simulation(mpc; x0=[1.0, 0.0], N=N_sim, r=r_traj, l=l_traj)
-        @test size(sim_with_l.xs) == (2, N_sim)
-        @test size(sim_with_l.us) == (1, N_sim)
+        sim_with_p = LinearMPC.Simulation(mpc; x0=[1.0, 0.0], N=N_sim, r=r_traj, p=p_traj)
+        @test size(sim_with_p.xs) == (2, N_sim)
+        @test size(sim_with_p.us) == (1, N_sim)
 
-        # Simulation without linear cost
-        sim_no_l = LinearMPC.Simulation(mpc; x0=[1.0, 0.0], N=N_sim, r=r_traj)
+        sim_no_p = LinearMPC.Simulation(mpc; x0=[1.0, 0.0], N=N_sim, r=r_traj)
 
-        # Compute cost of trajectories and verify that the cost of the controller optimizing linear cost is smaller
-        cost_l = sum(abs2, sim_with_l.xs) +
-            0.1*sum(abs2, sim_with_l.us) +
-            dot(sim_with_l.us, l_traj) +
-            dot(sim_with_l.xs[:, end], mpc.weights.Qf, sim_with_l.xs[:, end])
+        cost_p = sum(abs2, sim_with_p.xs) +
+            0.1*sum(abs2, sim_with_p.us) +
+            dot(sim_with_p.us, p_traj) +
+            dot(sim_with_p.xs[:, end], mpc.weights.Qf, sim_with_p.xs[:, end])
 
-        cost_no_l = sum(abs2, sim_no_l.xs) +
-            0.1*sum(abs2, sim_no_l.us) +
-            dot(sim_no_l.us, l_traj) +
-            dot(sim_no_l.xs[:, end], mpc.weights.Qf, sim_no_l.xs[:, end])
-        @test cost_l < cost_no_l
+        cost_no_p = sum(abs2, sim_no_p.xs) +
+            0.1*sum(abs2, sim_no_p.us) +
+            dot(sim_no_p.us, p_traj) +
+            dot(sim_no_p.xs[:, end], mpc.weights.Qf, sim_no_p.xs[:, end])
+        @test cost_p < cost_no_p
 
-        # Since linear cost is negative, we should have a positive steady-state control
-        @test sim_with_l.us[end] > 0.1
+        @test sim_with_p.us[end] > 0.1
     end
 
-    @testset "Linear Cost Codegen" begin
-        # Test code generation with linear cost and move blocking
+    @testset "Generalized Parameters in State Objective" begin
+        mpc = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=4, Nc=4)
+        set_bounds!(mpc; umin=[-2.0], umax=[2.0])
+        set_objective!(mpc; Q=[0.0], R=[1e-6], Ex=[1.0;;], ex=[0.1])
+        setup!(mpc)
+
+        nx, nr, nd, nuprev, np = LinearMPC.get_parameter_dims(mpc)
+        @test (nx, nr, nd, nuprev, np) == (1, 1, 0, 0, 1)
+
+        u_nom = compute_control(mpc, [1.0]; r=[0.0], p=[0.0])
+        u_pos = compute_control(mpc, [1.0]; r=[0.0], p=[1.0])
+        u_neg = compute_control(mpc, [1.0]; r=[0.0], p=[-1.0])
+        u_traj = compute_control(mpc, [1.0]; r=[0.0], p=ones(1, 4))
+
+        @test u_pos[1] < u_nom[1] < u_neg[1]
+        @test u_traj ≈ u_pos
+    end
+
+    @testset "Generalized Parameter Codegen" begin
         A = [1 1; 0 1]
         B = [0; 1]
         C = [1.0 0; 0 1.0]
         mpc = LinearMPC.MPC(A, B; C, Np=10, Nc=10)
         set_bounds!(mpc; umin=[-2.0], umax=[2.0])
-        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1])
-        mpc.settings.linear_cost = true
+        set_objective!(mpc; Q=[1.0, 1.0], R=[0.1], Ex=[0.2; 0.1;;], Eu=[1.0;;])
+        mpc.settings.parameter_preview = true
 
-        # Add move blocking: [2,3,3,2] → 4 blocked moves covering 10 steps
         move_block!(mpc, [2, 3, 3, 2])
         setup!(mpc)
 
         x = [0.5, 0.1]
         r = [0.0, 0.0]
-        # Full Np trajectory (nu × Np = 1 × 10) - mean will be computed per block
-        l_traj = reshape(collect(range(0.1, 1.0, length=10)), 1, 10)
+        p_traj = reshape(collect(range(0.1, 1.0, length=10)), 1, 10)
 
-        u_julia = compute_control(mpc, x; r=r, l=l_traj)
+        u_julia = compute_control(mpc, x; r=r, p=p_traj)
 
-        # If we preblock the cost trajectory by computing averages over move blocks and then repeating those averages over the blocks, we should get the same result
-        l_preblocked = [fill(mean(l_traj[1:2]), 2); fill(mean(l_traj[3:5]), 3); fill(mean(l_traj[6:8]), 3); fill(mean(l_traj[9:10]), 2)]'
-        u_preblocked = compute_control(mpc, x; r=r, l=l_preblocked)
-        @test u_preblocked ≈ u_julia
-
-        # Generate C code
         srcdir = tempname()
         LinearMPC.codegen(mpc; dir=srcdir)
         src = [f for f in readdir(srcdir) if last(f,1) == "c"]
@@ -1216,12 +1225,67 @@ Random.seed!(1234)
             d = zeros(0)
 
             global templib = joinpath(srcdir, testlib)
-            # C code receives full l_traj and computes mean per block internally
             ccall(("mpc_compute_control", templib), Cint,
                   (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}),
-                  u, x, r, d, l_traj)
+                  u, x, r, d, p_traj)
 
-            # Test that Julia and C implementations give same result
+            @test u ≈ u_julia
+        end
+    end
+
+    @testset "Generalized Parameters in Constraints" begin
+        mpc = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=4, Nc=4)
+        set_bounds!(mpc; umin=[0.0], umax=[2.0])
+        set_objective!(mpc; Q=[0.0], R=[1e-6], Eu=[-1.0;;], eu=[-0.1])
+        add_constraint!(mpc; Au=[1.0;;], Ap=[1.0;;], ub=[1.0], ks=1:mpc.Np)
+        setup!(mpc)
+
+        nx, nr, nd, nuprev, np = LinearMPC.get_parameter_dims(mpc)
+        @test (nx, nr, nd, nuprev, np) == (1, 1, 0, 0, 1)
+        @test LinearMPC.format_affine_parameters(mpc, [0.25]) == [0.25]
+        @test LinearMPC.format_affine_parameters(mpc, [0.25 0.5]) == [0.25]
+
+        u_nom = compute_control(mpc, [0.0]; r=[0.0], p=[0.0])
+        u_tight = compute_control(mpc, [0.0]; r=[0.0], p=[0.75])
+        u_preview = compute_control(mpc, [0.0]; r=[0.0], p=[0.75 0.0 0.0 0.0])
+
+        @test u_nom[1] ≈ 1.0 atol=1e-6
+        @test u_tight[1] ≈ 0.25 atol=1e-6
+        @test u_preview ≈ u_tight
+
+        pr = LinearMPC.ParameterRange(mpc)
+        @test length(pr.pmin) == np
+        region = LinearMPC.range2region(pr)
+        @test region.lb == [pr.xmin; pr.rmin; pr.dmin; pr.umin; pr.pmin]
+        @test region.ub == [pr.xmax; pr.rmax; pr.dmax; pr.umax; pr.pmax]
+    end
+
+    @testset "Generalized Parameter Codegen for Explicit Preview" begin
+        mpc = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=3, Nc=3)
+        set_bounds!(mpc; umin=[0.0], umax=[2.0])
+        set_objective!(mpc; Q=[0.0], R=[1.0], Eu=[-2.0;;])
+        mpc.settings.parameter_preview = true
+        setup!(mpc)
+
+        x = [0.0]
+        r = [0.0]
+        d = zeros(0)
+        p = [0.5, 0.0, 0.0]
+        u_julia = compute_control(mpc, x; r=r, p=p)
+
+        srcdir = tempname()
+        LinearMPC.codegen(mpc; dir=srcdir)
+
+        if !isnothing(Sys.which("gcc"))
+            testlib = "mpctest." * Base.Libc.Libdl.dlext
+            src = [f for f in readdir(srcdir) if last(f,1) == "c"]
+            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+
+            u = zeros(1)
+            global templib_affine = joinpath(srcdir, testlib)
+            ccall(("mpc_compute_control", templib_affine), Cint,
+                  (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}),
+                  u, x, r, d, p)
             @test u ≈ u_julia
         end
     end
@@ -1320,7 +1384,7 @@ Random.seed!(1234)
         @test_throws ArgumentError LinearMPC.Model(f, (x, u, d) -> [x[1] + u[1]], x0, u0; d=d0)
     end
 
-    @testset "Reference and linear-cost formatting helpers" begin
+    @testset "Reference and disturbance formatting helpers" begin
         mpc = LinearMPC.MPC([1.0 1.0; 0.0 1.0], [0.0; 1.0]; C=[1.0 0.0; 0.0 1.0], Np=4, Nc=4)
         set_objective!(mpc; Q=[1.0, 1.0], R=[1.0])
 
@@ -1347,30 +1411,6 @@ Random.seed!(1234)
 
         dmpc.settings.disturbance_preview = false
         @test LinearMPC.format_disturbance(dmpc, [7.0 8.0 9.0]) ≈ [7.0]
-
-        lmpc = LinearMPC.MPC([1.0 1.0; 0.0 1.0], [0.0; 1.0]; C=[1.0 0.0], Np=4, Nc=3)
-        set_objective!(lmpc; Q=[1.0], R=[0.1])
-        lmpc.settings.linear_cost = true
-        setup!(lmpc)
-        @test LinearMPC.format_linear_cost(lmpc, [2.0]) == [2.0, 2.0, 2.0]
-        @test LinearMPC.format_linear_cost(lmpc, [1.0, 2.0, 3.0]) == [1.0, 2.0, 3.0]
-        @test LinearMPC.format_linear_cost(lmpc, [4.0 5.0]) == [4.0, 5.0, 5.0]
-        @test_throws ErrorException LinearMPC.format_linear_cost(lmpc, ones(2, 2))
-        @test_throws ErrorException LinearMPC.format_linear_cost(lmpc, 1.0)
-
-        blocked = LinearMPC.MPC([1.0 1.0; 0.0 1.0], [0.0; 1.0]; C=[1.0 0.0], Np=4, Nc=4)
-        set_objective!(blocked; Q=[1.0], R=[0.1])
-        blocked.settings.linear_cost = true
-        move_block!(blocked, [2, 2])
-        setup!(blocked)
-        @test LinearMPC.format_linear_cost(blocked, [1.0 3.0 5.0 7.0]) ≈ [2.0, 6.0, 0.0]
-
-        varying = LinearMPC.MPC([1.0 1.0; 0.0 1.0], [0.0 0.0; 1.0 1.0]; C=[1.0 0.0], Np=4, Nc=4)
-        set_objective!(varying; Q=[1.0], R=[0.1, 0.1])
-        varying.settings.linear_cost = true
-        move_block!(varying, [[1, 3], [2, 2]])
-        setup!(varying)
-        @test_throws ArgumentError LinearMPC.format_linear_cost(varying, [1.0 2.0 3.0 4.0; 4.0 3.0 2.0 1.0])
     end
 
     @testset "Recipe helper coverage" begin
@@ -1381,8 +1421,6 @@ Random.seed!(1234)
                 @test LinearMPC.get_preview(rs, 1, 4) == [2.0 3.0 3.0 3.0; 20.0 30.0 30.0 30.0]
                 @test LinearMPC.get_reference_preview(rs, 1, 4) == LinearMPC.get_preview(rs, 1, 4)
                 @test LinearMPC.get_disturbance_preview(rs, 2, 3) == [2.0 3.0 3.0; 20.0 30.0 30.0]
-                ls = [1.0 2.0 3.0 4.0]
-                @test LinearMPC.get_linear_cost_preview(ls, 2, 3) == [2.0 3.0 4.0]
 
                 mpc = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=3)
                 set_objective!(mpc; Q=[1.0], R=[1.0])
@@ -1523,19 +1561,18 @@ Random.seed!(1234)
         setup!(base)
         pr = LinearMPC.ParameterRange(base)
         @test isempty(pr.umin)
-        @test isempty(pr.lmin)
+        @test isempty(pr.pmin)
 
         parametric = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=3, Nc=2)
         set_input_bounds!(parametric; umin=[-2.0], umax=[2.0])
-        set_objective!(parametric; Q=[1.0], R=[1.0], Rr=[0.5])
-        parametric.settings.linear_cost = true
+        set_objective!(parametric; Q=[1.0], R=[1.0], Rr=[0.5], Eu=[1.0;;])
         setup!(parametric)
         pr_param = LinearMPC.ParameterRange(parametric)
         region = LinearMPC.range2region(pr_param)
         @test pr_param.umin == [-2.0]
-        @test length(pr_param.lmin) == parametric.nl
-        @test region.lb == [pr_param.xmin; pr_param.rmin; pr_param.dmin; pr_param.umin; pr_param.lmin]
-        @test region.ub == [pr_param.xmax; pr_param.rmax; pr_param.dmax; pr_param.umax; pr_param.lmax]
+        @test length(pr_param.pmin) == parametric.np
+        @test region.lb == [pr_param.xmin; pr_param.rmin; pr_param.dmin; pr_param.umin; pr_param.pmin]
+        @test region.ub == [pr_param.xmax; pr_param.rmax; pr_param.dmax; pr_param.umax; pr_param.pmax]
 
         mpc = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=2)
         xs = [1.0 2.0]
@@ -1543,7 +1580,7 @@ Random.seed!(1234)
         rs = [0.0 1.0]
         @test LinearMPC.evaluate_cost(mpc, xs, us, rs; Q=[2.0;;], R=[3.0;;], Rr=[4.0;;], S=[5.0;;]) ≈ 10.5
 
-        c = LinearMPC.Constraint([1.0;;], [1.0 0.0], zeros(0, 0), zeros(0, 0), zeros(0, 0), zeros(0, 0), [1.0], [-1.0], 1:1, false, false, 0)
+        c = LinearMPC.Constraint([1.0;;], [1.0 0.0], zeros(0, 0), zeros(0, 0), zeros(0, 0), zeros(0, 0), zeros(0, 0), [1.0], [-1.0], 1:1, false, false, 0)
         @test LinearMPC.constraint_violation(c, [0.8, 0.0], [0.5]) ≈ 0.3
         @test LinearMPC.constraint_violation(c, [0.8 0.2; 0.0 0.0], [0.5 0.0]) ≈ [0.3, 0.0]
         @test_throws AssertionError LinearMPC.constraint_violation(c, [0.8 0.0], [0.5 0.0 0.1])

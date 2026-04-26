@@ -1,7 +1,7 @@
 # [Objective function](@id man_objective)
 The basic objective for computing a control action in the MPC controller is of the form
 ```math
-\sum_{k=0}^{N-1} {\left((Cx_{k}-r)^T Q (C x_{k}-r) + u_{k}^T R u_{k} + \Delta u_{k}^T R_r \Delta u_k + l_k^T u_k\right)},
+\sum_{k=0}^{N-1} {\left((Cx_{k}-r)^T Q (C x_{k}-r) + u_{k}^T R u_{k} + \Delta u_{k}^T R_r \Delta u_k\right)},
 ```
 where $N$ is the prediction horizon of the controller.
 
@@ -69,36 +69,43 @@ r_trajectory = np.array([[1.0, 1.5, 2.0, 2.0, 2.0],   # Reference for output 1
 u = mpc.compute_control(x, r=r_trajectory)
 ```
 
-## Linear control cost
-The term $l_k^T u_k$ adds an optional linear cost on the control signal. This is useful in economic MPC where control actions have time-varying costs (e.g., electricity prices).
-
-Enable linear cost with:
-
-```@tab
-# julia
-mpc.settings.linear_cost = true
-setup!(mpc)
-# python
-mpc.settings({"linear_cost": True})
-mpc.setup()
+## Generalized parameters in objective and constraints
+LinearMPC also supports a stagewise generalized parameter trajectory $p_k$ entering the problem as
+```math
+(Ex p_k + ex)^T x_k + (Eu p_k + eu)^T u_k
+```
+in the objective, and through additional constraint terms such as
+```math
+\underline{b} \le A_x x_k + A_u u_k + A_p p_k \le \overline{b}.
 ```
 
-Then provide the linear cost to `compute_control`:
+The matrices `Ex`, `Eu`, and `Ap` are stagewise coefficients. By default, the generalized parameter `p` is constant across the horizon, so only `np` new parameters are added. If you want a time-varying generalized-parameter trajectory, enable `parameter_preview` and provide an `(np, Np)` matrix.
+
+This replaces the older dedicated linear control-cost feature. Economic terms such as time-varying electricity prices can now be modeled directly with `Eu`, `eu`, and `p`.
 
 ```@tab
 # julia
-# Constant linear cost across horizon
-u = compute_control(mpc, x; l=[0.5])
+set_objective!(mpc; Q=[1.0], R=[0.1], Ex=[0.5 0.0], ex=[0.1], Eu=[1.0 0.0], eu=[0.2])
+add_constraint!(mpc; Au=[1.0;;], Ap=[0.5 1.0], ub=[1.0], ks=1:mpc.Np)
 
-# Time-varying linear cost (nu × Np matrix)
-l_trajectory = [0.1 0.2 0.5 0.8 1.0]  # Cost varies over prediction horizon
-u = compute_control(mpc, x; l=l_trajectory)
+u = compute_control(mpc, x; p=[0.3, -0.1])
+
+# Time-varying parameter preview
+mpc.settings.parameter_preview = true
+setup!(mpc)
+p_preview = [0.3 0.2 0.1 0.1;
+             -0.1 -0.1 0.0 0.1]
+u = compute_control(mpc, x; p=p_preview)
 # python
-import numpy as np
-# Constant linear cost across horizon
-u = mpc.compute_control(x, l=[0.5])
+mpc.set_objective(Q=[1.0], R=[0.1], Ex=[[0.5, 0.0]], ex=[0.1], Eu=[[1.0, 0.0]], eu=[0.2])
+mpc.add_constraint(Au=[[1.0]], Ap=[[0.5, 1.0]], ub=[1.0], ks=range(1, mpc.Np + 1))
 
-# Time-varying linear cost (nu x Np array)
-l_trajectory = np.array([[0.1, 0.2, 0.5, 0.8, 1.0]])  # Cost varies over prediction horizon
-u = mpc.compute_control(x, l=l_trajectory)
+u = mpc.compute_control(x, p=[0.3, -0.1])
+
+# Time-varying parameter preview
+mpc.settings({"parameter_preview": True})
+mpc.setup()
+p_preview = np.array([[0.3, 0.2, 0.1, 0.1],
+                      [-0.1, -0.1, 0.0, 0.1]])
+u = mpc.compute_control(x, p=p_preview)
 ```
