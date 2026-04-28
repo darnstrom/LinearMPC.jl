@@ -29,10 +29,14 @@ export move_block!,set_labels!
 export settings!
 
 include("mpc2mpqp.jl");
-include("mpc_examples.jl");
-
 include("simulation.jl");
 export Simulation
+export Scenario
+
+include("mpc_examples.jl");
+export MPCExample
+export mpc_example
+export mpc_example_names
 
 using Printf
 include("codegen.jl");

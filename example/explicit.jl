@@ -1,5 +1,6 @@
 using LinearMPC
-mpc,range = LinearMPC.mpc_examples("dcmotor") # Load DCMotor example
+example = LinearMPC.mpc_example("dcmotor")
+mpc,range = example.mpc, example.range
 # Adjust range 
 range.xmin[1:2] = -[0.3;2.0] 
 range.xmax[1:2] = [0.3;2.0]
