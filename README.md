@@ -46,14 +46,6 @@ A control, given the state `x` and reference value `r`, is computed with
 u = compute_control(mpc,[0,0,0,0], r = [1, 0])
 ```
 
-Predefined examples can also be loaded with `mpc_example`, which returns the controller together with a parameter range and some ready-made simulation scenarios:
-```julia
-example = LinearMPC.mpc_example("invpend")
-u = compute_control(example.mpc, [0,0,0,0], r = [1, 0])
-sim = Simulation(example, 1) # simulate the first predefined scenario
-```
-The legacy `mpc_examples(...)` helper is still available and returns `(mpc, range)`.
-
 Embeddable C-code for the MPC controller is generated with the command
 ```julia
 LinearMPC.codegen(mpc;dir="codgen_dir")
