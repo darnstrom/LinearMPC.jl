@@ -44,6 +44,20 @@ Random.seed!(1234)
         mpc,range = LinearMPC.mpc_examples("ballplate");
         LinearMPC.mpc2mpqp(mpc)
     end
+
+    @testset "MPCExample API" begin
+        example = LinearMPC.mpc_example("dc_motor")
+        @test example isa LinearMPC.MPCExample
+        @test example.name == "DC Motor Position Control"
+        @test !isempty(example.scenarios)
+        @test "dcmotor" in LinearMPC.mpc_example_names()
+
+        sim = LinearMPC.Simulation(example, 1)
+        @test !isempty(sim.ts)
+
+        example = LinearMPC.mpc_example("mass-spring", 10, 10; nx = 2)
+        @test example.mpc.model.nx == 2
+    end
  
     @testset "Compute control" begin
         mpc,range = LinearMPC.mpc_examples("invpend")

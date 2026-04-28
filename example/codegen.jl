@@ -1,6 +1,7 @@
 using LinearMPC
 # Load inverted pendulum example and generate code 
-mpc,range = LinearMPC.mpc_examples("invpend")
+example = LinearMPC.mpc_example("invpend")
+mpc,range = example.mpc, example.range
 LinearMPC.codegen(mpc;dir="codegen_impc")
 
 # Compute explicit 

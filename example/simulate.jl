@@ -1,11 +1,8 @@
 using LinearMPC
 
-# Get inverted pendulum MPC 
-mpc,_= LinearMPC.mpc_examples("invpend")
-# Run simulation 
-x0 = [0.0,0.0,0.0,0.0]; 
-rs = [zeros(2,20) repeat([10;0],1,780) repeat([9;0],1,10)];
-sim = LinearMPC.Simulation(mpc; x0, N = 1000, r=rs)
+# Load an example and run its first predefined scenario
+example = LinearMPC.mpc_example("invpend")
+sim = LinearMPC.Simulation(example, 1)
 
 ## Plot the trajectory 
 using Plots

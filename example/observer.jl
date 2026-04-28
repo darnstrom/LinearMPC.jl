@@ -1,6 +1,7 @@
 using LinearMPC
 
-mpc,th_range = LinearMPC.mpc_examples("invpend",100)
+example = LinearMPC.mpc_example("invpend", 100)
+mpc,th_range = example.mpc, example.range
 move_block!(mpc,[1,1,5,10,10])
 LinearMPC.set_state_observer!(mpc;Q=[1e-3,1,1e-3,1],R=[1,0.1])
 
