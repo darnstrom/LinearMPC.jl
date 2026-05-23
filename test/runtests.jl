@@ -102,6 +102,102 @@ Random.seed!(1234)
         @test abs(un[3]) < 1e-6
     end
 
+    @testset "invpend_contact MLD migration" begin
+        function build_legacy_invpend_contact(Np, Nc; nwalls=1, settings=nothing, mc=1.0, mp=1.0, l=1.0, d=0.5, κ=100.0, ν=10.0)
+            g = 10.0
+            A = [0 0 1 0;
+                 0 0 0 1;
+                 0 (mp*g/mc) 0 0;
+                 0 (mc + mp)*g/(mc*l) 0 0]
+            B = [0 0 0;
+                 0 0 0;
+                 1 / mc 0 0;
+                 1 / (mc * l) -1 / (mp * l) 1 / (mp * l)]
+            B = [B zeros(4, 4)]
+            C = Matrix{Float64}(I, 4, 4)
+            Ts = 0.05
+            F, G = LinearMPC.zoh(A, B, Ts)
+
+            mpc = LinearMPC.MPC(F, G; C, Np, Nc)
+            Q = [1.0, 1, 1, 1]
+            R = [1.0; 1e-4 * ones(6)]
+            Rr = zeros(7)
+            Qf, ~ = LinearMPC.MatrixEquations.ared(mpc.model.F, mpc.model.G[:, 1], mpc.weights.R[1:1, 1:1], mpc.weights.Q)
+            set_objective!(mpc; Q, R, Rr, Qf)
+            set_bounds!(mpc, umin = [-1.0; 0; zeros(4)], umax = [1.0; 1e30; 1e30; ones(4)])
+            set_binary_controls!(mpc, collect(4:7))
+            isnothing(settings) ? (mpc.settings.reference_tracking = false) : (mpc.settings = settings)
+
+            uby = [d; pi / 10; 1; 1]
+            lby = -uby
+            set_output_bounds!(mpc, ymin = lby, ymax = uby, ks = 2:mpc.Nc)
+
+            δ2l, δ2u = -uby[1] + l * lby[2] - d, -lby[1] + l * uby[2] - d
+            dotδ2l, dotδ2u = -uby[3] + l * lby[4], -lby[3] + l * uby[4]
+            δ3l, δ3u = lby[1] - l * uby[2] - d, uby[1] - l * lby[2] - d
+            dotδ3l, dotδ3u = lby[3] - l * uby[4], uby[3] - l * lby[4]
+
+            u2l, u2u = κ * δ2l + ν * dotδ2l, κ * δ2u + ν * dotδ2u
+            u3l, u3u = κ * δ3l + ν * dotδ3l, κ * δ3u + ν * dotδ3u
+
+            Ax = [-1 l 0 0;
+                  1 -l 0 0;
+                  -κ κ*l -ν ν*l;
+                  κ -κ*l ν -ν*l;
+                  zeros(2, 4);
+                  κ -κ*l ν -ν*l;
+                  -κ κ*l -ν ν*l]
+            Au2 = [0 0 0 -δ2u 0 0 0;
+                   0 0 0 -δ2l 0 0 0;
+                   0 0 0 0 0 -u2u 0;
+                   0 0 0 0 0 -u2l 0;
+                   0 1 0 -u2u 0 0 0;
+                   0 1 0 0 0 -u2u 0;
+                   0 1 0 0 0 -u2l 0;
+                   0 -1 0 u2u 0 0 0]
+            Au3 = [0 0 0 0 -δ3u 0 0;
+                   0 0 0 0 -δ3l 0 0;
+                   0 0 0 0 0 0 -u3u;
+                   0 0 0 0 0 0 -u3l;
+                   0 0 1 0 -u3u 0 0;
+                   0 0 1 0 0 0 -u3u;
+                   0 0 1 0 0 0 -u3l;
+                   0 0 -1 0 u3u 0 0]
+            bg2 = [d;
+                   -δ2l - d;
+                   κ * d;
+                   -κ * d - u2l;
+                   0;
+                   0;
+                   -u2l - κ * d;
+                   u2u + κ * d]
+            bg3 = [d;
+                   -δ3l - d;
+                   κ * d;
+                   -κ * d - u3l;
+                   0;
+                   0;
+                   -u3l - κ * d;
+                   u3u + κ * d]
+
+            add_constraint!(mpc, Au = Au2, Ax = Ax, ub = bg2, ks = 2:mpc.Nc)
+            nwalls == 2 && add_constraint!(mpc, Au = Au3, Ax = -Ax, ub = bg3, ks = 2:mpc.Nc)
+            return mpc
+        end
+
+        new_example = LinearMPC.mpc_example("invpend_contact", 6, 6; nwalls=1)
+        new_mpc = new_example.mpc
+        legacy_mpc = build_legacy_invpend_contact(6, 6; nwalls=1)
+
+        @test !isnothing(new_mpc.mld)
+
+        for x in ([0.0, 0.05, 0.0, 0.0], [0.2, 0.02, 0.0, 0.0], [-0.2, -0.02, 0.0, 0.0])
+            unew = compute_control(new_mpc, collect(x); check=false)
+            uold = compute_control(legacy_mpc, collect(x); check=false)
+            @test unew ≈ uold atol=1e-3
+        end
+    end
+
 
     @testset "Codegen IMPC" begin
         mpc,range = LinearMPC.mpc_examples("invpend")

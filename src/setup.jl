@@ -299,19 +299,20 @@ function set_auxiliary_bounds!(mpc::MPC; zmin=zeros(0), zmax=zeros(0))
 end
 
 function add_mld_constraint!(mpc::MPC;
-        Ax = nothing, Au = zeros(0,0), Aδ = zeros(0,0), Az = zeros(0,0),
+        Ax = nothing, Au = zeros(0,0), Adelta = zeros(0,0), Aδ = zeros(0,0), Az = zeros(0,0),
         Ar = zeros(0,0), Aw = zeros(0,0), Ad = zeros(0,0), Aup = zeros(0,0), Ap = zeros(0,0),
-        E1 = zeros(0,0), E2 = zeros(0,0), E3 = zeros(0,0), E4 = zeros(0,0), E5 = zeros(0),
+        Eu = zeros(0,0), Edelta = zeros(0,0), Ez = zeros(0,0), Ex = zeros(0,0), be = zeros(0),
         ub = zeros(0), lb = zeros(0), ks = 1:mpc.Np, soft = false, binary = false, prio = 0)
 
     mld = require_mld(mpc)
-    if !isempty(E5) || !isempty(E1) || !isempty(E2) || !isempty(E3) || !isempty(E4)
-        Ax = isempty(E4) ? zeros(length(E5), mpc.model.nx) : -float(E4)
-        Au = isempty(E1) ? zeros(length(E5), mld.ncontrols) : -float(E1)
-        Aδ = isempty(E2) ? zeros(length(E5), mld.ndelta) : float(E2)
-        Az = isempty(E3) ? zeros(length(E5), mld.nz) : float(E3)
-        ub = isempty(ub) ? float(E5) : ub
-        lb = isempty(lb) ? fill(-1e30, length(E5)) : lb
+    Adelta = isempty(Adelta) ? Aδ : Adelta
+    if !isempty(be) || !isempty(Eu) || !isempty(Edelta) || !isempty(Ez) || !isempty(Ex)
+        Ax = isempty(Ex) ? zeros(length(be), mpc.model.nx) : -float(Ex)
+        Au = isempty(Eu) ? zeros(length(be), mld.ncontrols) : -float(Eu)
+        Adelta = isempty(Edelta) ? zeros(length(be), mld.ndelta) : float(Edelta)
+        Az = isempty(Ez) ? zeros(length(be), mld.nz) : float(Ez)
+        ub = isempty(ub) ? float(be) : ub
+        lb = isempty(lb) ? fill(-1e30, length(be)) : lb
     end
 
     m = max(length(lb), length(ub))
@@ -319,22 +320,25 @@ function add_mld_constraint!(mpc::MPC;
         size(Ax, 2) == mpc.model.nx || throw(ArgumentError("Ax must have $(mpc.model.nx) columns"))
     end
     Au = isempty(Au) ? zeros(m, mld.ncontrols) : Au
-    Aδ = isempty(Aδ) ? zeros(m, mld.ndelta) : Aδ
+    Adelta = isempty(Adelta) ? zeros(m, mld.ndelta) : Adelta
     Az = isempty(Az) ? zeros(m, mld.nz) : Az
     size(Au, 2) == mld.ncontrols || throw(ArgumentError("Au must have $(mld.ncontrols) columns"))
-    size(Aδ, 2) == mld.ndelta || throw(ArgumentError("Aδ must have $(mld.ndelta) columns"))
+    size(Adelta, 2) == mld.ndelta || throw(ArgumentError("Adelta must have $(mld.ndelta) columns"))
     size(Az, 2) == mld.nz || throw(ArgumentError("Az must have $(mld.nz) columns"))
-    Ainput = m == 0 ? zeros(0, mpc.model.nu) : hcat(Au, Aδ, Az)
+    Ainput = m == 0 ? zeros(0, mpc.model.nu) : hcat(Au, Adelta, Az)
     return add_constraint!(mpc; Ax, Au = Ainput, Ar, Aw, Ad, Aup, Ap, ub, lb, ks, soft, binary, prio)
 end
 
-function add_logic_constraint!(mpc::MPC; Aδ, ub=zeros(size(Aδ,1)), lb=fill(-1e30, size(Aδ,1)), ks = 1:mpc.Np, prio = 0)
-    add_mld_constraint!(mpc; Aδ, ub, lb, ks, prio)
+function add_logic_constraint!(mpc::MPC; Adelta=zeros(0,0), Aδ=zeros(0,0), ub=zeros(0), lb=zeros(0), ks = 1:mpc.Np, prio = 0)
+    Adelta = isempty(Adelta) ? Aδ : Adelta
+    ub = isempty(ub) ? zeros(size(Adelta,1)) : ub
+    lb = isempty(lb) ? fill(-1e30, size(Adelta,1)) : lb
+    add_mld_constraint!(mpc; Adelta, ub, lb, ks, prio)
 end
 
 function add_indicator_constraint!(mpc::MPC, delta_id::Integer;
         Ax = zeros(1, mpc.model.nx), Au = zeros(1, require_mld(mpc).ncontrols), c = zeros(size(Ax,1)),
-        m, M, ϵ = sqrt(eps(Float64)), ks = 1:mpc.Np, prio = 0)
+        m, M, ϵ = sqrt(eps(Float64)), sense::Symbol = :le, ks = 1:mpc.Np, prio = 0)
     mld = require_mld(mpc)
     length(c) == size(Ax,1) || throw(ArgumentError("c must have length $(size(Ax,1))"))
     size(Au) == (size(Ax,1), mld.ncontrols) || throw(ArgumentError("Au must have size ($(size(Ax,1)), $(mld.ncontrols))"))
@@ -343,10 +347,19 @@ function add_indicator_constraint!(mpc::MPC, delta_id::Integer;
     mv = fill(float(m), size(Ax,1))
     Aδ1 = zeros(size(Ax,1), mld.ndelta)
     Aδ2 = zeros(size(Ax,1), mld.ndelta)
-    Aδ1[:, delta_id] .= Mv
-    Aδ2[:, delta_id] .= mv .- ϵ
-    add_mld_constraint!(mpc; Ax, Au, Aδ=Aδ1, ub=Mv .- c, lb=fill(-1e30, size(Ax,1)), ks, prio)
-    add_mld_constraint!(mpc; Ax=-Ax, Au=-Au, Aδ=Aδ2, ub=fill(-ϵ, size(Ax,1)) .- c, lb=fill(-1e30, size(Ax,1)), ks, prio)
+    if sense == :le
+        Aδ1[:, delta_id] .= Mv
+        Aδ2[:, delta_id] .= mv .- ϵ
+        add_mld_constraint!(mpc; Ax, Au, Aδ=Aδ1, ub=Mv .- c, lb=fill(-1e30, size(Ax,1)), ks, prio)
+        add_mld_constraint!(mpc; Ax=-Ax, Au=-Au, Aδ=Aδ2, ub=fill(-ϵ, size(Ax,1)) .- c, lb=fill(-1e30, size(Ax,1)), ks, prio)
+    elseif sense == :ge
+        Aδ1[:, delta_id] .= -Mv
+        Aδ2[:, delta_id] .= mv .- ϵ
+        add_mld_constraint!(mpc; Ax, Au, Aδ=Aδ1, ub=-c, lb=fill(-1e30, size(Ax,1)), ks, prio)
+        add_mld_constraint!(mpc; Ax=-Ax, Au=-Au, Aδ=Aδ2, ub=c .- mv, lb=fill(-1e30, size(Ax,1)), ks, prio)
+    else
+        throw(ArgumentError("sense must be :le or :ge"))
+    end
 end
 
 function add_product_constraint!(mpc::MPC, z_id::Integer, delta_id::Integer;
@@ -377,9 +390,8 @@ function add_product_constraint!(mpc::MPC, z_id::Integer, delta_id::Integer;
     add_mld_constraint!(mpc; Ax=Ax, Au=Au, Aδ=Aδ_top, Az=Az_neg, ub=Mv .- c, lb=fill(-1e30, size(Ax,1)), ks, prio)
 end
 
-function add_ifthenelse_constraint!(mpc::MPC, z_id::Integer, delta_id::Integer;
-        Ax_then = zeros(1, mpc.model.nx), Au_then = zeros(1, require_mld(mpc).ncontrols), c_then = zeros(size(Ax_then,1)),
-        Ax_else = zeros(size(Ax_then,1), mpc.model.nx), Au_else = zeros(size(Ax_then,1), require_mld(mpc).ncontrols), c_else = zeros(size(Ax_then,1)),
+function add_ifthenelse_relation!(mpc::MPC, Au_out, Az_out, delta_id::Integer;
+        Ax_then, Au_then, c_then, Ax_else, Au_else, c_else,
         m_then, M_then, m_else, M_else, ks = 1:mpc.Np, prio = 0)
     mld = require_mld(mpc)
     nrows = size(Ax_then, 1)
@@ -387,23 +399,48 @@ function add_ifthenelse_constraint!(mpc::MPC, z_id::Integer, delta_id::Integer;
     length(c_then) == nrows || throw(ArgumentError("c_then must have length $nrows"))
     length(c_else) == nrows || throw(ArgumentError("c_else must have length $nrows"))
     1 <= delta_id <= mld.ndelta || throw(ArgumentError("delta_id must be between 1 and $(mld.ndelta)"))
-    1 <= z_id <= mld.nz || throw(ArgumentError("z_id must be between 1 and $(mld.nz)"))
     M1 = fill(float(M_then), nrows)
     m1 = fill(float(m_then), nrows)
     M2 = fill(float(M_else), nrows)
     m2 = fill(float(m_else), nrows)
-    Aδ_low = zeros(nrows, mld.ndelta)
-    Aδ_high = zeros(nrows, mld.ndelta)
-    Az_pos = zeros(nrows, mld.nz)
-    Az_neg = zeros(nrows, mld.nz)
-    Aδ_low[:, delta_id] .= m2 .- M1
-    Aδ_high[:, delta_id] .= m1 .- M2
-    Az_pos[:, z_id] .= 1.0
-    Az_neg[:, z_id] .= -1.0
-    add_mld_constraint!(mpc; Ax=-Ax_else, Au=-Au_else, Aδ=Aδ_low, Az=Az_pos, ub=c_else, lb=fill(-1e30, nrows), ks, prio)
-    add_mld_constraint!(mpc; Ax=Ax_else, Au=Au_else, Aδ=Aδ_high, Az=Az_neg, ub=-c_else, lb=fill(-1e30, nrows), ks, prio)
-    add_mld_constraint!(mpc; Ax=-Ax_then, Au=-Au_then, Aδ=-Aδ_high, Az=Az_pos, ub=c_then .- (m1 .- M2), lb=fill(-1e30, nrows), ks, prio)
-    add_mld_constraint!(mpc; Ax=Ax_then, Au=Au_then, Aδ=-Aδ_low, Az=Az_neg, ub=(m2 .- M1) .- c_then, lb=fill(-1e30, nrows), ks, prio)
+    Adelta1 = zeros(nrows, mld.ndelta)
+    Adelta2 = zeros(nrows, mld.ndelta)
+    Adelta3 = zeros(nrows, mld.ndelta)
+    Adelta4 = zeros(nrows, mld.ndelta)
+    Adelta1[:, delta_id] .= m2 .- M1
+    Adelta2[:, delta_id] .= m1 .- M2
+    Adelta3[:, delta_id] .= M2 .- m1
+    Adelta4[:, delta_id] .= M1 .- m2
+    add_mld_constraint!(mpc; Ax=-Ax_else, Au=Au_out - Au_else, Adelta=Adelta1, Az=Az_out, ub=c_else, lb=fill(-1e30, nrows), ks, prio)
+    add_mld_constraint!(mpc; Ax=Ax_else, Au=Au_else - Au_out, Adelta=Adelta2, Az=-Az_out, ub=-c_else, lb=fill(-1e30, nrows), ks, prio)
+    add_mld_constraint!(mpc; Ax=-Ax_then, Au=Au_out - Au_then, Adelta=Adelta3, Az=Az_out, ub=c_then .+ (M2 .- m1), lb=fill(-1e30, nrows), ks, prio)
+    add_mld_constraint!(mpc; Ax=Ax_then, Au=Au_then - Au_out, Adelta=Adelta4, Az=-Az_out, ub=-c_then .+ (M1 .- m2), lb=fill(-1e30, nrows), ks, prio)
+end
+
+function add_ifthenelse_constraint!(mpc::MPC, z_id::Integer, delta_id::Integer;
+        Ax_then = zeros(1, mpc.model.nx), Au_then = zeros(1, require_mld(mpc).ncontrols), c_then = zeros(size(Ax_then,1)),
+        Ax_else = zeros(size(Ax_then,1), mpc.model.nx), Au_else = zeros(size(Ax_then,1), require_mld(mpc).ncontrols), c_else = zeros(size(Ax_then,1)),
+        m_then, M_then, m_else, M_else, ks = 1:mpc.Np, prio = 0)
+    mld = require_mld(mpc)
+    1 <= z_id <= mld.nz || throw(ArgumentError("z_id must be between 1 and $(mld.nz)"))
+    Az_out = zeros(size(Ax_then,1), mld.nz)
+    Az_out[:, z_id] .= 1.0
+    add_ifthenelse_relation!(mpc, zeros(size(Ax_then,1), mld.ncontrols), Az_out, delta_id;
+                             Ax_then, Au_then, c_then, Ax_else, Au_else, c_else,
+                             m_then, M_then, m_else, M_else, ks, prio)
+end
+
+function add_ifthenelse_input_constraint!(mpc::MPC, u_id::Integer, delta_id::Integer;
+        Ax_then = zeros(1, mpc.model.nx), Au_then = zeros(1, require_mld(mpc).ncontrols), c_then = zeros(size(Ax_then,1)),
+        Ax_else = zeros(size(Ax_then,1), mpc.model.nx), Au_else = zeros(size(Ax_then,1), require_mld(mpc).ncontrols), c_else = zeros(size(Ax_then,1)),
+        m_then, M_then, m_else, M_else, ks = 1:mpc.Np, prio = 0)
+    mld = require_mld(mpc)
+    1 <= u_id <= mld.ncontrols || throw(ArgumentError("u_id must be between 1 and $(mld.ncontrols)"))
+    Au_out = zeros(size(Ax_then,1), mld.ncontrols)
+    Au_out[:, u_id] .= 1.0
+    add_ifthenelse_relation!(mpc, Au_out, zeros(size(Ax_then,1), mld.nz), delta_id;
+                             Ax_then, Au_then, c_then, Ax_else, Au_else, c_else,
+                             m_then, M_then, m_else, M_else, ks, prio)
 end
 """
     set_disturbance!(mpc,wmin,wmax)

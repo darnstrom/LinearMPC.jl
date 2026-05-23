@@ -112,13 +112,13 @@ For MLD systems of the form
 
 ```math
 \begin{aligned}
-x_{k+1} &= A x_k + B_1 u_k + B_2 \delta_k + B_3 z_k + B_5, \\
-y_k &= C x_k + D_1 u_k + D_2 \delta_k + D_3 z_k + D_5, \\
-E_2 \delta_k + E_3 z_k &\le E_1 u_k + E_4 x_k + E_5,
+x_{k+1} &= A x_k + B_u u_k + B_\delta delta_k + B_z z_k + bb, \\
+y_k &= C x_k + D_u u_k + D_\delta \delta_k + D_z z_k + bd, \\
+E_\delta \delta_k + E_z z_k &\le E_u u_k + E_x x_k + be,
 \end{aligned}
 ```
 
-**LinearMPC.jl** now provides an `MLDModel` constructor. Internally, the auxiliary binary variables `δ` and auxiliary continuous variables `z` are appended to the stage decision vector, so the existing mixed-integer mpQP/DAQP pipeline can be reused with minimal changes to the rest of the package.
+**LinearMPC.jl** provides an `MLDModel` constructor. Internally, the auxiliary binary variables `δ` and auxiliary continuous variables `z` are appended to the stage decision vector, so the existing mixed-integer mpQP/DAQP pipeline is reused. The constructor and constraint helper use the block names `Bu`, `Bdelta`, `Bz`, `Du`, `Ddelta`, `Dz`, `Eu`, `Edelta`, `Ez`, `Ex`, and `be`.
 
 ```@tab
 # julia
@@ -126,9 +126,9 @@ using LinearMPC
 
 mld = LinearMPC.MLDModel(
     [-0.8;;],            # A
-    [1.0;;],             # B1
-    zeros(1, 1),         # B2
-    [1.6;;];             # B3
+    [1.0;;],             # Bu
+    zeros(1, 1),         # Bdelta
+    [1.6;;];             # Bz
     C=[1.0;;],
     zmin=[-10.0],
     zmax=[10.0],
@@ -152,7 +152,7 @@ decision = compute_control(mpc, [2.0]; r=[0.0])
 
 The helper functions below are available in addition to the generic `add_constraint!` interface:
 
-1. `add_mld_constraint!` adds inequalities with separate `u`, `δ`, and `z` blocks, or directly from the matrices `E1`–`E5`.
+1. `add_mld_constraint!` adds inequalities with separate `u`, `δ`, and `z` blocks, or directly from the matrices `Eu`, `Edelta`, `Ez`, `Ex`, and `be`.
 2. `add_logic_constraint!` adds linear inequalities over the auxiliary binary variables.
 3. `add_indicator_constraint!` encodes relations of the form `[δ = 1] ↔ [h(x,u) ≤ 0]`.
 4. `add_product_constraint!` encodes products `z = δ h(x,u)`.

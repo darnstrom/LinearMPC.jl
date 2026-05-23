@@ -193,8 +193,8 @@ function MPC(mld::MLDModel; Np=10, Nc=Np)
     if mld.ndelta > 0
         set_binary_controls!(mpc, collect(mld.ncontrols+1:mld.ncontrols+mld.ndelta))
     end
-    if !isempty(mld.E5)
-        add_mld_constraint!(mpc; E1=mld.E1, E2=mld.E2, E3=mld.E3, E4=mld.E4, E5=mld.E5, ks=1:mpc.Np)
+    if !isempty(mld.be)
+        add_mld_constraint!(mpc; Eu=mld.Eu, Edelta=mld.Edelta, Ez=mld.Ez, Ex=mld.Ex, be=mld.be, ks=1:mpc.Np)
     end
     return mpc
 end
