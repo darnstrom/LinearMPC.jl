@@ -105,3 +105,81 @@ plt.show()
 ```
 
 We can see that the attitude is able to reach the setpoint of 0.5. Moreover, we also we that $u_2$ and $u_3$ only take values in $\{0,1\}$ and $\{-1,0\}$, respectively.
+
+## Mixed logical dynamical systems
+
+In **LinearMPC.jl**, MLD models can be built with an augmented
+input vector
+
+```math
+\tilde{u}_k = \begin{bmatrix} u_k \\ \delta_k \\ z_k \end{bmatrix},
+```
+
+where the physical inputs `u`, binary auxiliary variables `δ`, and continuous
+auxiliary variables `z` are all treated as ordinary controller inputs. The
+binary entries are then marked with `set_binary_controls!`, and the helper
+functions below add the mixed-integer relations on top of the existing
+framework.
+
+In this setup, penalties on auxiliary variables are normally added directly
+through the input cost (`R`, `Eu`, `eu`) instead of by extending the output
+objective.
+
+The helper functions available in `setup.jl` are:
+
+1. `add_logic_constraint!` for relations involving only binary auxiliary variables.
+2. `add_indicator_constraint!` for big-M indicator relations.
+3. `add_product_constraint!` for products `z = δ h(x,u)`.
+4. `add_ifthenelse_constraint!` and `add_ifthenelse_input_constraint!` for affine branch relations.
+
+### Indicator + product
+
+```julia
+using LinearMPC
+
+mpc = LinearMPC.MPC([-0.8;;], [1.0 0.0 1.6];
+                    C=[1.0;;], Np=1, Nc=1)
+set_input_bounds!(mpc; umin=[-1.0, 0.0, -10.0], umax=[1.0, 1.0, 10.0])
+set_binary_controls!(mpc, [2])  # δ
+set_objective!(mpc; Q=[0.0], Qf=[0.0], R=[1e-6, 1e-6, 1e-6], eu=[0.0, 0.0, -1.0])
+
+# [δ = 1] ↔ [x >= 0]
+add_indicator_constraint!(mpc, 2; Ax=[-1.0;;], Au=zeros(1, 3), m=-10.0, M=10.0)
+
+# z = δ*x
+add_product_constraint!(mpc, 3, 2; Ax=[1.0;;], Au=zeros(1, 3), m=-10.0, M=10.0)
+```
+
+### If-then-else branches
+
+```julia
+using LinearMPC, LinearAlgebra
+
+alpha = pi / 3
+c, s = cos(alpha), sin(alpha)
+
+mpc = LinearMPC.MPC(zeros(2, 2), [0.0 1.0 0.0; 0.0 0.0 1.0];
+                    C=Matrix{Float64}(I, 2, 2), Np=1, Nc=1)
+set_input_bounds!(mpc; umin=[0.0, -6.0, -6.0], umax=[1.0, 6.0, 6.0])
+set_binary_controls!(mpc, [1])  # sign selector
+target = [1.0, 0.0] # choose an affine objective that favors the desired branch output
+set_objective!(mpc; Q=[0.0, 0.0], Qf=[0.0, 0.0], R=[1e-6, 1e-6, 1e-6],
+               eu=[0.0, -target[1], -target[2]])
+
+# [sign = 1] ↔ [x1 <= 0]
+add_indicator_constraint!(mpc, 1; Ax=[1.0 0.0], Au=zeros(1, 3), m=-5.0, M=5.0, ϵ=0.0)
+
+add_ifthenelse_constraint!(mpc, 2, 1;
+    Ax_then=0.8 .* [c s],   Au_then=zeros(1, 3),
+    Ax_else=0.8 .* [c -s],  Au_else=zeros(1, 3),
+    c_then=[0.0], c_else=[0.0],
+    m_then=-6.0, M_then=6.0, m_else=-6.0, M_else=6.0,
+)
+add_ifthenelse_constraint!(mpc, 3, 1;
+    Ax_then=0.8 .* [-s c],  Au_then=zeros(1, 3),
+    Ax_else=0.8 .* [s c],   Au_else=zeros(1, 3),
+    c_then=[0.0], c_else=[0.0],
+    m_then=-6.0, M_then=6.0, m_else=-6.0, M_else=6.0,
+)
+```
+
