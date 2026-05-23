@@ -43,6 +43,8 @@ Random.seed!(1234)
         LinearMPC.mpc2mpqp(mpc)
         mpc,range = LinearMPC.mpc_examples("ballplate");
         LinearMPC.mpc2mpqp(mpc)
+        mpc,range = LinearMPC.mpc_examples("rocket");
+        LinearMPC.mpc2mpqp(mpc)
     end
 
     @testset "MPCExample API" begin
