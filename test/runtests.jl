@@ -72,6 +72,36 @@ Random.seed!(1234)
         @test norm(control.-1.7612519326) < 1e-6
     end
 
+    @testset "Direct output feedthrough in objective" begin
+        mpc = LinearMPC.MPC([0.0;;], [0.0;;]; C=[0.0;;], D=[1.0;;], Np=1, Nc=1)
+        set_bounds!(mpc; umin=[-2.0], umax=[2.0])
+        set_objective!(mpc; Q=[1.0], R=[0.0])
+        u = compute_control(mpc, [0.0]; r=[1.0])
+        @test u[1] ≈ 1.0 atol=1e-8
+    end
+
+    @testset "MLD model helpers" begin
+        mld = LinearMPC.MLDModel([-0.8;;], [1.0;;], zeros(1, 1), [1.6;;];
+                                 C=[1.0;;], zmin=[-10.0], zmax=[10.0],
+                                 delta_labels=[:delta1], z_labels=[:z1])
+        mpc = LinearMPC.MPC(mld; Np=1, Nc=1)
+        set_input_bounds!(mpc; umin=[-1.0, 0.0, -10.0], umax=[1.0, 1.0, 10.0])
+        set_objective!(mpc; Q=[1.0], R=[0.1, 0.0, 0.0])
+        add_indicator_constraint!(mpc, 1; Ax=[-1.0;;], m=-10.0, M=10.0)
+        add_product_constraint!(mpc, 1, 1; Ax=[1.0;;], m=-10.0, M=10.0)
+
+        up = compute_control(mpc, [2.0]; r=[0.0])
+        un = compute_control(mpc, [-2.0]; r=[0.0])
+        mpqp = LinearMPC.mpc2mpqp(mpc)
+
+        @test length(up) == 3
+        @test mpqp.has_binaries
+        @test up[2] ≈ 1.0 atol=1e-8
+        @test up[3] ≈ 2.0 atol=1e-6
+        @test un[2] ≈ 0.0 atol=1e-8
+        @test abs(un[3]) < 1e-6
+    end
+
 
     @testset "Codegen IMPC" begin
         mpc,range = LinearMPC.mpc_examples("invpend")
@@ -1402,7 +1432,8 @@ Random.seed!(1234)
         @test nmodel.C ≈ Cn
 
         @test_throws ArgumentError LinearMPC.Model(F, G; C=ones(3, 3))
-        @test_throws ArgumentError LinearMPC.Model(f, (x, u, d) -> [x[1] + u[1]], x0, u0; d=d0)
+        dmodel = LinearMPC.Model(f, (x, u, d) -> [x[1] + u[1]], x0, u0; d=d0)
+        @test dmodel.D ≈ [1.0;;]
     end
 
     @testset "Reference and disturbance formatting helpers" begin

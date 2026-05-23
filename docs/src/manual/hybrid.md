@@ -105,3 +105,58 @@ plt.show()
 ```
 
 We can see that the attitude is able to reach the setpoint of 0.5. Moreover, we also we that $u_2$ and $u_3$ only take values in $\{0,1\}$ and $\{-1,0\}$, respectively.
+
+## Mixed logical dynamical systems
+
+For MLD systems of the form
+
+```math
+\begin{aligned}
+x_{k+1} &= A x_k + B_1 u_k + B_2 \delta_k + B_3 z_k + B_5, \\
+y_k &= C x_k + D_1 u_k + D_2 \delta_k + D_3 z_k + D_5, \\
+E_2 \delta_k + E_3 z_k &\le E_1 u_k + E_4 x_k + E_5,
+\end{aligned}
+```
+
+**LinearMPC.jl** now provides an `MLDModel` constructor. Internally, the auxiliary binary variables `δ` and auxiliary continuous variables `z` are appended to the stage decision vector, so the existing mixed-integer mpQP/DAQP pipeline can be reused with minimal changes to the rest of the package.
+
+```@tab
+# julia
+using LinearMPC
+
+mld = LinearMPC.MLDModel(
+    [-0.8;;],            # A
+    [1.0;;],             # B1
+    zeros(1, 1),         # B2
+    [1.6;;];             # B3
+    C=[1.0;;],
+    zmin=[-10.0],
+    zmax=[10.0],
+    delta_labels=[:delta1],
+    z_labels=[:z1],
+)
+
+mpc = LinearMPC.MPC(mld; Np=1, Nc=1)
+set_input_bounds!(mpc; umin=[-1.0, 0.0, -10.0], umax=[1.0, 1.0, 10.0])
+set_objective!(mpc; Q=[1.0], R=[0.1, 0.0, 0.0])
+
+# [delta1 = 1] ↔ [x >= 0]
+add_indicator_constraint!(mpc, 1; Ax=[-1.0;;], m=-10.0, M=10.0)
+
+# z1 = delta1 * x
+add_product_constraint!(mpc, 1, 1; Ax=[1.0;;], m=-10.0, M=10.0)
+
+decision = compute_control(mpc, [2.0]; r=[0.0])
+# decision = [u1, delta1, z1]
+```
+
+The helper functions below are available in addition to the generic `add_constraint!` interface:
+
+1. `add_mld_constraint!` adds inequalities with separate `u`, `δ`, and `z` blocks, or directly from the matrices `E1`–`E5`.
+2. `add_logic_constraint!` adds linear inequalities over the auxiliary binary variables.
+3. `add_indicator_constraint!` encodes relations of the form `[δ = 1] ↔ [h(x,u) ≤ 0]`.
+4. `add_product_constraint!` encodes products `z = δ h(x,u)`.
+5. `add_ifthenelse_constraint!` encodes affine `if-then-else` relations.
+
+!!! note
+    For `MLDModel` controllers, `compute_control` returns the full stage decision vector `[u; \delta; z]`. This makes the returned vector directly compatible with the MLD dynamics used inside the model and simulation routines.

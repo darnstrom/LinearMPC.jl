@@ -46,7 +46,7 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
         get_measurement = if has_observer 
             (x,d) -> mpc.state_observer.C*x+mpc.state_observer.Dd*d+mpc.state_observer.h_offset
         else
-            (x,d) -> mpc.model.C*x+mpc.model.Dd*d+mpc.model.h_offset
+            (x,d) -> mpc.model.true_h(x,u,d)
         end
     else
         get_measurement = scenario.get_measurement
@@ -56,7 +56,9 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
     
     xs = zeros(mpc.model.nx,N);
     ys = zeros(mpc.model.ny,N);
-    rs = repeat(mpc.model.C*mpc.model.xo,1,N)
+    y0 = mpc.model.C*mpc.model.xo + mpc.model.h_offset
+    size(mpc.model.D, 2) == length(mpc.model.uo) && (y0 .+= mpc.model.D*mpc.model.uo)
+    rs = repeat(y0,1,N)
     ds = zeros(nd_sim,N);
     ps = zeros(get_affine_parameter_base_dim(mpc), N);
     us = zeros(mpc.model.nu,N)

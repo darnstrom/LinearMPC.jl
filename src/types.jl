@@ -157,6 +157,8 @@ mutable struct MPC
     Δx0::Vector{Float64}
 
     objectives::Vector{<:Tuple{MPCWeights,Vector{Int}}}
+
+    mld::Union{Nothing,MLDModel}
 end
 
 function MPC(model::Model;Np=10,Nc=Np)
@@ -166,19 +168,35 @@ function MPC(model::Model;Np=10,Nc=Np)
         Constraint[],MPCSettings(),MPQP(),
         DAQP.Model(),zeros(model.nu,model.nx),Vector{Int}[],false, zeros(model.nu),zeros(0,0),
         nothing,zeros(model.nx),
-        Tuple{MPCWeights,Vector{Int}}[])
+        Tuple{MPCWeights,Vector{Int}}[],
+        nothing)
 end
 
-function MPC(F,G;Gd=zeros(0,0), C=zeros(0,0), Dd= zeros(0,0), f_offset=zeros(0), Ts= -1.0, Np=10, Nc = Np)
-    MPC(Model(F,G;Gd,f_offset,C,Dd,Ts);Np,Nc);
+function MPC(F,G;Gd=zeros(0,0), C=zeros(0,0), D=zeros(0,0), Dd= zeros(0,0), f_offset=zeros(0), Ts= -1.0, Np=10, Nc = Np)
+    MPC(Model(F,G;Gd,f_offset,C,D,Dd,Ts);Np,Nc);
 end
 
-function MPC(A,B,Ts::Float64; Bd = zeros(0,0), f_offset=zeros(0), C = zeros(0,0), Dd = zeros(0,0), Np=10, Nc=Np)
-    MPC(Model(A,B,Ts;Bd,f_offset,C,Dd);Np,Nc)
+function MPC(A,B,Ts::Float64; Bd = zeros(0,0), f_offset=zeros(0), C = zeros(0,0), D = zeros(0,0), Dd = zeros(0,0), Np=10, Nc=Np)
+    MPC(Model(A,B,Ts;Bd,f_offset,C,D,Dd);Np,Nc)
 end
 
 function MPC(sys; Ts=1.0, Np=10, Nc=Np)
     MPC(Model(sys;Ts);Np,Nc)
+end
+
+function MPC(mld::MLDModel; Np=10, Nc=Np)
+    mpc = MPC(mld.model; Np, Nc)
+    mpc.mld = mld
+    umin = [fill(-1e30, mld.ncontrols); zeros(mld.ndelta); mld.zmin]
+    umax = [fill(1e30, mld.ncontrols); ones(mld.ndelta); mld.zmax]
+    set_input_bounds!(mpc; umin, umax)
+    if mld.ndelta > 0
+        set_binary_controls!(mpc, collect(mld.ncontrols+1:mld.ncontrols+mld.ndelta))
+    end
+    if !isempty(mld.E5)
+        add_mld_constraint!(mpc; E1=mld.E1, E2=mld.E2, E3=mld.E3, E4=mld.E4, E5=mld.E5, ks=1:mpc.Np)
+    end
+    return mpc
 end
 
 struct ParameterRange

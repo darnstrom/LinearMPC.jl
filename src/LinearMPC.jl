@@ -6,6 +6,7 @@ const DAQP = DAQPBase
 export DAQP
 
 include("model.jl")
+export MLDModel
 include("types.jl");
 
 using ParametricDAQP
@@ -21,6 +22,8 @@ export setup!
 export set_bounds!,add_constraint!,set_input_bounds!, set_output_bounds!
 export set_objective!, set_weights!, set_horizon!
 export set_binary_controls!
+export add_mld_constraint!, add_logic_constraint!, add_indicator_constraint!, add_product_constraint!, add_ifthenelse_constraint!
+export set_auxiliary_bounds!
 export set_disturbance!, set_x0_uncertainty!
 export set_terminal_cost!,set_prestabilizing_feedback!
 export set_state_observer!
