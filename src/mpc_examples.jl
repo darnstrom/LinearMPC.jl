@@ -61,6 +61,11 @@ const _MPC_EXAMPLE_SPECS = (
         aliases = ("satellite",),
         defaults = (Np = 20, Nc = 20),
     ),
+    rocket = (
+        name = "Rocket",
+        aliases = ("rocket",),
+        defaults = (Np = 100, Nc = 10),
+    ),
 )
 
 const _MPC_EXAMPLE_ALIASES = let aliases = Dict{String,Symbol}()
@@ -545,6 +550,52 @@ function _build_mpc_example(::Val{:satellite}, Np, Nc; settings=nothing, kwargs.
     return _finalize_example(:satellite, mpc, range; scenarios)
 end
 
+function _build_mpc_example(::Val{:rocket}, Np, Nc; settings=nothing, kwargs...)
+    mass = get(kwargs,:mass, 530.406)
+    inertia = get(kwargs,:intertia, 1209.5)
+    l1 = get(kwargs,:l1, 2.8467)
+    l2 = get(kwargs,:l2, 2.135)
+    gravity = 9.81
+
+    Ts = get(kwargs,:Ts, 0.01)
+
+    scale, lander_scaling = 30.0, 4.0
+    main_engine_thrust = (6.8e6 * lander_scaling^3) / scale^3
+    side_engine_thrust = main_engine_thrust / 50.0
+    max_nozzle_angle = 15.0 * pi / 180.0
+    function rocket_dynamics(x,u,d)
+        _, _, dx, dy, theta, dtheta = x
+        u_main, u_side, u_gimbal = u
+
+        main_force = clamp(u_main, 0.0, 1.0) * main_engine_thrust
+        side_force = clamp(u_side, -1.0, 1.0) * side_engine_thrust
+        phi = clamp(u_gimbal, -1.0, 1.0) * max_nozzle_angle
+
+        ddx = (-main_force * sin(theta + phi) + side_force * cos(theta)) / mass
+        ddy = (main_force * cos(theta + phi) + side_force * sin(theta)) / mass - gravity
+        ddtheta = (-l1 * main_force * sin(phi) - l2 * side_force) / inertia
+        return [dx, dy, ddx, ddy, dtheta, ddtheta]
+    end
+
+    x0 = zeros(6)
+    u0 = [(mass * gravity) / main_engine_thrust, 0, 0]
+
+    model = LinearMPC.Model(rocket_dynamics,(x,u,d)->x,x0,u0,Ts)
+    mpc = LinearMPC.MPC(model;Np,Nc);
+    set_objective!(mpc;Q=[2,1,5,5,1,5],R=0.1*ones(3), Rr=0);
+    set_bounds!(mpc,umin = [0.0, -1.0,-1.0], umax=ones(3));
+
+    if isnothing(settings)
+        mpc.settings.reference_tracking = false
+    else
+        mpc.settings = settings
+    end
+
+    range = ParameterRange(mpc)
+    scenarios = [Scenario([0.7, 1, 0.65, -15, 0.12, 0.05]; N = 250)]
+    return _finalize_example(:rocket, mpc, range; scenarios)
+end
+
 function mpc_example(s::Union{AbstractString,Symbol}, Np, Nc = Np; params = Dict(), settings = nothing, kwargs...)
     id = _resolve_example_id(s)
     merged_kwargs = _merge_example_kwargs(params, kwargs)
@@ -571,4 +622,10 @@ function Simulation(example::MPCExample, scenario_id::Integer)
     return Simulation(example, example.scenarios[scenario_id])
 end
 
-Simulation(example::MPCExample; kwargs...) = Simulation(example.mpc; kwargs...)
+function Simulation(example::MPCExample; kwargs...)
+    if !isempty(example.scenarios)
+        return Simulation(example,1)
+    else
+        return Simulation(example.mpc; kwargs...)
+    end
+end
