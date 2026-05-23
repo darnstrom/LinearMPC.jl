@@ -285,6 +285,12 @@ function require_mld(mpc::MPC)
     return mpc.mld
 end
 
+"""
+    set_auxiliary_bounds!(mpc; zmin, zmax)
+
+Sets the bounds `zmin ≤ z ≤ zmax` for the continuous auxiliary variables in an
+`MLDModel`-based controller.
+"""
 function set_auxiliary_bounds!(mpc::MPC; zmin=zeros(0), zmax=zeros(0))
     mld = require_mld(mpc)
     zmin = isempty(zmin) ? mld.zmin : float(zmin)
@@ -298,6 +304,21 @@ function set_auxiliary_bounds!(mpc::MPC; zmin=zeros(0), zmax=zeros(0))
     mpc.mpqp_issetup = false
 end
 
+"""
+    add_mld_constraint!(mpc;
+        Ax, Au, Adelta, Az, Ar, Aw, Ad, Aup, Ap,
+        Eu, Edelta, Ez, Ex, be,
+        ub, lb, ks, soft, binary, prio)
+
+Adds mixed-logical-dynamical constraints for the stage variables of an
+`MLDModel`-based controller.
+
+The constraint can either be given directly as
+`lb ≤ Ax*xₖ + Au*uₖ + Adelta*δₖ + Az*zₖ ≤ ub`, or in the standard MLD form
+`Edelta*δₖ + Ez*zₖ ≤ Ex*xₖ + Eu*uₖ + be`.
+
+`Aδ` can be used as a shorthand alias for `Adelta`.
+"""
 function add_mld_constraint!(mpc::MPC;
         Ax = nothing, Au = zeros(0,0), Adelta = zeros(0,0), Aδ = zeros(0,0), Az = zeros(0,0),
         Ar = zeros(0,0), Aw = zeros(0,0), Ad = zeros(0,0), Aup = zeros(0,0), Ap = zeros(0,0),
@@ -329,6 +350,15 @@ function add_mld_constraint!(mpc::MPC;
     return add_constraint!(mpc; Ax, Au = Ainput, Ar, Aw, Ad, Aup, Ap, ub, lb, ks, soft, binary, prio)
 end
 
+"""
+    add_logic_constraint!(mpc; Adelta, ub, lb, ks, prio)
+
+Adds inequalities involving only the binary auxiliary variables `δ`.
+
+This is a convenience wrapper around `add_mld_constraint!` for logic relations
+of the form `lb ≤ Adelta*δₖ ≤ ub`. `Aδ` can be used as a shorthand alias for
+`Adelta`.
+"""
 function add_logic_constraint!(mpc::MPC; Adelta=zeros(0,0), Aδ=zeros(0,0), ub=zeros(0), lb=zeros(0), ks = 1:mpc.Np, prio = 0)
     Adelta = isempty(Adelta) ? Aδ : Adelta
     ub = isempty(ub) ? zeros(size(Adelta,1)) : ub
@@ -336,6 +366,21 @@ function add_logic_constraint!(mpc::MPC; Adelta=zeros(0,0), Aδ=zeros(0,0), ub=z
     add_mld_constraint!(mpc; Adelta, ub, lb, ks, prio)
 end
 
+"""
+    add_indicator_constraint!(mpc, delta_id;
+        Ax, Au, c, m, M, ϵ, sense, ks, prio)
+
+Adds a big-M indicator relation between a binary variable `δ[delta_id]` and an
+affine expression in the state and control inputs.
+
+With `sense = :le`, the constraint encodes
+`δ = 1 ↔ Ax*xₖ + Au*uₖ + c ≤ 0`.
+With `sense = :ge`, it encodes
+`δ = 1 ↔ Ax*xₖ + Au*uₖ + c ≥ 0`.
+
+The scalars `m` and `M` are the lower and upper big-M bounds for the affine
+expression, and `ϵ` is the strictness margin used in the reverse implication.
+"""
 function add_indicator_constraint!(mpc::MPC, delta_id::Integer;
         Ax = zeros(1, mpc.model.nx), Au = zeros(1, require_mld(mpc).ncontrols), c = zeros(size(Ax,1)),
         m, M, ϵ = sqrt(eps(Float64)), sense::Symbol = :le, ks = 1:mpc.Np, prio = 0)
@@ -362,6 +407,15 @@ function add_indicator_constraint!(mpc::MPC, delta_id::Integer;
     end
 end
 
+"""
+    add_product_constraint!(mpc, z_id, delta_id;
+        Ax, Au, c, m, M, ks, prio)
+
+Adds a mixed-integer reformulation of the product
+`z[z_id] = δ[delta_id] * (Ax*xₖ + Au*uₖ + c)`.
+
+The scalars `m` and `M` must bound the affine factor over the relevant domain.
+"""
 function add_product_constraint!(mpc::MPC, z_id::Integer, delta_id::Integer;
         Ax = zeros(1, mpc.model.nx), Au = zeros(1, require_mld(mpc).ncontrols), c = zeros(size(Ax,1)),
         m, M, ks = 1:mpc.Np, prio = 0)
@@ -417,6 +471,21 @@ function add_ifthenelse_relation!(mpc::MPC, Au_out, Az_out, delta_id::Integer;
     add_mld_constraint!(mpc; Ax=Ax_then, Au=Au_then - Au_out, Adelta=Adelta4, Az=-Az_out, ub=-c_then .+ (M1 .- m2), lb=fill(-1e30, nrows), ks, prio)
 end
 
+"""
+    add_ifthenelse_constraint!(mpc, z_id, delta_id;
+        Ax_then, Au_then, c_then, Ax_else, Au_else, c_else,
+        m_then, M_then, m_else, M_else, ks, prio)
+
+Adds a mixed-integer `if/then/else` relation for an auxiliary continuous
+variable `z[z_id]`.
+
+If `δ[delta_id] = 1`, then
+`z[z_id] = Ax_then*xₖ + Au_then*uₖ + c_then`.
+Otherwise,
+`z[z_id] = Ax_else*xₖ + Au_else*uₖ + c_else`.
+
+The `m_*` and `M_*` arguments bound the corresponding affine branch values.
+"""
 function add_ifthenelse_constraint!(mpc::MPC, z_id::Integer, delta_id::Integer;
         Ax_then = zeros(1, mpc.model.nx), Au_then = zeros(1, require_mld(mpc).ncontrols), c_then = zeros(size(Ax_then,1)),
         Ax_else = zeros(size(Ax_then,1), mpc.model.nx), Au_else = zeros(size(Ax_then,1), require_mld(mpc).ncontrols), c_else = zeros(size(Ax_then,1)),
@@ -430,6 +499,20 @@ function add_ifthenelse_constraint!(mpc::MPC, z_id::Integer, delta_id::Integer;
                              m_then, M_then, m_else, M_else, ks, prio)
 end
 
+"""
+    add_ifthenelse_input_constraint!(mpc, u_id, delta_id;
+        Ax_then, Au_then, c_then, Ax_else, Au_else, c_else,
+        m_then, M_then, m_else, M_else, ks, prio)
+
+Adds a mixed-integer `if/then/else` relation for a control input `u[u_id]`.
+
+If `δ[delta_id] = 1`, then
+`u[u_id] = Ax_then*xₖ + Au_then*uₖ + c_then`.
+Otherwise,
+`u[u_id] = Ax_else*xₖ + Au_else*uₖ + c_else`.
+
+The `m_*` and `M_*` arguments bound the corresponding affine branch values.
+"""
 function add_ifthenelse_input_constraint!(mpc::MPC, u_id::Integer, delta_id::Integer;
         Ax_then = zeros(1, mpc.model.nx), Au_then = zeros(1, require_mld(mpc).ncontrols), c_then = zeros(size(Ax_then,1)),
         Ax_else = zeros(size(Ax_then,1), mpc.model.nx), Au_else = zeros(size(Ax_then,1), require_mld(mpc).ncontrols), c_else = zeros(size(Ax_then,1)),
