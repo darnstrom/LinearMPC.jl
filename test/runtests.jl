@@ -59,6 +59,11 @@ Random.seed!(1234)
 
         example = LinearMPC.mpc_example("mass-spring", 10, 10; nx = 2)
         @test example.mpc.model.nx == 2
+
+        # Test other SImulation calls 
+        sim = LinearMPC.Simulation(example)
+        empty!(example.scenarios)
+        sim = LinearMPC.Simulation(example)
     end
  
     @testset "Compute control" begin
