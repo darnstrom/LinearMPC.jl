@@ -401,7 +401,7 @@ function evaluate_cost(mpc::MPC,xs,us,rs=zeros(0,0);
     Δus = diff([zeros(nu) us],dims=2)
     cost = 0.0
     for i = 1:N
-        err = mpc.model.C*xs[:,i] + mpc.model.D*us[:,i] - rs[:,i]
+        err = mpc.model.C*xs[:,i]-rs[:,i]
         cost += dot(err,Q,err)
         cost += dot(us[:,i],R,us[:,i])
         cost += dot(Δus[:,i],Rr,Δus[:,i])

@@ -39,6 +39,10 @@ Random.seed!(1234)
         LinearMPC.mpc2mpqp(mpc)
         mpc,range = LinearMPC.mpc_examples("invpend_contact",6,6, params=Dict(:nwalls=>1));
         LinearMPC.mpc2mpqp(mpc)
+        mpc,range = LinearMPC.mpc_examples("pwa_rotation");
+        LinearMPC.mpc2mpqp(mpc)
+        mpc,range = LinearMPC.mpc_examples("hybrid_spring");
+        LinearMPC.mpc2mpqp(mpc)
         mpc,range = LinearMPC.mpc_examples("satellite");
         LinearMPC.mpc2mpqp(mpc)
         mpc,range = LinearMPC.mpc_examples("ballplate");
@@ -72,35 +76,93 @@ Random.seed!(1234)
         @test norm(control.-1.7612519326) < 1e-6
     end
 
-    @testset "Direct output feedthrough in objective" begin
-        mpc = LinearMPC.MPC([0.0;;], [0.0;;]; C=[0.0;;], D=[1.0;;], Np=1, Nc=1)
-        set_bounds!(mpc; umin=[-2.0], umax=[2.0])
-        set_objective!(mpc; Q=[1.0], R=[0.0])
-        u = compute_control(mpc, [0.0]; r=[1.0])
-        @test u[1] ≈ 1.0 atol=1e-8
-    end
-
-    @testset "MLD model helpers" begin
-        mld = LinearMPC.MLDModel([-0.8;;], [1.0;;], zeros(1, 1), [1.6;;];
-                                 C=[1.0;;], zmin=[-10.0], zmax=[10.0],
-                                 delta_labels=[:delta1], z_labels=[:z1])
-        mpc = LinearMPC.MPC(mld; Np=1, Nc=1)
+    @testset "Indicator + Product constraints" begin
+        mpc = LinearMPC.MPC([-0.8;;], [1.0 0.0 1.6]; C=[1.0;;], Np=1, Nc=1)
         set_input_bounds!(mpc; umin=[-1.0, 0.0, -10.0], umax=[1.0, 1.0, 10.0])
-        set_objective!(mpc; Q=[1.0], R=[0.1, 0.0, 0.0])
-        add_indicator_constraint!(mpc, 1; Ax=[-1.0;;], m=-10.0, M=10.0)
-        add_product_constraint!(mpc, 1, 1; Ax=[1.0;;], m=-10.0, M=10.0)
+        set_binary_controls!(mpc, [2])
+        set_objective!(mpc; Q=[0.0], Qf=[0.0], R=[1e-6, 1e-6, 1e-6], eu=[0.0, 0.0, -1.0])
+        add_indicator_constraint!(mpc, 2; Ax=[-1.0;;], Au=zeros(1, 3), m=-10.0, M=10.0, ϵ=0.0)
+        add_product_constraint!(mpc, 3, 2; Ax=[1.0;;], Au=zeros(1, 3), m=-10.0, M=10.0)
 
-        up = compute_control(mpc, [2.0]; r=[0.0])
-        un = compute_control(mpc, [-2.0]; r=[0.0])
+        x_pos = [3.0]
+        x_neg = [-2.0]
+        u_pos = compute_control(mpc, x_pos)
+        u_neg = compute_control(mpc, x_neg)
+        xplus_pos = mpc.model.F * x_pos + mpc.model.G * u_pos
+        xplus_neg = mpc.model.F * x_neg + mpc.model.G * u_neg
         mpqp = LinearMPC.mpc2mpqp(mpc)
 
-        @test length(up) == 3
+        @test length(u_pos) == 3
         @test mpqp.has_binaries
-        @test up[2] ≈ 1.0 atol=1e-8
-        @test up[3] ≈ 2.0 atol=1e-6
-        @test un[2] ≈ 0.0 atol=1e-8
-        @test abs(un[3]) < 1e-6
+        @test u_pos[3] ≈ x_pos[1] atol=1e-5
+        @test abs(u_neg[3]) < 1e-5
+        @test xplus_pos[1] ≈ 0.8 * x_pos[1] atol=1e-5
+        @test xplus_neg[1] ≈ -0.8 * x_neg[1] atol=1e-5
     end
+
+    @testset "Indicator + ifthenelse constraints" begin
+        alpha = pi / 3
+        c, s = cos(alpha), sin(alpha)
+        function build_rotation_helper(target)
+            mpc = LinearMPC.MPC(zeros(2, 2), [0.0 1.0 0.0; 0.0 0.0 1.0];
+                                C=Matrix{Float64}(I, 2, 2), Np=1, Nc=1)
+            set_input_bounds!(mpc; umin=[0.0, -6.0, -6.0], umax=[1.0, 6.0, 6.0])
+            set_binary_controls!(mpc, [1])
+            set_objective!(mpc; Q=[0.0, 0.0], Qf=[0.0, 0.0], R=[1e-6, 1e-6, 1e-6],
+                           eu=[0.0, -target[1], -target[2]])
+            add_indicator_constraint!(mpc, 1; Ax=[1.0 0.0], Au=zeros(1, 3), m=-5.0, M=5.0, ϵ=0.0)
+            add_ifthenelse_constraint!(mpc, 2, 1;
+                                       Ax_then=0.8 .* [c s],
+                                       Au_then=zeros(1, 3),
+                                       Ax_else=0.8 .* [c -s],
+                                       Au_else=zeros(1, 3),
+                                       c_then=[0.0], c_else=[0.0],
+                                       m_then=-6.0, M_then=6.0,
+                                       m_else=-6.0, M_else=6.0)
+            add_ifthenelse_constraint!(mpc, 3, 1;
+                                       Ax_then=0.8 .* [-s c],
+                                       Au_then=zeros(1, 3),
+                                       Ax_else=0.8 .* [s c],
+                                       Au_else=zeros(1, 3),
+                                       c_then=[0.0], c_else=[0.0],
+                                       m_then=-6.0, M_then=6.0,
+                                       m_else=-6.0, M_else=6.0)
+            return mpc
+        end
+
+        x_pos = [2.0, -1.0]
+        z_pos = [0.8 * (c * x_pos[1] - s * x_pos[2]),
+                 0.8 * (s * x_pos[1] + c * x_pos[2])]
+        mpc_pos = build_rotation_helper(z_pos)
+        u_pos = compute_control(mpc_pos, x_pos)
+        xplus_pos = mpc_pos.model.F * x_pos + mpc_pos.model.G * u_pos
+
+        x_neg = [-2.0, -1.0]
+        z_neg = [0.8 * (c * x_neg[1] + s * x_neg[2]),
+                 0.8 * (-s * x_neg[1] + c * x_neg[2])]
+        mpc_neg = build_rotation_helper(z_neg)
+        u_neg = compute_control(mpc_neg, x_neg)
+        xplus_neg = mpc_neg.model.F * x_neg + mpc_neg.model.G * u_neg
+
+        @test u_pos[2:3] ≈ z_pos atol=1e-5
+        @test u_neg[2:3] ≈ z_neg atol=1e-5
+        @test xplus_pos ≈ z_pos atol=1e-6
+        @test xplus_neg ≈ z_neg atol=1e-6
+    end
+
+    @testset "Closed-loop MLD examples" begin
+        rotation = LinearMPC.mpc_example("pwa_rotation")
+        sim_rotation = LinearMPC.Simulation(rotation)
+        @test norm(sim_rotation.xs[:, end]) < 1e-2
+        @test sim_rotation.us[1, 1] ≈ -1.0 atol=1e-8
+
+        spring = LinearMPC.mpc_example("hybrid_spring")
+        sim_spring = LinearMPC.Simulation(spring)
+        @test norm(sim_spring.xs[:, end]) < 1e-2
+        @test sim_spring.us[1, 1] ≈ -1.0 atol=1e-8
+        @test maximum(abs, sim_spring.us[2, 1:7]) < 1e-6
+    end
+
 
     @testset "Codegen IMPC" begin
         mpc,range = LinearMPC.mpc_examples("invpend")
@@ -1431,8 +1493,7 @@ Random.seed!(1234)
         @test nmodel.C ≈ Cn
 
         @test_throws ArgumentError LinearMPC.Model(F, G; C=ones(3, 3))
-        dmodel = LinearMPC.Model(f, (x, u, d) -> [x[1] + u[1]], x0, u0; d=d0)
-        @test dmodel.D ≈ [1.0;;]
+        @test_throws ArgumentError LinearMPC.Model(f, (x, u, d) -> [x[1] + u[1]], x0, u0; d=d0)
     end
 
     @testset "Reference and disturbance formatting helpers" begin

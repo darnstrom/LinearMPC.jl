@@ -46,6 +46,16 @@ const _MPC_EXAMPLE_SPECS = (
         aliases = ("invpend_contact",),
         defaults = (Np = 10, Nc = 10),
     ),
+    pwa_rotation = (
+        name = "PWA Rotation System",
+        aliases = ("pwa_rotation", "rotation_mld"),
+        defaults = (Np = 3, Nc = 3),
+    ),
+    hybrid_spring = (
+        name = "Hybrid Spring-Mass-Damper",
+        aliases = ("hybrid_spring", "spring_mass_hybrid"),
+        defaults = (Np = 3, Nc = 3),
+    ),
     ballplate = (
         name = "Ball and Plate",
         aliases = ("ball", "ballplate"),
@@ -104,6 +114,41 @@ function _merge_example_kwargs(params, kwargs)
         merged[key] = value
     end
     return merged
+end
+
+function _set_example_settings!(mpc::MPC, settings, reference_tracking::Bool)
+    if isnothing(settings)
+        mpc.settings.reference_tracking = reference_tracking
+    else
+        mpc.settings = settings
+    end
+end
+
+function _affine_bounds(Ax::AbstractVector, Au::AbstractVector, c::Real,
+                        xbounds::AbstractVector, ubounds::AbstractVector)
+    span = sum(abs.(Ax) .* xbounds) + sum(abs.(Au) .* ubounds)
+    center = Float64(c)
+    return center - span, center + span
+end
+
+function _add_binary_mode_relation!(mpc::MPC, mode_id::Integer, xhigh_id::Integer, u_id::Integer;
+                                    xhigh::Bool, uhigh::Bool, ks = 1:mpc.Np)
+    A1 = zeros(1, mpc.model.nu)
+    A1[mode_id] = 1.0
+    A1[xhigh_id] = xhigh ? -1.0 : 1.0
+    add_constraint!(mpc; Au = A1, ub = [xhigh ? 0.0 : 1.0], ks)
+
+    A2 = zeros(1, mpc.model.nu)
+    A2[mode_id] = 1.0
+    A2[u_id] = uhigh ? -1.0 : 1.0
+    add_constraint!(mpc; Au = A2, ub = [uhigh ? 0.0 : 1.0], ks)
+
+    A3 = zeros(1, mpc.model.nu)
+    A3[mode_id] = 1.0
+    A3[xhigh_id] = xhigh ? -1.0 : 1.0
+    A3[u_id] = uhigh ? -1.0 : 1.0
+    lb = (xhigh ? 0.0 : 1.0) + (uhigh ? 0.0 : 1.0) - 1.0
+    add_constraint!(mpc; Au = A3, lb = [lb], ks)
 end
 
 function _build_mpc_example(::Val{:invpend}, Np, Nc; settings=nothing, kwargs...)
@@ -342,13 +387,26 @@ function _build_mpc_example(::Val{:invpend_contact}, Np, Nc; settings=nothing, k
          0 0 0;
          1 / mc 0 0;
          1 / (mc * l) -1 / (mp * l) 1 / (mp * l)]
+    B = [B zeros(4, 4)]
 
     C = Matrix{Float64}(I, 4, 4)
     Ts = 0.05
     F, G = zoh(A, B, Ts)
 
+    mpc = MPC(F, G; C, Np, Nc)
+    Q = [1.0, 1, 1, 1]
+    R = [1.0; 1e-4 * ones(6)]
+    Rr = zeros(7)
+    Qf, ~ = ared(mpc.model.F, mpc.model.G[:, 1], mpc.weights.R[1:1, 1:1], mpc.weights.Q)
+    set_objective!(mpc; Q, R, Rr, Qf)
+    set_input_bounds!(mpc, umin = [-1.0; 0; zeros(4)], umax = [1.0; 1e30; 1e30; ones(4)])
+    set_binary_controls!(mpc, collect(4:7))
+    _set_example_settings!(mpc, settings, false)
+
     uby = [d; pi / 10; 1; 1]
     lby = -uby
+    set_output_bounds!(mpc, ymin = lby, ymax = uby, ks = 2:mpc.Nc)
+
     δ2l, δ2u = -uby[1] + l * lby[2] - d, -lby[1] + l * uby[2] - d
     dotδ2l, dotδ2u = -uby[3] + l * lby[4], -lby[3] + l * uby[4]
     δ3l, δ3u = lby[1] - l * uby[2] - d, uby[1] - l * lby[2] - d
@@ -356,24 +414,6 @@ function _build_mpc_example(::Val{:invpend_contact}, Np, Nc; settings=nothing, k
 
     u2l, u2u = κ * δ2l + ν * dotδ2l, κ * δ2u + ν * dotδ2u
     u3l, u3u = κ * δ3l + ν * dotδ3l, κ * δ3u + ν * dotδ3u
-
-    ndelta = 4
-    mld = MLDModel(F, G, zeros(4, ndelta), zeros(4, 0); C)
-    mpc = MPC(mld; Np, Nc)
-    Q = [1.0, 1, 1, 1]
-    R = [1.0; 1e-4 * ones(6)]
-    Rr = zeros(length(R))
-    Qf, ~ = ared(mpc.model.F, mpc.model.G[:, 1], mpc.weights.R[1:1, 1:1], mpc.weights.Q)
-    set_objective!(mpc; Q, R, Rr, Qf)
-    set_input_bounds!(mpc, umin = [-1.0; 0; zeros(4)], umax = [1.0; 1e30; 1e30; ones(4)])
-
-    if isnothing(settings)
-        mpc.settings.reference_tracking = false
-    else
-        mpc.settings = settings
-    end
-
-    set_output_bounds!(mpc, ymin = lby, ymax = uby, ks = 2:mpc.Nc)
 
     function add_wall_contact_constraints!(mpc, uidx, gap_delta, force_delta,
                                            gap_ax, gap_c, gap_l, gap_u, force_ax, force_c, force_l, force_u)
@@ -399,22 +439,23 @@ function _build_mpc_example(::Val{:invpend_contact}, Np, Nc; settings=nothing, k
         Ax_res = [zeros(2, mpc.model.nx);
                   -reshape(force_ax, 1, :);
                    reshape(force_ax, 1, :)]
-        Au_res = zeros(4, 3)
-        Au_res[:, uidx] .= [1.0, 1.0, 1.0, -1.0]
-        Adelta_res = zeros(4, ndelta)
-        Adelta_res[1, gap_delta] = -force_u
-        Adelta_res[2, force_delta] = -force_u
-        Adelta_res[3, force_delta] = -force_l
-        Adelta_res[4, gap_delta] = force_u
+        Au_res = reshape([1.0, 1.0, 1.0, -1.0], :, 1)
+        Adelta_res = [ -force_u  0.0;
+                        0.0     -force_u;
+                        0.0     -force_l;
+                        force_u  0.0]
         ub_res = [0.0, 0.0, -force_l - force_c, force_u - force_c]
-        add_mld_constraint!(mpc; Ax = Ax_res, Au = Au_res, Adelta = Adelta_res, ub = ub_res, ks)
+        Au_res_full = zeros(size(Ax_res, 1), mpc.model.nu)
+        Au_res_full[:, uidx] .= Au_res
+        Au_res_full[:, [gap_delta, force_delta]] .+= Adelta_res
+        add_constraint!(mpc; Ax = Ax_res, Au = Au_res_full, ub = ub_res, ks)
     end
 
-    add_wall_contact_constraints!(mpc, 2, 1, 3,
+    add_wall_contact_constraints!(mpc, 2, 4, 6,
                                   [-1, l, 0, 0], -d, δ2l, δ2u,
                                   [-κ, κ*l, -ν, ν*l], -κ * d, u2l, u2u)
     if nwalls == 2
-        add_wall_contact_constraints!(mpc, 3, 2, 4,
+        add_wall_contact_constraints!(mpc, 3, 5, 7,
                                       [1, -l, 0, 0], -d, δ3l, δ3u,
                                       [κ, -κ*l, ν, -ν*l], -κ * d, u3l, u3u)
     end
@@ -425,6 +466,120 @@ function _build_mpc_example(::Val{:invpend_contact}, Np, Nc; settings=nothing, k
 
     scenarios = [Scenario([0.0, 0.05, 0.0, 0.0]; N = 20)]
     return _finalize_example(:invpend_contact, mpc, range; scenarios)
+end
+
+function _build_mpc_example(::Val{:pwa_rotation}, Np, Nc; settings=nothing, kwargs...)
+    alpha = Float64(get(kwargs, :alpha, pi / 3))
+    xbounds = Float64.(get(kwargs, :xbounds, fill(5.0, 2)))
+    ubound = Float64(get(kwargs, :ubound, 1.0))
+    terminal_bound = Float64(get(kwargs, :terminal_bound, 0.01))
+    sim_steps = Int(get(kwargs, :sim_steps, 12))
+
+    c, s = cos(alpha), sin(alpha)
+    Apos = 0.8 .* [c -s; s c]
+    Aneg = 0.8 .* [c s; -s c]
+    zbounds = fill(8.0, 2)
+
+    G = [0.0 0.0 1.0 0.0;
+         1.0 0.0 0.0 1.0]
+    mpc = MPC(zeros(2, 2), G; C = Matrix{Float64}(I, 2, 2), Np, Nc)
+    set_objective!(mpc; Q = [1.0, 1.0], Qf = [1.0, 1.0], R = [1.0, 1e-6, 1e-6, 1e-6])
+    set_input_bounds!(mpc; umin = vcat([-ubound, 0.0], -zbounds), umax = vcat([ubound, 1.0], zbounds))
+    set_binary_controls!(mpc, [2])
+    _set_example_settings!(mpc, settings, false)
+
+    add_constraint!(mpc; Ax = Matrix{Float64}(I, 2, 2), lb = -xbounds, ub = xbounds, ks = 2:mpc.Np+1)
+    add_constraint!(mpc; Ax = Matrix{Float64}(I, 2, 2),
+                    lb = fill(-terminal_bound, 2), ub = fill(terminal_bound, 2),
+                    ks = (mpc.Np + 1):(mpc.Np + 1))
+    add_indicator_constraint!(mpc, 2; Ax = [1.0 0.0], c = [0.0],
+                              m = -xbounds[1], M = xbounds[1], ϵ = 0.0, sense = :le)
+
+    input_bounds = [ubound, 1.0, zbounds...]
+    for (row, z_id) in zip(1:2, 3:4)
+        neg_l, neg_u = _affine_bounds(vec(Aneg[row, :]), zeros(4), 0.0, xbounds, input_bounds)
+        pos_l, pos_u = _affine_bounds(vec(Apos[row, :]), zeros(4), 0.0, xbounds, input_bounds)
+        add_ifthenelse_constraint!(mpc, z_id, 2;
+                                   Ax_then = reshape(Aneg[row, :], 1, 2),
+                                   Au_then = zeros(1, 4),
+                                   c_then = [0.0],
+                                   Ax_else = reshape(Apos[row, :], 1, 2),
+                                   Au_else = zeros(1, 4),
+                                   c_else = [0.0],
+                                   m_then = neg_l, M_then = neg_u,
+                                   m_else = pos_l, M_else = pos_u)
+    end
+
+    range = ParameterRange(mpc)
+    range.xmax[:] .= xbounds
+    range.xmin[:] .= -xbounds
+
+    scenarios = [Scenario([-2.0, 2.0]; N = sim_steps)]
+    return _finalize_example(:pwa_rotation, mpc, range; scenarios)
+end
+
+function _build_mpc_example(::Val{:hybrid_spring}, Np, Nc; settings=nothing, kwargs...)
+    xbounds = Float64.(get(kwargs, :xbounds, fill(5.0, 2)))
+    u1bound = Float64(get(kwargs, :u1bound, 1.0))
+    sim_steps = Int(get(kwargs, :sim_steps, 20))
+    zbound = Float64(get(kwargs, :zbound, 10.0))
+
+    branches = (
+        ([0.90 0.02; -0.02 0.0], [0.10, 0.02], [-0.01, -0.02]),
+        ([0.90 0.02; -0.06 0.0], [0.10, 0.02], [-0.07, -0.15]),
+        ([0.90 0.38; -0.38 0.52], [0.10, 0.38], [-0.10, -0.38]),
+        ([0.90 0.35; -1.04 0.35], [0.10, 0.35], [-0.75, -2.60]),
+    )
+
+    G = zeros(2, 15)
+    for j in 1:4
+        G[:, 2j+6:2j+7] .= Matrix{Float64}(I, 2, 2)
+    end
+
+    mpc = MPC(zeros(2, 2), G; C = Matrix{Float64}(I, 2, 2), Np, Nc)
+    set_objective!(mpc; Q = [1.0, 1.0], Qf = [1.0, 1.0], R = vcat([0.2, 1.0], fill(1e-6, 13)))
+    set_input_bounds!(mpc; umin = vcat([-u1bound, 0.0], zeros(5), fill(-zbound, 8)),
+                           umax = vcat([u1bound, 1.0], ones(5), fill(zbound, 8)))
+    set_binary_controls!(mpc, collect(2:7))
+    _set_example_settings!(mpc, settings, false)
+
+    add_constraint!(mpc; Ax = Matrix{Float64}(I, 2, 2), lb = -xbounds, ub = xbounds, ks = 2:mpc.Np+1)
+    add_indicator_constraint!(mpc, 3; Ax = [1.0 0.0], c = [-1.0],
+                              m = -xbounds[1] - 1.0, M = xbounds[1] - 1.0, ϵ = 0.0, sense = :ge)
+
+    _add_binary_mode_relation!(mpc, 4, 3, 2; xhigh = false, uhigh = false)
+    _add_binary_mode_relation!(mpc, 5, 3, 2; xhigh = true, uhigh = false)
+    _add_binary_mode_relation!(mpc, 6, 3, 2; xhigh = false, uhigh = true)
+    _add_binary_mode_relation!(mpc, 7, 3, 2; xhigh = true, uhigh = true)
+    add_logic_constraint!(mpc; delta_ids = 4:7, Adelta = ones(1, 4), lb = [1.0], ub = [1.0])
+
+    Au_mode = zeros(1, mpc.model.nu)
+    Au_mode[2] = 1.0
+    Au_mode[6] = -1.0
+    Au_mode[7] = -1.0
+    add_constraint!(mpc; Au = Au_mode, lb = [0.0], ub = [0.0])
+
+    input_bounds = vcat([u1bound], ones(6), fill(zbound, 8))
+    for (j, (A, B, b)) in enumerate(branches)
+        mode_id = j + 3
+        for i in 1:2
+            Au = zeros(1, mpc.model.nu)
+            Au[1] = B[i]
+            lower, upper = _affine_bounds(vec(A[i, :]), vec(Au), b[i], xbounds, input_bounds)
+            add_product_constraint!(mpc, 2j + 5 + i, mode_id;
+                                    Ax = reshape(A[i, :], 1, 2),
+                                    Au = Au,
+                                    c = [b[i]],
+                                    m = lower, M = upper)
+        end
+    end
+
+    range = ParameterRange(mpc)
+    range.xmax[:] .= xbounds
+    range.xmin[:] .= -xbounds
+
+    scenarios = [Scenario([3.0, 4.0]; N = sim_steps)]
+    return _finalize_example(:hybrid_spring, mpc, range; scenarios)
 end
 
 function _build_mpc_example(::Val{:ballplate}, Np, Nc; settings=nothing, kwargs...)

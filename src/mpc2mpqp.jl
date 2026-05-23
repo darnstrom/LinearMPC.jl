@@ -143,7 +143,6 @@ function parameter_preview_direct(mpc::MPC, A, ks, Np, np)
 end
 
 stage_parameter_matrix(mpc::MPC, A, N) = mpc.settings.parameter_preview ? kron(Matrix{Float64}(I, N, N), A) : repeat(A, N, 1)
-control_stage_matrix(Np::Int, Nc::Int) = [Matrix{Float64}(I, Nc, Nc); zeros(max(0, Np + 1 - Nc), Nc)]
 
 function get_parameter_dims(mpc::MPC)
     # Use stored values if QP is set up, otherwise compute from settings
@@ -414,10 +413,17 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
     Q_full,Qf_full = Q[1:ny,1:ny],Qf[1:ny,1:ny]
     C_full = C[1:ny,:]
 
+    pos_ids_Q = findall(diag(Q).>0); # Ignore zero indices... (and negative)
+    Q = Q[pos_ids_Q,pos_ids_Q];
+    Cp = C[pos_ids_Q,:];
+
+    pos_ids_Qf = findall(diag(Qf).>0); # Ignore zero indices... (and negative)
+    Qf = Qf[pos_ids_Qf,pos_ids_Qf];
+    Cf = C[pos_ids_Qf,:];
+
+
     # Get parameter dimensions
     nxp, nrp, ndp, nup, npp = get_parameter_dims(mpc)
-    eyeU = control_stage_matrix(N, Nc)
-    Umap = kron(eyeU[1:N, :], Matrix{Float64}(I, nu, nu))
 
     # ==== From u' R u ====
     H = kron(I(Nc),R);
@@ -437,29 +443,19 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
         end
     end
 
-    # ==== From (Cx + Du)'Q(Cx + Du) ====
-    Dpad = [mpc.model.D; zeros(size(C,1)-ny, nu)]
-    CY = kron(I(N+1), C)
-    DY = kron(eyeU, Dpad)
-    QY = kron(I(N+1), w.Q)
-    QY[end-size(w.Qf,1)+1:end,end-size(w.Qf,2)+1:end] .= w.Qf
-    YU = CY*Γ + DY
-    Yθ = CY*Φ
-    YU_phys = kron(I(N+1), C_full) * Γ + kron(eyeU, mpc.model.D)
+    # ==== From (Cx)'Q(Cx) ====
+    CQCtot  = kron(I(N+1),Cp'*Q*Cp);
+    CQCf = Cf'*Qf*Cf
+    CQCf[1:nxp,1:nxp] .+= mpc.weights.Qfx
+    CQCtot[end-nx+1:end,end-nx+1:end].=CQCf
 
-    H += YU' * QY * YU
-    f_theta  = YU' * QY * Yθ
-    H_theta  = Yθ' * QY * Yθ
-    if !iszero(mpc.weights.Qfx)
-        XtermU = Γ[end-nx+1:end,:]
-        Xtermθ = Φ[end-nx+1:end,:]
-        H += XtermU' * mpc.weights.Qfx * XtermU
-        f_theta += XtermU' * mpc.weights.Qfx * Xtermθ
-        H_theta += Xtermθ' * mpc.weights.Qfx * Xtermθ
-    end
-    if !mpc.settings.reference_tracking && (!iszero(mpc.model.xo) || !iszero(mpc.model.uo))
-        y_offset = C * [mpc.model.xo; zeros(nx-nxp)] + [mpc.model.D * mpc.model.uo; zeros(size(C,1)-ny)]
-        f .-= YU' * QY * repeat(y_offset, N+1)
+
+    H += Γ'*CQCtot*Γ; 
+    # f_theta & H_theta for state parameters
+    f_theta  = Γ'*CQCtot*Φ; # from x0
+    H_theta  = Φ'*CQCtot*Φ
+    if(!mpc.settings.reference_tracking && !iszero(mpc.model.xo))
+        f -= Γ'*CQCtot*repeat([mpc.model.xo;zeros(nx-nxp)],N+1)
     end
 
     # ==== From x' S u ====
@@ -473,7 +469,7 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
 
     # ==== Reference tracking terms ====
     if nrp > 0 && mpc.settings.reference_preview
-        f_theta,H_theta = ref_preview_cost(mpc,YU_phys,Q_full,Qf_full,H,f_theta,H_theta)
+        f_theta,H_theta = ref_preview_cost(mpc,Γ,C_full,Q_full,Qf_full,H,f_theta,H_theta)
     end
     if ndp > 0 && mpc.settings.disturbance_preview
         f_theta,H_theta = disturbance_preview_cost(mpc,F,Γ,C_full,Q_full,Qf_full,f_theta,H_theta)
@@ -492,6 +488,7 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
     size(Eu, 2) == np_base || throw(ArgumentError("Affine objective matrix Eu must have $np_base columns"))
     length(eu) == nu || throw(ArgumentError("Affine objective vector eu must have length $nu"))
 
+    Umap = kron([Matrix{Float64}(I, Nc, Nc); zeros(N-Nc, Nc)], Matrix{Float64}(I, nu, nu))
     f .+= Umap' * repeat(eu, N)
 
     x_selector = [Matrix{Float64}(I, mpc.model.nx, mpc.model.nx) zeros(mpc.model.nx, nx-mpc.model.nx)]
@@ -535,7 +532,7 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
     return DenseObjective((H+H')/2,f[:],f_theta,H_theta)
 end
 
-function ref_preview_cost(mpc,YU,Q_full,Qf_full,H,f_theta,H_theta)
+function ref_preview_cost(mpc,Γ,C_full,Q_full,Qf_full,H,f_theta,H_theta)
     # Reference preview mode: handle time-varying references
     # Needs to add terms for r to f_theta and H_theta
     # Recall that θ = [x0 r nd uprev]
@@ -544,10 +541,10 @@ function ref_preview_cost(mpc,YU,Q_full,Qf_full,H,f_theta,H_theta)
     nu,ny = mpc.model.nu,mpc.model.ny
     nxp, nrp, ndp, nup, npp = get_parameter_dims(mpc)
 
-    Qy = kron(I(N+1), Q_full)
-    Qy[end-ny+1:end,end-ny+1:end] .= Qf_full
-    Rmap = [zeros(ny, ny*N); Matrix{Float64}(I, ny*N, ny*N)]
-    Fr = -YU' * Qy * Rmap
+    CQfull = kron(I(N+1),C_full'*Q_full);
+    CQfull[end-size(C_full,2)+1:end,end-size(Qf_full,2)+1:end] .= C_full'*Qf_full
+    Fr = -Γ'*CQfull
+    Fr = Fr[:,ny+1:end] # First reference superfluous
     Hr = kron(I(N),Q_full)
     Hr[end-size(Q_full,1)+1:end,end-size(Q_full,2)+1:end] .= Qf_full
     if mpc.settings.reference_condensation
