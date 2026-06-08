@@ -73,7 +73,7 @@ where $\hat{x}$ is the current state estimate and $r$ is the desired reference. 
 
 # Research impact statement
 
-`LinearMPC.jl` has been used to generate high-performing and real-time-certified MPC controllers for nano-quadcopters [@Wikner:2026], and for handling prioritized constraints in MPC applications [@arnstrom2025prioritized]. Moreover, the sister package `lmpc`, which is a Python wrapper of `LinearMPC.jl`, has been used to investigate novel methods for learning-based control [@schmidtobreick2025warm].
+`LinearMPC.jl` has been used to generate high-performing and real-time-certified MPC controllers for nano-quadcopters [@Wikner:2026], and to handle prioritized constraints in MPC applications [@arnstrom2025prioritized]. Moreover, the sister package `lmpc`, which is a Python wrapper of `LinearMPC.jl`, has been used to investigate novel methods for learning-based control [@schmidtobreick2025warm].
 
 Zooming out, the underlying solver `DAQP` has been used in several real-world applications, including automotive, robotics, and aerospace applications. The parametric solver `PDAQP` has recently been integrated into `cvxpygen` to support generating closed-form solutions to parametric optimization problems [@schaller2025automatic].
 
