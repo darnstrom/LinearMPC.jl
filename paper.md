@@ -13,7 +13,7 @@ authors:
     corresponding: true
     affiliation: 1
 affiliations:
-  - name: Independent Researcher, Sweden 
+  - name: Independent Researcher, Sweden
     index: 1
 date: 24 March 2026
 bibliography: paper.bib
