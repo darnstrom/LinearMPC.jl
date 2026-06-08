@@ -71,7 +71,7 @@ where $\hat{x}$ is the current state estimate and $r$ is the desired reference. 
 - **Complexity certification.** Worst-case solver iteration counts can be certified offline, enabling hard real-time guarantees.
 - **Numerical conditioning.** Prestabilizing feedback mitigates ill-conditioning for unstable systems with long prediction horizons.
 
-# Research impact statement:
+# Research impact statement
 
 `LinearMPC.jl` has been used to generate high-performing and real-time certified MPC controllers for nano-quadcopters [@Wikner:2026], and for handling prioritized constraints in MPC applications [@arnstrom2025prioritized]. Moreover, the sister package `lmpc`, which is a Python wrapper of `LinearMPC.jl`, has been used to investigate novel methods for learning-based control [@schmidtobreick2025warm].
 
