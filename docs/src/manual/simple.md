@@ -158,7 +158,7 @@ plt.show()
 This gives the desired effect, since now $y_1$ is able to follow its reference. The output $y_2$ still don't reach its reference value of 0 due to the constraint $-1\leq 2 x_1 - x_2 \leq 2$. With the controller doing what we want, it is ready to be deployed in practice! 
 
 ### Code generation
-Most real-time controllers run on embedded hardware, which often require the controller to be implemented in a low-level programmign language like C. However, implementing an MPC controller in C from scratch is a very time consuming endeveaur. To simplify the process, **LinearMPC.jl** can generate C-code for MPC controllers that have been designed and tested in Julia, which enables the MPC controller to easibly be applied on embedded systems. To generate such C code in a directory `code_dir`, we can run the following code
+Most real-time controllers run on embedded hardware, which often require the controller to be implemented in a low-level programming language like C. However, implementing an MPC controller in C from scratch is a very time consuming endeavor. To simplify the process, **LinearMPC.jl** can generate C-code for MPC controllers that have been designed and tested in Julia, which enables the MPC controller to easily be applied on embedded systems. To generate such C code in a directory `code_dir`, we can run the following code
 
 ```@tab
 # julia
