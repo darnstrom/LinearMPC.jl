@@ -1,12 +1,12 @@
 # LinearMPC.jl
 
 !!! note "Documentation under development"
-    The documentation for LineaerMPC.jl is currently under development
+    The documentation for LinearMPC.jl is currently under development. If you find some documentation lacking, please create an [issue](https://github.com/darnstrom/LinearMPC.jl).
 
 The focus of **LinearMPC.jl** is Model Predictive Control (MPC) of linear systems. The aim of the package is to produce _high-performant_ and _lightweight_ C-code that can easily be used on embedded systems, while at the same time give a user-friendly and expressive development environment for MPC. The package supports code generation for the Quadratic Programming solver [DAQP](https://github.com/darnstrom/daqp), and for explicit solutions computed by [ParametricDAQP.jl](https://github.com/darnstrom/ParametricDAQP.jl).
 
 ## Model Predictive Control 
-In MPC, an optimal control decision is computed at every sampling instance by solving an _optimization probelm_. On a high-level, the optimization problems solved are of the form
+In MPC, an optimal control decision is computed at every sampling instance by solving an _optimization problem_. On a high-level, the optimization problems solved are of the form
 
 ```math
 \begin{aligned}
@@ -18,14 +18,14 @@ In MPC, an optimal control decision is computed at every sampling instance by so
 ```
 where an $\textcolor{purple}{\text{objective}}$ is minimized , subject to a $\textcolor{blue}{\text{dynamical system}}$ that is simulated over a horizon $N$, $\textcolor{red}{\text{starting from}}$ an estimate $\hat{x}$ of the current state. Additionally, $\textcolor{green}{\text{constraints}}$ like actuator limits and state constraints are accounted for. The objective is comprised by the deviation of an output $y= Cx$ from a reference value $r$, the control effort ($u^T R u$), the change of the control action $\Delta u^T R_r \Delta u$, and an optional linear control cost $l^T u$. 
 
-LinearMPC.jl generates a _condensed_ problem by eliminating the equality constraint. The resuliting optimization problem is a dense _Quadratic Program_ (QP). **LinearMPC.jl** uses the QP sovler [DAQP](https://github.com/darnstrom/daqp), a dual active-set solver that has been specialized to solved such problems.
+LinearMPC.jl generates a _condensed_ problem by eliminating the equality constraint. The resulting optimization problem is a dense _Quadratic Program_ (QP). **LinearMPC.jl** uses the QP solver [DAQP](https://github.com/darnstrom/daqp), a dual active-set solver that has been specialized to solved such problems.
 
-The solution map for the optimization problem is a piecewise affine function over polyhedral regions. **LinearMPC.jl** supports the computation of such explicit solutions by interfacing the multi-parameteric QP solver [ParametricDAQP.jl](https://github.com/darnstrom/ParametricDAQP.jl.)
+The solution map for the optimization problem is a piecewise affine function over polyhedral regions. **LinearMPC.jl** supports the computation of such explicit solutions by interfacing the multi-parametric QP solver [ParametricDAQP.jl](https://github.com/darnstrom/ParametricDAQP.jl)
 
 ## Why LinearMPC.jl? 
 * Code generation of **high-performant**, **allocation-free**, **library-free**, and **lightweight** C-code that can be embedded on _any_ micro controller. 
 * State-of-the-art computation of explicit solutions (**~100x** faster than other software packages)  
-* Tools to determine **real-time certificates** of the complexity of the solver, allowing for MPC in with guarantees on the memory and computational requirements before deploying the solver.
+* Tools to determine **real-time certificates** of the complexity of the solver, allowing for MPC with guarantees on the memory and computational requirements before deploying the solver.
 
 ## Why not LinearMPC.jl? 
 As its name suggests, the package is specialized for MPC for _linear_ systems. If a linear (or linearized) model does not suffice for your use case, consider the following packages.
