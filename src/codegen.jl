@@ -124,7 +124,7 @@ $(control_codegen_definition(mpc)){
           """)
 
     if !isnothing(mpc.state_observer)
-        mpc.settings.disturbance_preview && throw(ArgumentError("Codegeneration not supported for disturbance preview with a state observer."))
+        validate_observer_codegen(mpc)
         @printf(fh, "#define N_CONTROL %d\n",mpc.model.nu);
         codegen(mpc.state_observer,mpc,fh,fsrc)
     end
@@ -207,7 +207,7 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
     close(fmpc_src)
 
     if !isnothing(mpc.state_observer)
-        mpc.settings.disturbance_preview && throw(ArgumentError("Codegeneration not supported for disturbance preview with a state observer."))
+        validate_observer_codegen(mpc)
         codegen(mpc.state_observer,mpc,fh,fsrc)
     end
 
@@ -215,6 +215,14 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
 
     close(fh)
     close(fsrc)
+end
+
+function validate_observer_codegen(mpc::Union{MPC,ExplicitMPC})
+    if mpc.settings.disturbance_preview
+        observer = mpc.state_observer
+        observer isa OffsetFreeObserver && observer.formulation == :periodic ||
+            throw(ArgumentError("Codegeneration with disturbance_preview and a state observer is only supported for periodic offset-free observers."))
+    end
 end
 
 function write_float_array(f,a::Vector{<:Real},name::String)
