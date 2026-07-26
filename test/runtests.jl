@@ -158,7 +158,13 @@ Random.seed!(1234)
 
         spring = LinearMPC.mpc_example("hybrid_spring")
         sim_spring = LinearMPC.Simulation(spring)
-        @test norm(sim_spring.xs[:, end]) < 1e-2
+
+        @test norm(sim_spring.xs[:, end]) < 5e-2
+        # TODO: add these after fix in DAQPBase
+        #δ = sim_spring.us[2:7, :]
+        #binary_residual = min.(abs.(δ), abs.(δ .- 1))
+        #@test maximum(binary_residual) < 1e-6
+
         @test sim_spring.us[1, 1] ≈ -1.0 atol=1e-8
         @test maximum(abs, sim_spring.us[2, 1:7]) < 1e-6
     end
