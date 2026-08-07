@@ -187,36 +187,89 @@ Random.seed!(1234)
     end
 
     @testset "Codegen IMPC warm start" begin
-        mpc,range = LinearMPC.mpc_examples("invpend")
-        srcdir = tempname()
-        LinearMPC.codegen(mpc;dir=srcdir)
-        src = [f for f in readdir(srcdir) if last(f,1) == "c"]
-        @test !isempty(src)
-        if(!isnothing(Sys.which("gcc")))
-            # Cold start
-            testlib = "mpctest."* Base.Libc.Libdl.dlext
-            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
-            u,x,r,d = zeros(1), [5.0;5;0;0], zeros(2), zeros(0)
-            global templib = joinpath(srcdir,testlib)
-            Us_cold =  zeros(1,100)
-            for i in 1:100 
-                ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble},Ptr{Cdouble},Ptr{Cdouble}), u,x,r,d)
-                Us_cold[:,i] .= u
-                x = mpc.model.true_dynamics(x,u,d)
-            end
-            # Cold start
-            testlib = "mpctest_warm."* Base.Libc.Libdl.dlext
-            run(Cmd(`gcc -lm -fPIC -O3 -DDAQP_WARMSTART -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
-            u,x,r,d = zeros(1), [5.0;5;0;0], zeros(2), zeros(0)
-            global templib = joinpath(srcdir,testlib)
-            Us_warm =  zeros(1,100)
-            for i in 1:100 
-                ccall(("mpc_compute_control", templib), Cint, (Ptr{Cdouble}, Ptr{Cdouble},Ptr{Cdouble},Ptr{Cdouble}), u,x,r,d)
-                Us_warm[:,i] .= u
-                x = mpc.model.true_dynamics(x,u,d)
-            end
+        # Shim that exposes the solver's per-solve iteration count and the value
+        # of the DAQP_WARMSTART macro that the generated header is meant to set.
+        shim = """
+        #include "mpc_workspace.h"
+        int mpctest_iterations(void){ return daqp_work.iterations; }
+        int mpctest_warm(void){
+        #ifdef DAQP_WARMSTART
+            return 1;
+        #else
+            return 0;
+        #endif
+        }
+        """
 
+        function build_lib(srcdir)
+            open(joinpath(srcdir, "shim.c"), "w") do f; write(f, shim); end
+            src = [f for f in readdir(srcdir) if last(f, 1) == "c"]
+            testlib = "mpctest." * Base.Libc.Libdl.dlext
+            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+            # Both libraries export the same symbols, so they have to be resolved
+            # per handle (RTLD_LOCAL + dlsym). ccall((:sym, path)) binds to
+            # whichever library was dlopen'ed first, which would silently compare
+            # one of the two builds against itself.
+            h = Base.Libc.Libdl.dlopen(joinpath(srcdir, testlib),
+                                       Base.Libc.Libdl.RTLD_LOCAL | Base.Libc.Libdl.RTLD_NOW)
+            return (compute = Base.Libc.Libdl.dlsym(h, :mpc_compute_control),
+                    iters   = Base.Libc.Libdl.dlsym(h, :mpctest_iterations),
+                    warm    = Base.Libc.Libdl.dlsym(h, :mpctest_warm))
+        end
+
+        function closed_loop(lib, mpc, x0, nsteps)
+            u = zeros(mpc.model.nu)
+            x = copy(x0)
+            r, d = zeros(mpc.nr), zeros(mpc.nd)
+            us     = zeros(mpc.model.nu, nsteps)
+            iters  = zeros(Int, nsteps)
+            flags  = zeros(Int, nsteps)
+            for i in 1:nsteps
+                flags[i] = ccall(lib.compute, Cint,
+                                 (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), u, x, r, d)
+                iters[i] = ccall(lib.iters, Cint, ())
+                us[:, i] .= u
+                x = mpc.model.F * x + mpc.model.G * u
+            end
+            return us, iters, flags
+        end
+
+        # Input bounds tight enough that a large part of the horizon saturates,
+        # so that the active set is non-trivial and warm starting can pay off.
+        mpc, _ = LinearMPC.mpc_examples("mass", 20, 20; params=Dict(:nx => 4))
+        set_bounds!(mpc; umin = [-0.1], umax = [0.1])
+        x0, nsteps = [3.0; 3.0; 0.0; 0.0], 60
+
+        # Regression: warm_start=true used to emit "#define DAQP_WARMSTART %d"
+        # without an argument, so codegen threw before writing anything.
+        colddir, warmdir = tempname(), tempname()
+        LinearMPC.codegen(mpc; dir=colddir, warm_start=false)
+        LinearMPC.codegen(mpc; dir=warmdir, warm_start=true)
+
+        @test !occursin("#define DAQP_WARMSTART",
+                        read(joinpath(colddir, "mpc_workspace.h"), String))
+        @test occursin("#define DAQP_WARMSTART",
+                       read(joinpath(warmdir, "mpc_workspace.h"), String))
+
+        if !isnothing(Sys.which("gcc"))
+            cold, warm = build_lib(colddir), build_lib(warmdir)
+            # The macro must actually reach the compiler, not just the header.
+            @test ccall(cold.warm, Cint, ()) == 0
+            @test ccall(warm.warm, Cint, ()) == 1
+
+            Us_cold, iters_cold, flags_cold = closed_loop(cold, mpc, x0, nsteps)
+            Us_warm, iters_warm, flags_warm = closed_loop(warm, mpc, x0, nsteps)
+
+            # Both builds must solve every QP to optimality...
+            @test all(flags_cold .== 1)
+            @test all(flags_warm .== 1)
+            # ...and warm starting must not change the solution.
             @test all(abs.(Us_cold - Us_warm) .< 1e-9)
+            # The active set is non-trivial, otherwise there is nothing to reuse.
+            @test sum(iters_cold) > 2 * nsteps
+            # Reusing the previous active set should cut the iteration count.
+            # Measured ratio is ~0.36 here; 0.75 leaves room for solver changes.
+            @test sum(iters_warm) < 0.75 * sum(iters_cold)
         end
     end
 

@@ -165,7 +165,7 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
     @printf(fh, "#define N_CONTROL %d\n\n",mpc.model.nu);
 
     if warm_start
-        @printf(fh, "#define DAQP_WARMSTART %d\n\n")
+        @printf(fh, "#define DAQP_WARMSTART %d\n\n", 1)
     end
 
     @printf(fh, "extern c_float mpc_parameter[%d];\n", nth);
