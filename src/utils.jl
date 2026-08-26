@@ -391,13 +391,15 @@ function make_singlesided(mpQP;single_soft=false, soft_weight=1e6)
 end
 
 """
-    evaluate_cost(mpc,xs,us,rs;Q,Rr,S)
-Compute the cost 0.5 ∑ x'*Q x + u' R u + Δu' Rr Δu + x' S u
+    evaluate_cost(mpc,xs,us,rs,ds;Q,R,Rr,S,Sd)
+Compute the cost 0.5 ∑ x'*Q x + u' R u + Δu' Rr Δu + x' S u + d' Sd u
 """
-function evaluate_cost(mpc::MPC,xs,us,rs=zeros(0,0);
-        Q=mpc.weights.Q, R = mpc.weights.R, Rr = mpc.weights.Rr, S = mpc.weights.S)
+function evaluate_cost(mpc::MPC,xs,us,rs=zeros(0,0),ds=zeros(0,0);
+        Q=mpc.weights.Q, R = mpc.weights.R, Rr = mpc.weights.Rr, S = mpc.weights.S, Sd = mpc.weights.Sd)
     nu,N = size(us)
     rs = isempty(rs) ? zeros(mpc.model.ny,N) : rs
+    ds = isempty(ds) ? zeros(mpc.model.nd,N) : ds
+    Sd = isempty(Sd) ? zeros(mpc.model.nd,nu) : Sd
     Δus = diff([zeros(nu) us],dims=2)
     cost = 0.0
     for i = 1:N
@@ -406,6 +408,7 @@ function evaluate_cost(mpc::MPC,xs,us,rs=zeros(0,0);
         cost += dot(us[:,i],R,us[:,i])
         cost += dot(Δus[:,i],Rr,Δus[:,i])
         cost += dot(xs[:,i],S,us[:,i])
+        cost += dot(ds[:,i],Sd,us[:,i])
     end
     return 0.5*cost
 end
