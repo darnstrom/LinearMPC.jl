@@ -1773,4 +1773,61 @@ Random.seed!(1234)
         @test_logs (:warn, r"The setting \"does_not_exist\" does not exist") (:warn, r"The setting \"does_not_exist\" does not exist") settings!(tracked; does_not_exist=true)
         @test_logs (:warn, r"The setting \"still_missing\" does not exist") settings!(tracked, Dict(:still_missing => true))
     end
+
+    @testset "Disturbance-control cross term Sd" begin
+        # Double integrator whose disturbance enters like the input (Bd = B). With Sd = R the
+        # control penalty is (u + d)' R (u + d) up to a constant, so the problem is the
+        # disturbance-free one in ũ = u + d and the control is penalized relative to the input
+        # that cancels the disturbance.
+        A = [1.0 0.1; 0.0 1.0]; B = [0.005; 0.1;;]; C = [1.0 0.0]
+        Q = [1.0]; R = [0.1]; Np = 10
+        function make_sd(; withd, Sd=zeros(0, 0), preview=false, Nc=Np)
+            model = withd ? LinearMPC.Model(A, B; Gd=B, C, Ts=0.1) : LinearMPC.Model(A, B; C, Ts=0.1)
+            mpc = LinearMPC.MPC(model; Np, Nc)
+            settings!(mpc; reference_tracking=true, disturbance_preview=preview)
+            set_objective!(mpc; Q, R, Sd)
+            setup!(mpc)
+            return mpc
+        end
+        rng = Random.MersenneTwister(2)
+        # (preview, Nc, time-varying d): with Nc < Np the held control u_{Nc-1} + d_k differs
+        # from a held ũ unless d is constant, so a time-varying preview needs Nc = Np.
+        for (preview, Nc, varying) in ((false, Np, false), (false, 5, false), (true, Np, true), (true, 5, false))
+            mpcd = make_sd(; withd=true, Sd=R, preview, Nc)
+            mpc0 = make_sd(; withd=false, Nc)
+            for _ in 1:5
+                x = randn(rng, 2); r = randn(rng, 1)
+                d = varying ? randn(rng, 1, Np) : fill(randn(rng), 1, 1)
+                u_d = LinearMPC.compute_control(mpcd, x; r, d=preview ? d : vec(d[:, 1]))
+                u_0 = LinearMPC.compute_control(mpc0, x; r)
+                @test u_d ≈ u_0 - d[:, 1] atol = 1e-8
+            end
+        end
+
+        # Sd removes the steady-state error that a direct penalty on u causes under a
+        # persistent disturbance.
+        function closedloop(mpc; d=0.3, r=1.0, N=400)
+            x = zeros(2); u = zeros(1)
+            for _ in 1:N
+                u = LinearMPC.compute_control(mpc, x; r=[r], d=[d])
+                x = A*x + B*(u .+ d)
+            end
+            return (C*x)[1] - r, u[1]
+        end
+        for preview in (false, true)
+            e0, _ = closedloop(make_sd(; withd=true, preview))
+            e1, u1 = closedloop(make_sd(; withd=true, Sd=R, preview))
+            @test abs(e0) > 1e-3
+            @test abs(e1) < 1e-9
+            @test u1 ≈ -0.3 atol = 1e-9
+        end
+
+        # Validation and cost evaluation
+        @test_throws ArgumentError make_sd(; withd=true, Sd=ones(2, 1))
+        @test_throws ArgumentError make_sd(; withd=true, Sd=ones(1, 2))
+        mpc = make_sd(; withd=true, Sd=[2.0;;])
+        xs = zeros(2, 3); us = [1.0 2.0 3.0]; ds = [1.0 1.0 1.0]
+        @test LinearMPC.evaluate_cost(mpc, xs, us, zeros(1, 3), ds) ≈ 0.5*(0.1*14 + 2*6)
+        @test LinearMPC.evaluate_cost(mpc, xs, us) ≈ 0.5*0.1*14
+    end
 end
