@@ -401,6 +401,7 @@ function evaluate_cost(mpc::MPC,xs,us,rs=zeros(0,0),ds=zeros(0,0);
     ds = isempty(ds) ? zeros(mpc.model.nd,N) : ds
     Sd = isempty(Sd) ? zeros(mpc.model.nd,nu) : Sd
     Δus = diff([zeros(nu) us],dims=2)
+    has_d = size(ds,1) > 0 # dot(x,A,y) errors for empty x on Julia 1.10
     cost = 0.0
     for i = 1:N
         err = mpc.model.C*xs[:,i]-rs[:,i]
@@ -408,7 +409,7 @@ function evaluate_cost(mpc::MPC,xs,us,rs=zeros(0,0),ds=zeros(0,0);
         cost += dot(us[:,i],R,us[:,i])
         cost += dot(Δus[:,i],Rr,Δus[:,i])
         cost += dot(xs[:,i],S,us[:,i])
-        cost += dot(ds[:,i],Sd,us[:,i])
+        has_d && (cost += dot(ds[:,i],Sd,us[:,i]))
     end
     return 0.5*cost
 end
