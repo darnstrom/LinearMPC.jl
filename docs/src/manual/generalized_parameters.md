@@ -3,7 +3,7 @@
 LinearMPC supports a generalized parameter vector `p` that can enter both the objective and the constraints. By default it is kept constant over the horizon, and setting `parameter_preview = true` upgrades it to a stagewise trajectory $p_k$. In the objective, the term
 
 ```math
-(Ex p_k + ex)^T x_k + (Eu p_k + eu)^T u_k
+(E_x p_k + e_x)^T x_k + (E_u p_k + e_u)^T u_k
 ```
 
 lets you model economic MPC effects such as time-varying electricity prices without a separate linear-cost feature.

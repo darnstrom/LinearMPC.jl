@@ -72,7 +72,7 @@ u = mpc.compute_control(x, r=r_trajectory)
 ## Generalized parameters in objective and constraints
 LinearMPC also supports a stagewise generalized parameter trajectory $p_k$ entering the problem as
 ```math
-(Ex p_k + ex)^T x_k + (Eu p_k + eu)^T u_k
+(E_x p_k + e_x)^T x_k + (E_u p_k + e_u)^T u_k
 ```
 in the objective, and through additional constraint terms such as
 ```math
