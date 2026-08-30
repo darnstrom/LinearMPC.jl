@@ -486,11 +486,6 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
     end
     if ndp > 0 && mpc.settings.disturbance_preview
         f_theta,H_theta = disturbance_preview_cost(mpc,F,Γ,C_full,Q_full,Qf_full,f_theta,H_theta)
-        # ==== From d' Sd u (with preview the disturbances are parameters, not states) ====
-        if !iszero(w.Sd)
-            dcols = nxp+nrp+1:nxp+nrp+ndp
-            f_theta[:,dcols] .+= disturbance_preview_cross_term(mpc,w.Sd,nu)
-        end
     end
 
     # ==== Generalized parameter cost on state and control inputs ====
@@ -511,6 +506,14 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
     Tu[Nc+1:end, end] .= 1
     Umap = kron(Tu, Matrix{Float64}(I, nu, nu))
     f .+= Umap' * repeat(eu, N)
+
+    # ==== Disturbance-control cross term d' Sd u ====
+    # Without preview, d is part of the extended state and Sd is part of S (create_extended_cost). With
+    # preview, the disturbance of each step is a parameter and the term enters its columns of f_theta.
+    if ndp > 0 && mpc.settings.disturbance_preview && !iszero(w.Sd)
+        dcols = nxp+nrp+1:nxp+nrp+ndp
+        f_theta[:,dcols] .+= Umap' * kron(Matrix{Float64}(I, N, N), w.Sd')
+    end
 
     x_selector = [Matrix{Float64}(I, mpc.model.nx, mpc.model.nx) zeros(mpc.model.nx, nx-mpc.model.nx)]
     Xmap = kron(Matrix{Float64}(I, N, N), x_selector)
@@ -731,7 +734,9 @@ function create_extended_cost(mpc::MPC, weights::MPCWeights;uids=1:mpc.model.nu)
         S = [S;zeros(mpc.model.ny,nui)]
     end
 
-    Sd = disturbance_cross_term(mpc, weights, nui)
+    Sd = isempty(weights.Sd) ? zeros(mpc.model.nd, nui) : weights.Sd
+    size(Sd) == (mpc.model.nd, nui) || throw(ArgumentError(
+        "Sd must be nd × nu = $(mpc.model.nd) × $nui, got $(size(Sd,1)) × $(size(Sd,2))"))
     if(mpc.model.nd > 0 && !mpc.settings.disturbance_preview) # add measurable disturbance
         S = [S;Sd] # d is part of the extended state, so d' Sd u is a state-control cross term
     end
@@ -759,38 +764,6 @@ function create_extended_cost(mpc::MPC, weights::MPCWeights;uids=1:mpc.model.nu)
     end
 
     return MPCWeights(Q,R,zeros(0,0),S,Qf,zeros(0,0),weights.Ex,weights.ex,weights.Eu,weights.eu,Sd)
-end
-
-"""
-    disturbance_cross_term(mpc, weights, nui)
-
-The disturbance-control cross term `Sd` of `weights` as an `nd × nui` matrix (zero when unset),
-validated against the current number of disturbance channels of the model.
-"""
-function disturbance_cross_term(mpc::MPC, weights::MPCWeights, nui::Int)
-    nd = mpc.model.nd
-    isempty(weights.Sd) && return zeros(nd, nui)
-    size(weights.Sd) == (nd, nui) || throw(ArgumentError(
-        "Sd must be nd × nu = $nd × $nui (nd counts the disturbance channels of the model, including any added by an offset-free observer), got $(size(weights.Sd,1)) × $(size(weights.Sd,2))"))
-    return weights.Sd
-end
-
-"""
-    disturbance_preview_cross_term(mpc, Sd, nui)
-
-Linear objective term for ∑ₖ dₖ' Sd uₖ with disturbance preview, where the dₖ are parameters rather than
-part of the extended state: returns the `Nc*nui × Np*nd` matrix `M` such that the term equals `U' M θd`
-for the stacked controls `U` and stacked preview disturbances `θd` (with uₖ = u_{Nc-1} for k ≥ Nc).
-"""
-function disturbance_preview_cross_term(mpc::MPC, Sd, nui::Int)
-    N, Nc = mpc.Np, mpc.Nc
-    nd = size(Sd, 1)
-    M = zeros(Nc*nui, N*nd)
-    for k in 0:N-1
-        ublock = min(k, Nc-1)
-        M[ublock*nui+1:(ublock+1)*nui, k*nd+1:(k+1)*nd] .+= Sd'
-    end
-    return M
 end
 
 function remove_redundant(c::DenseConstraints)
@@ -968,10 +941,6 @@ function create_variational_objective(mpc::MPC,Φ,Γ,Cp)
 
     weights = [create_extended_cost(mpc,first(c);uids=last(c)) for c in mpc.objectives]
     uids = last.(mpc.objectives)
-    if mpc.settings.disturbance_preview && any(!iszero(w.Sd) for w in weights)
-        throw(ArgumentError("The disturbance cross term Sd is not supported together with disturbance preview for multiple objectives"))
-    end
-
 
     n_players = length(mpc.objectives)
     #
