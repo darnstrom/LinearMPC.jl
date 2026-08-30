@@ -32,6 +32,9 @@ struct MPCWeights
     Sd::Matrix{Float64} # disturbance-control cross term d' Sd u (nd × nu); empty means zero
 end
 
+MPCWeights(Q,R,Rr,S,Qf,Qfx,Ex,ex,Eu,eu) =
+    MPCWeights(Q,R,Rr,S,Qf,Qfx,Ex,ex,Eu,eu,zeros(0,size(R,1)))
+
 function MPCWeights(nu,nx,nr)
     return MPCWeights(Matrix{Float64}(I,nr,nr),Matrix{Float64}(I,nu,nu),zeros(nu,nu),
                       zeros(nx,nu),zeros(nr,nr),zeros(nx,nx),zeros(nx,0),zeros(nx),zeros(nu,0),zeros(nu),zeros(0,nu))

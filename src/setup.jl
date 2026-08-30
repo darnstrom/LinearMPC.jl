@@ -110,14 +110,11 @@ end
 """
     set_objective!(mpc;Q,R,Rr,S,Qf,Ex,ex,Eu,eu,Sd)
 
-Set the weights in the objective function `xN' C' Qf C xN^T + ∑ (C xₖ - rₖ)' Q (C xₖ - rₖ)  + uₖ' R uₖ + Δuₖ' Rr Δuₖ + xₖ' S uₖ + dₖ' Sd uₖ + (Ex pₖ + ex)'xₖ + (Eu pₖ + eu)'uₖ
+Set the weights in the objective function `xN' C' Qf C xN^T + ∑ (C xₖ - rₖ)' Q (C xₖ - rₖ)  + uₖ' R uₖ + Δuₖ' Rr Δuₖ + xₖ' S uₖ + dₖ' Sd uₖ + (Ex pₖ + ex)'xₖ + (Eu pₖ + eu)'uₖ`.
 
 A vector is interpreted as a diagonal matrix.
 
-`Sd` (nd × nu) is a cross term between the measurable disturbance `d` and the control. With `Sd = R` the
-control penalty becomes `(uₖ + dₖ)' R (uₖ + dₖ)` up to a constant, which penalizes the control relative to
-the input that cancels a disturbance entering through `Bd = B` instead of relative to zero, and thereby
-removes the steady-state error a direct penalty on `u` otherwise causes under a persistent disturbance.
+`Sd` is an `nd × nu` disturbance-control cross term and supports disturbance preview.
 """
 function set_objective!(mpc::MPC;Q = zeros(0,0), R=zeros(0,0), Rr=zeros(0,0), S= zeros(0,0),Qf=zeros(0,0), Qfx=zeros(0,0),
         Ex = zeros(0,0), ex = zeros(0), Eu = zeros(0,0), eu = zeros(0), Sd = zeros(0,0))
@@ -139,7 +136,7 @@ end
 
 function set_objective!(mpc::MPC, uids::Vector{Int};Q = zeros(0,0), R=zeros(0,0), 
         Rr=zeros(0,0), S= zeros(0,0), Qf=zeros(0,0), Qfx=zeros(0,0),
-        Ex = zeros(0,0), ex = zeros(0), Eu = zeros(0,0), eu = zeros(0), Sd = zeros(0,0))
+        Ex = zeros(0,0), ex = zeros(0), Eu = zeros(0,0), eu = zeros(0))
     nu,ny,nx = length(uids), mpc.model.ny, mpc.model.nx
     Q   = isempty(Q)   ? zeros(mpc.model.ny,mpc.model.ny) : matrixify(Q,ny)
     R   = isempty(R)   ? zeros(nu,nu) : matrixify(R,nu)
@@ -151,10 +148,9 @@ function set_objective!(mpc::MPC, uids::Vector{Int};Q = zeros(0,0), R=zeros(0,0)
     ex  = isempty(ex)  ? zeros(nx) : float(ex)
     Eu  = isempty(Eu)  ? zeros(nu,0) : float(Eu)
     eu  = isempty(eu)  ? zeros(nu) : float(eu)
-    Sd  = isempty(Sd)  ? zeros(0,nu) : matrixify(Sd)
 
     mpc.weights.Rr[uids,uids] .= Rr # To be able to keep track of nuprev
-    push!(mpc.objectives, (MPCWeights(Q,R,Rr,S,Qf,Qfx,Ex,ex,Eu,eu,Sd),uids))
+    push!(mpc.objectives, (MPCWeights(Q,R,Rr,S,Qf,Qfx,Ex,ex,Eu,eu),uids))
     mpc.mpqp_issetup = false
 end
 
