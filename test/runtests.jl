@@ -76,6 +76,35 @@ Random.seed!(1234)
         @test norm(control.-1.7612519326) < 1e-6
     end
 
+    @testset "Compute control result" begin
+        # Feasible problem: the result carries the same control plus the solver status. The controls
+        # are compared across two fresh controllers: a solve mutates `mpc.uprev`, so a second solve on
+        # the same object is a different problem whenever the previous control enters it.
+        mpc,range = LinearMPC.mpc_examples("invpend")
+        result = compute_control_result(mpc,[5.0;5;0;0])
+        @test result isa MPCResult
+        @test norm(result.control.-1.7612519326) < 1e-6
+        @test result.exitflag == 1
+        @test result.status === :Optimal
+        @test result.solver_info.iterations >= 0
+        mpc_b,_ = LinearMPC.mpc_examples("invpend")
+        @test result.control == LinearMPC.compute_control(mpc_b,[5.0;5;0;0])
+
+        # Infeasible problem (hard output bound violated by the state): no throw, failure reported.
+        function infeasible_mpc()
+            mpc = LinearMPC.MPC([1.0 0.1; 0.0 1.0], [0.005; 0.1;;]; C=[1.0 0.0], Np=5)
+            set_objective!(mpc; Q=[1.0], R=[0.1])
+            set_input_bounds!(mpc; umin=[-1.0], umax=[1.0])
+            set_output_bounds!(mpc; ymax=[0.5], soft=false)
+            mpc
+        end
+        result = compute_control_result(infeasible_mpc(), [2.0, 0.0])
+        @test result.exitflag < 1
+        @test result.status === :Primal_Infeasible
+        @test length(result.control) == 1
+        @test_throws AssertionError compute_control(infeasible_mpc(), [2.0, 0.0])
+    end
+
     @testset "Indicator + Product constraints" begin
         mpc = LinearMPC.MPC([-0.8;;], [1.0 0.0 1.6]; C=[1.0;;], Np=1, Nc=1)
         set_input_bounds!(mpc; umin=[-1.0, 0.0, -10.0], umax=[1.0, 1.0, 10.0])
