@@ -472,8 +472,9 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
     end
 
     # ==== From x' S u ====
+    Stot = zeros((N+1)*nx, Nc*nu)
     if(!iszero(S))
-        Stot = [kron(I(Nc),S);zeros((N-Nc+1)*nx,Nc*nu)]
+        Stot[1:Nc*nx, :] = kron(I(Nc),S)
         Stot[Nc*nx+1:N*nx,end-nu+1:end] = repeat(S,N-Nc,1) # Due to control horizon
         GS = Γ'*Stot
         H += (GS + GS')
@@ -486,6 +487,14 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
     end
     if ndp > 0 && mpc.settings.disturbance_preview
         f_theta,H_theta = disturbance_preview_cost(mpc,F,Γ,C_full,Q_full,Qf_full,f_theta,H_theta)
+        if !iszero(S)
+            # The S cross term against the disturbance-driven part of the predicted state:
+            # x = Φ x0 + Γ U + Ψ D, and the condensation above (Stot'*Φ) covers only the x0
+            # part. Without preview the disturbance is folded into the extended state, so Φ
+            # already carries it; with preview it is a parameter and needs its own columns.
+            dcols = nxp+nrp+1:nxp+nrp+ndp
+            f_theta[:,dcols] .+= Stot'*disturbance_preview_predictor(mpc, F)
+        end
         if !iszero(w.Sd)
             dcols = nxp+nrp+1:nxp+nrp+ndp
             f_theta[:,dcols] .+= stage_control_parameter_cross_term(mpc, w.Sd'; preview=true)
