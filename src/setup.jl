@@ -108,14 +108,16 @@ function set_bounds!(mpc::MPC; umin=zeros(0), umax=zeros(0), ymin = zeros(0), ym
 end
 
 """
-    set_objective!(mpc;Q,R,Rr,S,Qf,Ex,ex,Eu,eu)
+    set_objective!(mpc;Q,R,Rr,S,Qf,Ex,ex,Eu,eu,Sd)
 
-Set the weights in the objective function `xN' C' Qf C xN^T + ∑ (C xₖ - rₖ)' Q (C xₖ - rₖ)  + uₖ' R uₖ + Δuₖ' Rr Δuₖ + xₖ' S uₖ + (Ex pₖ + ex)'xₖ + (Eu pₖ + eu)'uₖ
+Set the weights in the objective function `xN' C' Qf C xN^T + ∑ (C xₖ - rₖ)' Q (C xₖ - rₖ)  + uₖ' R uₖ + Δuₖ' Rr Δuₖ + xₖ' S uₖ + dₖ' Sd uₖ + (Ex pₖ + ex)'xₖ + (Eu pₖ + eu)'uₖ`.
 
 A vector is interpreted as a diagonal matrix.
+
+`Sd` is an `nd × nu` disturbance-control cross term and supports disturbance preview.
 """
 function set_objective!(mpc::MPC;Q = zeros(0,0), R=zeros(0,0), Rr=zeros(0,0), S= zeros(0,0),Qf=zeros(0,0), Qfx=zeros(0,0),
-        Ex = zeros(0,0), ex = zeros(0), Eu = zeros(0,0), eu = zeros(0))
+        Ex = zeros(0,0), ex = zeros(0), Eu = zeros(0,0), eu = zeros(0), Sd = zeros(0,0))
     Qw = isempty(Q) ? copy(mpc.weights.Q) : matrixify(Q,mpc.model.ny)
     Rw = isempty(R) ? copy(mpc.weights.R) : matrixify(R,mpc.model.nu)
     Rrw = isempty(Rr) ? copy(mpc.weights.Rr) : matrixify(Rr,mpc.model.nu)
@@ -126,7 +128,8 @@ function set_objective!(mpc::MPC;Q = zeros(0,0), R=zeros(0,0), Rr=zeros(0,0), S=
     exw = isempty(ex) ? copy(mpc.weights.ex) : float(ex)
     Euw = isempty(Eu) ? copy(mpc.weights.Eu) : float(Eu)
     euw = isempty(eu) ? copy(mpc.weights.eu) : float(eu)
-    mpc.weights = MPCWeights(Qw,Rw,Rrw,Sw,Qfw,Qfxw,Exw,exw,Euw,euw)
+    Sdw = isempty(Sd) ? copy(mpc.weights.Sd) : matrixify(Sd)
+    mpc.weights = MPCWeights(Qw,Rw,Rrw,Sw,Qfw,Qfxw,Exw,exw,Euw,euw,Sdw)
     mpc.mpqp_issetup = false
 end
 

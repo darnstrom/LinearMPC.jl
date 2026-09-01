@@ -538,6 +538,31 @@ Random.seed!(1234)
         @test control_explicit ≈ control_preview atol=1e-10
     end
 
+    @testset "Disturbance Preview with control-state cross term" begin
+        # Completing the square around a static feedback: with Q = L'L, S = L', R = I the
+        # unconstrained optimizer is u = -L x at every horizon, for ANY disturbance trajectory
+        # (u_k = -L x_k gives zero stage cost regardless of d). This pins down the S cross
+        # term's disturbance-preview columns in the condensed objective.
+        A = [1.0 0.1; 0.0 1.0]
+        B = [0.005; 0.1]
+        Gd = [0.005; 0.1]
+        L = [1.2 0.8]
+        # Qf = -I is the "true zero terminal cost" idiom (non-positive diagonal entries are
+        # dropped by the positivity filter); the preview coupling must respect the filtering.
+        for Qf in (1e-12*Matrix(I, 2, 2), -Matrix(1.0I, 2, 2))
+            mpc = LinearMPC.MPC(A, B; Gd, C=Matrix{Float64}(I, 2, 2), Np=7, Nc=7)
+            set_objective!(mpc; Q=L'L, R=[1.0], S=Matrix(L'), Qf)
+            mpc.settings.reference_tracking = false
+            mpc.settings.disturbance_preview = true
+            setup!(mpc)
+            x = [0.7, -0.3]
+            for d_traj in (zeros(1, 7), ones(1, 7), [zeros(1, 3) -2.0*ones(1, 4)])
+                u = compute_control(mpc, x; d=d_traj)
+                @test u ≈ -L*x atol=1e-8
+            end
+        end
+    end
+
     @testset "Disturbance Preview Simulation" begin
         A = [1.0 1.0; 0.0 1.0]
         B = [0.0; 1.0]
@@ -1772,5 +1797,47 @@ Random.seed!(1234)
 
         @test_logs (:warn, r"The setting \"does_not_exist\" does not exist") (:warn, r"The setting \"does_not_exist\" does not exist") settings!(tracked; does_not_exist=true)
         @test_logs (:warn, r"The setting \"still_missing\" does not exist") settings!(tracked, Dict(:still_missing => true))
+    end
+
+    @testset "Disturbance-control cross term Sd" begin
+        # Generalized parameters and disturbance preview share the same stage map. In particular,
+        # the last optimized control is held over the remainder of the prediction horizon.
+        stage_map_mpc = LinearMPC.MPC([1.0;;], [1.0;;]; Np=4, Nc=2)
+        constant_map = LinearMPC.stage_control_parameter_cross_term(
+            stage_map_mpc, [1.0;;]; preview=false)
+        preview_map = LinearMPC.stage_control_parameter_cross_term(
+            stage_map_mpc, [1.0;;]; preview=true)
+        @test constant_map == reshape([1.0, 3.0], 2, 1)
+        @test preview_map == [1.0 0.0 0.0 0.0; 0.0 1.0 1.0 1.0]
+
+        # With Bd = B and Sd = R, the solution is shifted by the cancelling input -d.
+        A = [1.0 0.1; 0.0 1.0]; B = [0.005; 0.1;;]; C = [1.0 0.0]
+        Q = [1.0]; R = [0.1]; Np = 10
+        function make_sd(; withd, Sd=zeros(0, 0), preview=false, Nc=Np)
+            model = withd ? LinearMPC.Model(A, B; Gd=B, C, Ts=0.1) : LinearMPC.Model(A, B; C, Ts=0.1)
+            mpc = LinearMPC.MPC(model; Np, Nc)
+            settings!(mpc; reference_tracking=true, disturbance_preview=preview)
+            set_objective!(mpc; Q, R, Sd)
+            setup!(mpc)
+            return mpc
+        end
+        rng = Random.MersenneTwister(2)
+        # (preview, Nc, time-varying d): with Nc < Np the held control u_{Nc-1} + d_k differs
+        # from a held ũ unless d is constant, so a time-varying preview needs Nc = Np.
+        for (preview, Nc, varying) in ((false, Np, false), (false, 5, false), (true, Np, true), (true, 5, false))
+            mpcd = make_sd(; withd=true, Sd=R, preview, Nc)
+            mpc0 = make_sd(; withd=false, Nc)
+            for _ in 1:2
+                x = randn(rng, 2); r = randn(rng, 1)
+                d = varying ? randn(rng, 1, Np) : fill(randn(rng), 1, 1)
+                u_d = LinearMPC.compute_control(mpcd, x; r, d=preview ? d : vec(d[:, 1]))
+                u_0 = LinearMPC.compute_control(mpc0, x; r)
+                @test u_d ≈ u_0 - d[:, 1] atol = 1e-8
+            end
+        end
+
+        # Validate Sd against the disturbance and control dimensions.
+        @test_throws ArgumentError make_sd(; withd=true, Sd=ones(2, 1))
+        @test_throws ArgumentError make_sd(; withd=true, Sd=ones(1, 2))
     end
 end
