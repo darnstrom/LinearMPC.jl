@@ -547,15 +547,19 @@ Random.seed!(1234)
         B = [0.005; 0.1]
         Gd = [0.005; 0.1]
         L = [1.2 0.8]
-        mpc = LinearMPC.MPC(A, B; Gd, C=Matrix{Float64}(I, 2, 2), Np=7, Nc=7)
-        set_objective!(mpc; Q=L'L, R=[1.0], S=Matrix(L'), Qf=1e-12*Matrix(I, 2, 2))
-        mpc.settings.reference_tracking = false
-        mpc.settings.disturbance_preview = true
-        setup!(mpc)
-        x = [0.7, -0.3]
-        for d_traj in (zeros(1, 7), ones(1, 7), [zeros(1, 3) -2.0*ones(1, 4)])
-            u = compute_control(mpc, x; d=d_traj)
-            @test u ≈ -L*x atol=1e-8
+        # Qf = -I is the "true zero terminal cost" idiom (non-positive diagonal entries are
+        # dropped by the positivity filter); the preview coupling must respect the filtering.
+        for Qf in (1e-12*Matrix(I, 2, 2), -Matrix(1.0I, 2, 2))
+            mpc = LinearMPC.MPC(A, B; Gd, C=Matrix{Float64}(I, 2, 2), Np=7, Nc=7)
+            set_objective!(mpc; Q=L'L, R=[1.0], S=Matrix(L'), Qf)
+            mpc.settings.reference_tracking = false
+            mpc.settings.disturbance_preview = true
+            setup!(mpc)
+            x = [0.7, -0.3]
+            for d_traj in (zeros(1, 7), ones(1, 7), [zeros(1, 3) -2.0*ones(1, 4)])
+                u = compute_control(mpc, x; d=d_traj)
+                @test u ≈ -L*x atol=1e-8
+            end
         end
     end
 

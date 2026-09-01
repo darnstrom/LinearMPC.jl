@@ -486,7 +486,7 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
         f_theta,H_theta = ref_preview_cost(mpc,Γ,C_full,Q_full,Qf_full,H,f_theta,H_theta)
     end
     if ndp > 0 && mpc.settings.disturbance_preview
-        f_theta,H_theta = disturbance_preview_cost(mpc,F,Γ,C_full,Q_full,Qf_full,f_theta,H_theta)
+        f_theta,H_theta = disturbance_preview_cost(mpc,F,Γ,CQCtot,C_full,Q_full,Qf_full,f_theta,H_theta)
         if !iszero(S)
             # The S cross term against the disturbance-driven part of the predicted state:
             # x = Φ x0 + Γ U + Ψ D, and the condensation above (Stot'*Φ) covers only the x0
@@ -602,23 +602,29 @@ function ref_preview_cost(mpc,Γ,C_full,Q_full,Qf_full,H,f_theta,H_theta)
     return f_theta, H_theta
 end
 
-function disturbance_preview_cost(mpc,F,Γ,C_full,Q_full,Qf_full,f_theta,H_theta)
+function disturbance_preview_cost(mpc,F,Γ,CQCtot,C_full,Q_full,Qf_full,f_theta,H_theta)
     N = mpc.Np
     nxp, nrp, ndp, _, _ = get_parameter_dims(mpc)
     nxe = size(F,1)
 
     Ψ = disturbance_preview_predictor(mpc, F)
-    Ψ_future = Ψ[nxe+1:end, :]
-    Γ_future = Γ[nxe+1:end, :]
-    CY = kron(I(N), C_full)
-    Γy = CY*Γ_future
-    Yd = CY*Ψ_future + kron(I(N), mpc.model.Dd[1:size(C_full,1), :])
-
-    Qy = kron(I(N), Q_full)
-    Qy[end-size(Qf_full,1)+1:end,end-size(Qf_full,2)+1:end] .= Qf_full
-
-    Fd = Γy'*Qy*Yd
-    Hd = Yd'*Qy*Yd
+    # The state part of the disturbance coupling uses the same (positivity-filtered) stage and
+    # terminal weights CQCtot as the main condensation; building it from the unfiltered
+    # Q_full/Qf_full made the preview cost disagree with the main cost whenever the filter
+    # dropped entries (e.g. a non-positive Qf standing for a zero terminal cost).
+    Fd = Γ'*CQCtot*Ψ
+    Hd = Ψ'*CQCtot*Ψ
+    if !iszero(mpc.model.Dd)
+        Ψ_future = Ψ[nxe+1:end, :]
+        Γ_future = Γ[nxe+1:end, :]
+        CY = kron(I(N), C_full)
+        Γy = CY*Γ_future
+        Ydd = kron(I(N), mpc.model.Dd[1:size(C_full,1), :])
+        Qy = kron(I(N), Q_full)
+        Qy[end-size(Qf_full,1)+1:end,end-size(Qf_full,2)+1:end] .= Qf_full
+        Fd += Γy'*Qy*Ydd
+        Hd += (CY*Ψ_future)'*Qy*Ydd + Ydd'*Qy*(CY*Ψ_future) + Ydd'*Qy*Ydd
+    end
     split = nxp + nrp
     tail = size(H_theta,1) - split
 
