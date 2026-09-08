@@ -550,6 +550,7 @@ function normalize_offset_free_method(method::Symbol)
         :output => :output_disturbance,
         :output_disturbance => :output_disturbance,
         :general => :general,
+        :periodic => :periodic,
     )
     haskey(aliases, method) || throw(ArgumentError("Unknown offset-free method $method"))
     return aliases[method]
@@ -573,7 +574,7 @@ function append_offset_free_model(model::Model, Bd, Cd, disturbance_labels)
 end
 
 function default_offset_free_labels(method::Symbol, nd::Int)
-    prefix = method == :output_disturbance ? "yoff" : "dof"
+    prefix = method == :output_disturbance ? "yoff" : method == :periodic ? "pof" : "dof"
     return Symbol.(prefix .* string.(1:nd))
 end
 
@@ -592,9 +593,29 @@ function validate_offset_free_model(F, C, Bd, Cd)
         throw(ArgumentError("Offset-free disturbance model violates rank([F-I Bd; C Cd]) = nx + nd"))
 end
 
+function cyclic_shift_matrix(period::Int)
+    period > 0 || throw(ArgumentError("period must be positive"))
+    S = zeros(period, period)
+    for i in 1:period-1
+        S[i, i+1] = 1.0
+    end
+    S[period, 1] = 1.0
+    return S
+end
+
+function validate_periodic_offset_free_model(F, C, Bd, Cd, period::Int)
+    validate_offset_free_model(F, C, Bd, Cd)
+    nx = size(F, 1)
+    nd = size(Bd, 2)
+    for λ in eigvals(cyclic_shift_matrix(period))
+        rank([F - λ * Matrix{ComplexF64}(I, nx, nx) Bd; C Cd]) == nx + nd ||
+            throw(ArgumentError("Periodic offset-free disturbance model violates the rank condition at λ = $λ"))
+    end
+end
+
 function build_offset_free_observer(model::Model, nd_measured::Int, method::Symbol;
         Q=nothing, R=nothing, K=nothing, Bd=nothing, Cd=nothing,
-        Kx=nothing, Kd=nothing, x0=nothing, d0=nothing)
+        Kx=nothing, Kd=nothing, x0=nothing, d0=nothing, period=1)
 
     F, G, C = model.F, model.G, model.C
     method = normalize_offset_free_method(method)
@@ -619,18 +640,32 @@ function build_offset_free_observer(model::Model, nd_measured::Int, method::Symb
 
     Bd = float(Bd)
     Cd = float(Cd)
-    validate_offset_free_model(F, C, Bd, Cd)
-    ndo = size(Bd, 2)
+    period = Int(period)
+    if method == :periodic
+        validate_periodic_offset_free_model(F, C, Bd, Cd, period)
+    else
+        period == 1 || throw(ArgumentError("period can only be greater than 1 for method=:periodic"))
+        validate_offset_free_model(F, C, Bd, Cd)
+    end
+    nd_control = size(Bd, 2)
+    ndo = nd_control * period
 
     x0 = isnothing(x0) ? zeros(nx) : float(x0)
     d0 = isnothing(d0) ? zeros(ndo) : float(d0)
     length(x0) == nx || throw(ArgumentError("x0 must have length $nx"))
     length(d0) == ndo || throw(ArgumentError("d0 must have length $ndo"))
 
-    Faug = [F Bd; zeros(ndo, nx) Matrix{Float64}(I, ndo, ndo)]
+    if method == :periodic
+        Ssel = [Matrix{Float64}(I, nd_control, nd_control) zeros(nd_control, nd_control * (period - 1))]
+        Sd = kron(cyclic_shift_matrix(period), Matrix{Float64}(I, nd_control, nd_control))
+        Faug = [F Bd * Ssel; zeros(ndo, nx) Sd]
+        Caug = [C Cd * Ssel]
+    else
+        Faug = [F Bd; zeros(ndo, nx) Matrix{Float64}(I, ndo, ndo)]
+        Caug = [C Cd]
+    end
     Gaug = [G; zeros(ndo, model.nu)]
     Gdaug = [model.Gd[:,1:nd_measured]; zeros(ndo, nd_measured)]
-    Caug = [C Cd]
     xaug0 = [x0; d0]
     faug = [model.f_offset; zeros(ndo)]
 
@@ -647,11 +682,11 @@ function build_offset_free_observer(model::Model, nd_measured::Int, method::Symb
     end
 
     return OffsetFreeObserver(estimator, model.C, model.Dd[:,1:nd_measured], model.h_offset,
-                              nx, nd_measured, ndo, method), Bd, Cd
+                              nx, nd_measured, ndo, nd_control, period, method), Bd, Cd
 end
 
 """
-    set_offset_free_observer!(mpc; method=:state_disturbance, Q, R, K, Bd, Cd, Kx, Kd, x0, d0, disturbance_labels)
+    set_offset_free_observer!(mpc; method=:state_disturbance, Q, R, K, Bd, Cd, Kx, Kd, x0, d0, period, disturbance_labels)
 
 Create an offset-free observer/controller pair following the formulations reviewed by
 Pannocchia (2015). The controller model is augmented with constant disturbance channels,
@@ -662,6 +697,8 @@ Supported methods are:
 - `:velocity`, using the equivalent disturbance-model realization from Theorem 15 with `Ke = I`
 - `:output_disturbance`, using a pure output-bias disturbance model
 - `:general`, using user-provided `Bd` and `Cd`
+- `:periodic`, using user-provided `Bd` and `Cd` with a cyclic disturbance
+  profile of length `period`
 
 For `:state_disturbance` and `:velocity`, the nominal observer gain `K` can be provided
 directly or obtained from the existing steady-state Kalman filter tuning through `Q` and `R`.
@@ -672,13 +709,14 @@ function set_offset_free_observer!(mpc::MPC;
         Bd=nothing, Cd=nothing,
         Kx=nothing, Kd=nothing,
         x0=nothing, d0=nothing,
+        period=1,
         disturbance_labels=nothing)
 
     nd_measured = mpc.state_observer isa OffsetFreeObserver ? mpc.state_observer.nd_measured : mpc.model.nd
     mpc.model = strip_offset_free_model(mpc.model, nd_measured)
 
     observer, Bd, Cd = build_offset_free_observer(mpc.model, nd_measured, method;
-                                                  Q, R, K, Bd, Cd, Kx, Kd, x0, d0)
+                                                  Q, R, K, Bd, Cd, Kx, Kd, x0, d0, period)
 
     labels = isnothing(disturbance_labels) ? default_offset_free_labels(observer.formulation, size(Bd, 2)) : disturbance_labels
     length(labels) == size(Bd, 2) || throw(ArgumentError("Need $(size(Bd, 2)) disturbance labels"))

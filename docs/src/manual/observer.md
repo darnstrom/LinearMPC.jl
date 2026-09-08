@@ -53,12 +53,58 @@ The keyword `method` selects the formulation:
 - `:velocity` uses the equivalent disturbance-model realization of the velocity form with `Ke = I`
 - `:output_disturbance` adds a pure output-bias model when the rank condition is satisfied
 - `:general` accepts user-provided `Bd` and `Cd`
+- `:periodic` accepts user-provided `Bd` and `Cd` and estimates a cyclic disturbance profile of length `period`
 
 The current disturbance estimate can be inspected with
 
 ```julia
 dhat = get_estimated_disturbance(mpc)
 ```
+
+For `:periodic`, the augmented disturbance estimate contains the complete profile
+`[d_1; d_2; ...; d_period]`, while the controller model is augmented only with the
+current disturbance block. This lets the same controller use disturbance preview:
+
+```julia
+mpc.settings.disturbance_preview = true
+observer = set_offset_free_observer!(mpc;
+    method = :periodic,
+    Bd = Bd,
+    Cd = Cd,
+    period = 250,
+    Q = Qobs,
+    R = Robs,
+)
+
+d_now = get_current_offset_free_disturbance(observer)
+d_pred = get_offset_free_disturbance_preview(observer, mpc.Np)
+```
+
+When `compute_control` is called with an offset-free observer attached, the estimated
+disturbance is inserted automatically. With `disturbance_preview = true`, the cyclic
+profile is expanded over the prediction horizon, so a call such as
+
+```julia
+u = compute_control(mpc, xhat; r = r_preview)
+```
+
+uses the observer's disturbance preview without passing `d` explicitly. If the plant
+also has measured disturbances, pass only those measured disturbances to
+`compute_control`; the offset-free estimate is appended internally.
+
+Periodic offset-free tracking often also needs periodic steady targets, for example
+when the optimizer should track a periodic `xbar` and center the input cost around a
+periodic `ubar`. The helper
+
+```julia
+xbar, ubar = periodic_offset_free_target_preview(observer, F, G, Cz, r_period;
+                                                 Bd, Cd, Np = mpc.Np)
+```
+
+solves the periodic target equations using the current disturbance profile and returns
+horizon previews. A common pattern is then to use `xbar[:, 2:end]` as a reference
+preview and pass `ubar` as a generalized-parameter preview with `Eu = -R`, so that the
+linear input-cost term centers the quadratic input penalty at `ubar`.
 
 The script `example/offset_free_tracking.jl` compares nominal tracking with the offset-free `:velocity` formulation on a disturbed double integrator.
 
@@ -122,3 +168,24 @@ mpc_correct_state(observer_state, measurement, measured_disturbance);
 mpc_compute_control_observer(control, observer_state, reference, measured_disturbance);
 mpc_predict_state(observer_state, control, measured_disturbance);
 ```
+
+For periodic offset-free observers, generated code also supports
+`disturbance_preview = true`. In that case `mpc_compute_control_observer` expands the
+cyclic disturbance profile stored in `observer_state` into the disturbance-preview vector
+expected by the generated controller. The generated helper
+
+```c
+void mpc_get_estimated_disturbance_preview(c_float* disturbance,
+                                           c_float* observer_state,
+                                           c_float* measured_disturbance);
+```
+
+can be called directly if the embedded application needs to inspect the preview. The
+`measured_disturbance` argument is interpreted as the current measured disturbance and is
+repeated over the horizon; the periodic offset-free part is taken from the cyclic
+profile.
+
+Generated code does not currently solve the periodic target equations for `xbar` and
+`ubar`. If the controller uses generalized parameters to center the input cost around a
+periodic `ubar`, compute that parameter preview outside the generated controller and pass
+it through the `affine_parameter` argument of `mpc_compute_control_observer`.

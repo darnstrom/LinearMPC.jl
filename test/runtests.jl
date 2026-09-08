@@ -483,6 +483,25 @@ Random.seed!(1234)
         @test norm(e_no_preview[:, end]) < 1e-3
     end
 
+    @testset "Simulation Dynamic Preview" begin
+        mpc = LinearMPC.MPC([1.0;;], [1.0;;]; C=[1.0;;], Np=2)
+        set_objective!(mpc; Q=[1.0], R=[0.1], Eu=[-0.1;;])
+        mpc.settings.reference_preview = true
+        mpc.settings.parameter_preview = true
+        setup!(mpc)
+
+        seen = zeros(3)
+        preview = function (mpc, xhat, y, k)
+            seen[k] = xhat[1]
+            return (r=[k k + 1.0], p=[0.1k 0.1(k + 1)])
+        end
+        sim = Simulation((x,u,d)->x+u, mpc; x0=[0.0], N=3, preview)
+
+        @test sim.rs == reshape([1.0, 2.0, 3.0], 1, :)
+        @test seen[1] == 0.0
+        @test size(sim.us) == (1, 3)
+    end
+
     @testset "Reference Preview Error Handling" begin
         # Test error handling for reference preview
         A = [0 1; 10 0] 
@@ -1220,6 +1239,82 @@ Random.seed!(1234)
         y = LinearMPC.correct_state!(disturbance_mpc, zeros(1), [0.2])
         u = compute_control(disturbance_mpc, y; r=[0.5], d=[0.2])
         @test length(u) == 1
+    end
+    @testset "Periodic offset-free observer preview" begin
+        F = [1.0 1.0; 0.0 1.0]
+        G = [0.0; 1.0;;]
+        C = Matrix{Float64}(I, 2, 2)
+        Bd = [1.0; 0.0;;]
+        Cd = zeros(2, 1)
+        mpc = LinearMPC.MPC(F, G; C, Np=3)
+        set_objective!(mpc; Q=[1.0, 0.0], R=[0.1])
+        set_bounds!(mpc; umin=[-10.0], umax=[10.0])
+        obs = LinearMPC.set_offset_free_observer!(mpc; method=:periodic,
+                                                  Bd, Cd, period=4,
+                                                  Q=1e-4 * I(6), R=1e-3 * I(2))
+        mpc.settings.disturbance_preview = true
+        setup!(mpc)
+
+        @test obs.formulation == :periodic
+        @test obs.nd_offsetfree == 4
+        @test obs.nd_control == 1
+        @test obs.period == 4
+        @test mpc.model.nd == 1
+
+        LinearMPC.set_state!(obs, zeros(2), [0.1, 0.2, 0.3, 0.4])
+        @test LinearMPC.get_current_offset_free_disturbance(obs) == [0.1]
+        @test LinearMPC.get_offset_free_disturbance_preview(obs, 6) ≈ [0.1 0.2 0.3 0.4 0.1 0.2]
+        @test LinearMPC.format_disturbance(mpc, nothing) ≈ vec([0.1 0.2 0.3])
+
+        u = compute_control(mpc, obs.x)
+        @test length(u) == 1
+
+        xbar, ubar = LinearMPC.periodic_offset_free_target_preview(obs, F, G, [1.0 0.0], zeros(1, 4);
+                                                                   Bd, Cd, Np=3)
+        @test size(xbar) == (2, 3)
+        @test size(ubar) == (1, 3)
+    end
+    @testset "Codegen Periodic Offset-free Disturbance Preview" begin
+        F = [1.0;;]
+        G = [1.0;;]
+        C = [1.0;;]
+        Bd = [1.0;;]
+        Cd = zeros(1, 1)
+        mpc = LinearMPC.MPC(F, G; C, Np=3, Nc=3)
+        set_objective!(mpc; Q=[1.0], R=[0.1])
+        set_bounds!(mpc; umin=[-10.0], umax=[10.0])
+        obs = LinearMPC.set_offset_free_observer!(mpc; method=:periodic,
+                                                  Bd, Cd, period=4,
+                                                  Q=1e-4 * I(5), R=1e-3 * I(1))
+        mpc.settings.disturbance_preview = true
+        setup!(mpc)
+
+        xaug = [0.2, 0.1, 0.2, 0.3, 0.4]
+        LinearMPC.set_state!(obs, xaug)
+        mpc.uprev .= 0
+        uref = compute_control(mpc, obs.x; r=[0.0])
+
+        srcdir = tempname()
+        LinearMPC.codegen(mpc; dir=srcdir)
+        src = [f for f in readdir(srcdir) if last(f, 1) == "c"]
+        @test !isempty(src)
+
+        if !isnothing(Sys.which("gcc"))
+            testlib = "mpctest." * Base.Libc.Libdl.dlext
+            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+            global templib = joinpath(srcdir, testlib)
+
+            uc = zeros(1)
+            ccall(("mpc_compute_control_observer", templib), Cint,
+                  (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}),
+                  uc, copy(xaug), [0.0], C_NULL)
+            @test norm(uc - uref) < 1e-9
+
+            dpreview = zeros(3)
+            ccall(("mpc_get_estimated_disturbance_preview", templib), Cvoid,
+                  (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), dpreview, copy(xaug), C_NULL)
+            @test dpreview ≈ [0.1, 0.2, 0.3]
+        end
     end
     @testset "x0 uncertainty" begin
         F,G = [1 0.1; 0 1], [0.005;0.1;;] # double integrator with Ts=0.1 

@@ -56,6 +56,8 @@ include("observer.jl");
 export predict_state!,correct_state!
 export set_state!,get_state,update_state!
 export get_estimated_disturbance
+export get_current_offset_free_disturbance, get_offset_free_disturbance_preview
+export periodic_offset_free_target_preview
 
 using PrecompileTools
 @setup_workload begin
