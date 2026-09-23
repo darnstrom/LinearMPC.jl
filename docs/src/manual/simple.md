@@ -104,6 +104,16 @@ u = compute_control(mpc,[0.5,1];r=[0,0])
 u = mpc.compute_control([0.5, 1], r=[0, 0])
 ```
 
+If the solver fails (for example because hard constraints are infeasible), `compute_control` throws. When a failure must not abort the surrounding loop, `compute_control_result` returns an `MPCResult` carrying the control together with the solver status instead:
+
+```julia
+result = compute_control_result(mpc, [0.5, 1]; r=[0, 0])
+result.control    # the control action (the solver's last iterate on failure)
+result.exitflag   # >0 success, <0 failure
+result.status     # the exit flag as a Symbol, e.g. :Optimal or :Infeasible
+```
+
+
 gives that the optimal control action at `x=[0.5,1]` with `r=[0,0]` is `u=-1`.
 
 Still, it is hard to draw any conclusion about wheter the controller is doing what we desire based on solving just one problem. To give a better feel of the performance of the MPC, we can create a `Simulation` for it. The following code simulates the closed-loop system, starting at `x0=[0,0]`, with a reference value `r=[1,0]`, for `N=10` time steps:

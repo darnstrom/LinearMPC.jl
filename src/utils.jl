@@ -41,13 +41,50 @@ u = compute_control(mpc, x; p=[0.5 0.25 0.0 -0.25 -0.5])
 ```
 """
 function compute_control(mpc::MPC,x;r=nothing,d=nothing,uprev=nothing,p=nothing, check=true)
+    result = compute_control_result(mpc,x;r,d,uprev,p)
+    check && @assert(result.exitflag>=1)
+    return result.control
+end
+
+"""
+    MPCResult
+
+Result of [`compute_control_result`](@ref):
+* `control`   - the computed control action (the solver's last iterate when the problem could not be solved)
+* `exitflag`  - flag from the solver (>0 success, <0 failure)
+* `status`    - the `exitflag` as a `Symbol`, e.g. `:Optimal`, `:Soft_Optimal`, `:Infeasible`
+* `solver_info` - solver details (iterations, solve time, ...)
+"""
+struct MPCResult{I}
+    control::Vector{Float64}
+    exitflag::Int
+    status::Symbol
+    solver_info::I
+end
+
+"""
+    result = compute_control_result(mpc,x;r,d,uprev,p)
+
+Same as [`compute_control`](@ref), but return an [`MPCResult`](@ref) carrying the solver status
+alongside the control instead of asserting on it. Use this when a failed solve must not throw,
+e.g. inside a simulation loop:
+
+```julia
+result = compute_control_result(mpc, x; r=[1.0, 0.0])
+if result.exitflag >= 1
+    u = result.control
+else
+    @warn "MPC solve failed" result.status
+end
+```
+"""
+function compute_control_result(mpc::MPC,x;r=nothing,d=nothing,uprev=nothing,p=nothing)
     θ = form_parameter(mpc,x,r,d,uprev,p)
     udaqp,fval,exitflag,info = solve(mpc,θ)
-    check && @assert(exitflag>=1)
     # mpc.uprev = udaqp[1:mpc.model.nu]-mpc.K*θ[1:mpc.model.nx]
     mpc.uprev .= udaqp[1:mpc.model.nu]
     mul!(mpc.uprev, mpc.K, θ[1:mpc.model.nx], -1, 1)
-    return copy(mpc.uprev)
+    return MPCResult(copy(mpc.uprev), Int(exitflag), get(DAQP.flag2status, exitflag, :Unknown), info)
 end
 
 function compute_control(empc::ExplicitMPC,x;r=nothing,d=nothing,uprev=nothing,p=nothing, check=true)

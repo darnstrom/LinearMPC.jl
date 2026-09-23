@@ -15,6 +15,7 @@ export build_tree!
 
 include("utils.jl");
 export compute_control
+export compute_control_result, MPCResult
 export compute_control_trajectory
 include("setup.jl");
 export setup!
