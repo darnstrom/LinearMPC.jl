@@ -391,11 +391,14 @@ function create_constraints(mpc::MPC,F,Φ,Γ)
         W = [W;Wg];
     end
 
-    # Collapse constant term in constraints 
+    # Collapse constant term in constraints. The constant is the last column of the extended state,
+    # which precedes the columns of the generalized parameters.
     if(!iszero(mpc.model.f_offset))
-        bu += W[:,end]
-        bl += W[:,end]
-        W = W[:,1:end-1]
+        _,_,_,_,np = get_parameter_dims(mpc)
+        ic = size(W,2) - np
+        bu += W[:,ic]
+        bl += W[:,ic]
+        W = W[:,1:end .!= ic]
     end
 
     return DenseConstraints(A,bu[:],bl[:],W,issoft,isbinary,prios)
@@ -514,11 +517,13 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
     f -= fbin
     H += diagm(fbin .!= 0)
 
-    # Collapse constant term in objective
+    # Collapse constant term in objective. The constant is the last column of the extended state,
+    # which precedes the columns of the generalized parameters.
     if(!iszero(mpc.model.f_offset))
-        f += f_theta[:,end]
-        f_theta = f_theta[:,1:end-1]
-        H_theta = H_theta[1:end-1,1:end-1]
+        ic = size(f_theta,2) - npp
+        f += f_theta[:,ic]
+        f_theta = f_theta[:,1:end .!= ic]
+        H_theta = H_theta[1:end .!= ic, 1:end .!= ic]
     end
     # Contant offset in h enters similar to as reference (can be seen as reference r - h_offset)
     if(nrp > 0 && !iszero(mpc.model.h_offset))
