@@ -24,6 +24,32 @@ Random.seed!(1234)
         setup!(mpc)
         settings!(mpc,reference_tracking=false)
     end
+    @testset "Constant offset with generalized parameters" begin
+        # A nonzero f_offset must be equivalent to a measured disturbance with the constant value 1,
+        # also when generalized parameters enter the general constraints (Ap) and the linear cost (Eu)
+        F = [0.9 0.1; 0.0 0.8]; G = [0.0 1.0; 1.0 0.0]; f = [0.3, -0.2]
+        Np = 6
+        function build(offset_as_disturbance, preview)
+            model = offset_as_disturbance ? LinearMPC.Model(F, G; Gd = reshape(f, 2, 1), C = [1.0 0.0]) :
+                                            LinearMPC.Model(F, G; f_offset = f, C = [1.0 0.0])
+            mpc = LinearMPC.MPC(model; Np, Nc = Np)
+            LinearMPC.settings!(mpc; parameter_preview = preview)
+            LinearMPC.set_objective!(mpc; Q = [1.0], R = [0.1, 0.1], Eu = [0.5 0.0 -0.2; 0.0 0.3 0.1])
+            LinearMPC.set_input_bounds!(mpc; umin = [-50.0, -50.0], umax = [50.0, 50.0])
+            LinearMPC.add_constraint!(mpc; Au = [1.0 1.0], Ap = [0.0 -1.0 0.5], lb = [0.0], ub = [Inf], ks = 1:Np)
+            mpc
+        end
+        for preview in (false, true)
+            m_offset, m_dist = build(false, preview), build(true, preview)
+            for _ in 1:5
+                x = randn(2)
+                p = preview ? randn(3, Np) : randn(3)
+                u_offset = LinearMPC.compute_control(m_offset, x; r = [1.0], p)
+                u_dist = LinearMPC.compute_control(m_dist, x; r = [1.0], d = [1.0], p)
+                @test u_offset ≈ u_dist atol = 1e-6
+            end
+        end
+    end
     @testset "MPC examples " begin
         mpc,range = LinearMPC.mpc_examples("invpend");
         LinearMPC.mpc2mpqp(mpc)
