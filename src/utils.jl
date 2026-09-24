@@ -277,10 +277,18 @@ function solve(mpc::MPC,θ)
     if mpc.mpQP.has_binaries # Make sure workspace is clean
         ccall(("daqp_node_cleanup_workspace", DAQP.libdaqp),
               Cvoid,(Cint,Ptr{DAQP.Workspace}),0, mpc.opt_model.work)
+        # The cleanup removes the equality constraints from the working set as well, and daqp_bnb
+        # takes the constraints active on entry as the equality constraints of the problem: passing
+        # the senses reactivates them
+        DAQP.update(mpc.opt_model,nothing,mpc.mpQP._f,nothing,mpc.mpQP._bu,mpc.mpQP._bl,mpc.mpQP.senses)
+    else
+        DAQP.update(mpc.opt_model,nothing,mpc.mpQP._f,nothing,mpc.mpQP._bu,mpc.mpQP._bl,nothing)
     end
-    DAQP.update(mpc.opt_model,nothing,mpc.mpQP._f,nothing,mpc.mpQP._bu,mpc.mpQP._bl,nothing)
     return DAQP.solve(mpc.opt_model)
 end
+
+"Number of equality constraints of the QP `mpQP`"
+count_equality_constraints(mpQP) = count(s -> s & DAQP.EQUALITY == DAQP.EQUALITY, mpQP.senses)
 
 function range2region(range)
     lb = [range.xmin;range.rmin;range.dmin;range.umin;range.pmin]
