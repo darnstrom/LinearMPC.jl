@@ -71,7 +71,7 @@ mpc.set_objective(Q=[0.5e4, 1e-2, 1e-1], R=[10, 10, 10], Rr=0)
 mpc.settings({"reference_preview": True})
 ```
 !!! note "Binary control horizon"
-    `set_binary_controls!` takes in a third argument which specifies for how many time step the control should be binary (by default, this is equal to the control horizon.) After the binary control horizon, the control is allowed to take continuous values, which can reduce the computational time significantly, with minor effect on the solution.
+    `set_binary_controls!` takes in a third argument which specifies for how many time step the control should be binary (by default, this is equal to the control horizon.) After the binary control horizon, the control is allowed to take continuous values, which can reduce the computational time significantly, with minor effect on the solution. The third argument can also be a vector with one binary control horizon per binary control, e.g., `set_binary_controls!(mpc, [2, 3], [8, 1])`, so that a decision that must be planned further ahead (such as switching a device on or off) is binary over a longer horizon than the others.
 
 We simulate the controller with an attitude reference change to 0.5 after 5 time steps with the following code
 
