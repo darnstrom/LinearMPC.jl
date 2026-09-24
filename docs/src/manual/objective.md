@@ -36,6 +36,10 @@ A term of the form $(Cx_N-r)^T Q_f (C x_N -r)^T$ can also be added to the object
 ## Cross term 
 It is also possible to include a cross term $x_k^T S u_k$ in the objective. This term can also be set with the `set_objective!` function. By default, $S=0$.
 
+The keyword `Sd` adds a disturbance-control cross term. When $B_d=B$, setting `Sd=R` penalizes the disturbance-cancelling control rather than pulling the control towards zero. It supports [disturbance preview](disturbance_preview.md).
+
+The equivalent generalized-parameter formulation is `Eu=Sd'` with `p=d`. Using `Sd` avoids adding a duplicate copy of the disturbance to the QP parameter vector.
+
 ## Reference Preview
 By default, the reference tracking term uses a constant reference $r$ across the prediction horizon: $(Cx_{k}-r)^T Q (C x_{k}-r)$ for all $k$. 
 
