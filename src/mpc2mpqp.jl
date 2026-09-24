@@ -365,11 +365,13 @@ function create_constraints(mpc::MPC,F,Φ,Γ)
         A,bu,bl,W = create_controlbounds(mpc,F,Γ,Φ)
         issoft= falses(n);
         prios = zeros(Int,n)
-        isbinary_single = falses(mpc.model.nu) 
-        isbinary_single[mpc.binary_controls] .= true;
-        isbinary = repeat(isbinary_single,mpc.Nc)
-        if mpc.Nc_binary >= 0
-            isbinary[mpc.Nc_binary*mpc.model.nu+1:end].=false
+        isbinary = falses(mpc.model.nu*mpc.Nc)
+        for (j, id) in enumerate(mpc.binary_controls)
+            Nb = mpc.Nc_binary isa AbstractVector ? mpc.Nc_binary[j] : mpc.Nc_binary
+            Nb = Nb < 0 ? mpc.Nc : min(Nb, mpc.Nc)
+            for k in 1:Nb
+                isbinary[(k-1)*mpc.model.nu+id] = true
+            end
         end
     else
         A = zeros(0,n);
