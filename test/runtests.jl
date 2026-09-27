@@ -122,6 +122,15 @@ Random.seed!(1234)
         mpc = LinearMPC.MPC(LinearMPC.Model(fill(0.5, 1, 1), [1.0 1.0]); Np = 5)
         @test_throws ArgumentError set_binary_controls!(mpc, [1, 2], [3])
     end
+    @testset "Binary regularization only over the binary horizon" begin
+        # The control has no effect and a small cost, so its optimum is 0 wherever it is relaxed
+        mpc = LinearMPC.MPC(LinearMPC.Model(fill(0.5, 1, 1), [0.0;;]; C = [1.0;;]); Np = 6, Nc = 6)
+        set_objective!(mpc; Q = [1.0], R = [0.01])
+        set_input_bounds!(mpc; umin = [0.0], umax = [1.0])
+        set_binary_controls!(mpc, [1], 2)
+        U = LinearMPC.compute_control_trajectory(mpc, [0.0]; r = [0.0])
+        @test maximum(abs, U) < 1e-6
+    end
     @testset "Indicator + Product constraints" begin
         mpc = LinearMPC.MPC([-0.8;;], [1.0 0.0 1.6]; C=[1.0;;], Np=1, Nc=1)
         set_input_bounds!(mpc; umin=[-1.0, 0.0, -10.0], umax=[1.0, 1.0, 10.0])
