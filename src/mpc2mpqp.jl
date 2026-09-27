@@ -512,10 +512,17 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
                    zeros(npp, nth_current+npp)]
     end
 
-    # Add regularization for binary variables (won't change the solution)
-    fbin_part = zeros(mpc.model.nu)
-    fbin_part[mpc.binary_controls] = (mpc.umax[mpc.binary_controls] + mpc.umin[mpc.binary_controls])/2
-    fbin = repeat(fbin_part,Nc)
+    # Add regularization for binary variables: (u - umin)(u - umax) vanishes at the bounds, so it does not
+    # change the solution where the control is binary. It is added only over the binary horizon of each
+    # control: where the control is relaxed it would reward values between the bounds.
+    fbin = zeros(mpc.model.nu*Nc)
+    for (j, id) in enumerate(mpc.binary_controls)
+        Nb = mpc.Nc_binary isa AbstractVector ? mpc.Nc_binary[j] : mpc.Nc_binary
+        Nb = Nb < 0 ? Nc : min(Nb, Nc)
+        for k in 1:Nb
+            fbin[(k-1)*mpc.model.nu+id] = (mpc.umax[id] + mpc.umin[id])/2
+        end
+    end
     f -= fbin
     H += diagm(fbin .!= 0)
 
