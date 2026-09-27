@@ -102,6 +102,26 @@ Random.seed!(1234)
         @test norm(control.-1.7612519326) < 1e-6
     end
 
+    @testset "Binary horizon per control" begin
+        # Two controls with the same effect, whose continuous optimum is fractional in every step
+        function trajectory(Nc_binary)
+            mpc = LinearMPC.MPC(LinearMPC.Model(fill(0.5, 1, 1), [1.0 1.0]; C = [1.0;;]); Np = 5, Nc = 5)
+            set_objective!(mpc; Q = [1.0], R = [0.1, 0.2])
+            set_input_bounds!(mpc; umin = [0.0, 0.0], umax = [1.0, 1.0])
+            set_binary_controls!(mpc, [1, 2], Nc_binary)
+            reshape(LinearMPC.compute_control_trajectory(mpc, [0.0]; r = [0.7]), 2, :)
+        end
+        isbin(v) = min(abs(v), abs(v - 1)) < 1e-6
+        U = trajectory([3, 1])
+        @test all(isbin, U[1, 1:3])
+        @test isbin(U[2, 1])
+        @test !isbin(U[1, 4])
+        @test any(!isbin, U[2, 2:3])
+        @test trajectory([3, 3]) ≈ trajectory(3)
+        @test trajectory([-1, -1]) ≈ trajectory(-1)
+        mpc = LinearMPC.MPC(LinearMPC.Model(fill(0.5, 1, 1), [1.0 1.0]); Np = 5)
+        @test_throws ArgumentError set_binary_controls!(mpc, [1, 2], [3])
+    end
     @testset "Indicator + Product constraints" begin
         mpc = LinearMPC.MPC([-0.8;;], [1.0 0.0 1.6]; C=[1.0;;], Np=1, Nc=1)
         set_input_bounds!(mpc; umin=[-1.0, 0.0, -10.0], umax=[1.0, 1.0, 10.0])

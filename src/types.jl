@@ -126,7 +126,7 @@ mutable struct MPC
     umin::Vector{Float64}
     umax::Vector{Float64}
     binary_controls::Vector{Int64}
-    Nc_binary::Int
+    Nc_binary::Union{Int,Vector{Int}}
 
     # General constraints 
     constraints::Vector{Constraint}

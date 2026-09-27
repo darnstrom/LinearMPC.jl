@@ -450,12 +450,19 @@ function set_horizon!(mpc,Np, Nc = Np, Nc_binary = mpc.Nc_binary)
     mpc.mpqp_issetup = false
 end
 """
-    set_binary_controls!(mpc,bin_ids, Nc_binary=nothing)
+    set_binary_controls!(mpc,bin_ids, Nc_binary=-1)
 
 Makes the controls in bin_ids to binary controls.
-Nc_binary is the "binary control horizon" (default = control horizon) 
+Nc_binary is the "binary control horizon", the number of time steps over which the controls are binary
+(-1, the default, for the control horizon). It is either one horizon for all controls in `bin_ids` or a
+vector with one horizon per control in `bin_ids`.
 """
 function set_binary_controls!(mpc,bin_ids,Nc_binary=-1)
+    if Nc_binary isa AbstractVector
+        length(Nc_binary) == length(bin_ids) ||
+            throw(ArgumentError("Nc_binary must have one entry per binary control, got $(length(Nc_binary)) for $(length(bin_ids)) controls"))
+        Nc_binary = Int.(collect(Nc_binary))
+    end
     mpc.binary_controls = Int.(copy(bin_ids))
     mpc.Nc_binary = Nc_binary
     mpc.mpqp_issetup = false
