@@ -54,6 +54,10 @@ end
 Adds the constraints lb ≤ Ax xₖ + Au uₖ ≤ ub for the time steps k ∈ ks
 (additional terms Ar rₖ, Aw wₖ, Ad dₖ, Aup u⁻ₖ, Ap pₖ are possible)
 
+The time step `k = 1` is the current time step, with the state `x₀` and the control `u₀`, and
+`k = Np + 1` is the terminal state `x_Np`. By default, `ks = 1:Np` if the constraint involves the
+control (`Au` or `Aup` nonzero), and `ks = 2:Np+1` otherwise, since `x₀` cannot be influenced.
+
 * `soft` marks if the constraint should be softened (default false)
 * `binary` marks if either the upper or lower bounds should be enforced with equality (default false)
 * `prio` marks the relative priority of the constraint (default 0)
@@ -61,9 +65,13 @@ Adds the constraints lb ≤ Ax xₖ + Au uₖ ≤ ub for the time steps k ∈ ks
 function add_constraint!(mpc::MPC;
         Ax = nothing, Au= nothing, Ar = zeros(0,0), Aw = zeros(0,0), Ad = zeros(0,0), Aup = zeros(0,0), Ap = zeros(0,0),
         ub = zeros(0), lb = zeros(0),
-        ks = 2:mpc.Np, soft=false, binary=false, prio = 0)
+        ks = nothing, soft=false, binary=false, prio = 0)
     if isnothing(Ax) && isnothing(Au)
         return
+    end
+    if isnothing(ks)
+        involves_control = (!isnothing(Au) && !iszero(Au)) || (!isempty(Aup) && !iszero(Aup))
+        ks = involves_control ? (1:mpc.Np) : (2:mpc.Np+1)
     end
 
     # Get length of constraint
@@ -85,13 +93,14 @@ end
     set_output_bounds!(mpc;ymin,ymax,
                     ks, soft, binary,prio)
 
-Adds the constraints lb ≤ C x  ≤ ub for the time steps k ∈ ks 
+Adds the constraints lb ≤ C x  ≤ ub for the time steps k ∈ ks. By default, `ks = 2:Np+1`, which are the
+predicted states `x₁, …, x_Np` including the terminal state (see [`add_constraint!`](@ref)).
 
 * `soft` marks if the constraint should be softened (default false)
 * `binary` marks if either the upper or lower bounds should be enforced with equality (default false)
 * `prio` marks the relative priority of the constraint (default 0)
 """
-function set_output_bounds!(mpc::MPC; ymin=zeros(0), ymax=zeros(0), ks = 2:mpc.Np, soft = true, binary=false, prio = 0)
+function set_output_bounds!(mpc::MPC; ymin=zeros(0), ymax=zeros(0), ks = 2:mpc.Np+1, soft = true, binary=false, prio = 0)
     lb = !isempty(ymin) ? ymin-mpc.model.h_offset : zeros(0)
     ub = !isempty(ymax) ? ymax-mpc.model.h_offset : zeros(0)
     add_constraint!(mpc, Ax = mpc.model.C, Ad = mpc.model.Dd, lb = lb, ub = ub; ks,soft,binary,prio)

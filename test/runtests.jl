@@ -1089,6 +1089,26 @@ Random.seed!(1234)
         end
     end
 
+    @testset "Default time steps of general constraints" begin
+        F, G = [1.0 0.1; 0.0 1.0], [0.005; 0.1;;]
+        function control(; kw...)
+            mpc = LinearMPC.MPC(F, G; C=[1.0 0.0], Np=10)
+            set_objective!(mpc; Q=[1.0], R=[0.01])
+            add_constraint!(mpc; kw...)
+            compute_control(mpc, [3.0, 0.0]; r=[0.0]), mpc
+        end
+        # A constraint on the control applies to the applied control u_0
+        u, _ = control(Au=[1.0;;], lb=[-0.5], ub=[0.5])
+        @test u ≈ [-0.5] atol=1e-8
+        u, mpc = control(Au=[1.0;;], Aup=[-1.0;;], lb=[-0.2], ub=[0.2])
+        @test u ≈ [-0.2] atol=1e-8
+        # A constraint on the state only includes the terminal state
+        _, mpc = control(Ax=[1.0 0.0], lb=[-10.0], ub=[10.0])
+        @test mpc.constraints[end].ks == 2:mpc.Np+1
+        set_output_bounds!(mpc; ymin=[-10.0], ymax=[10.0])
+        @test mpc.constraints[end].ks == 2:mpc.Np+1
+    end
+    
     @testset "Terminal cost with cross term and a previous Qf" begin
         # Without constraints and with the LQR cost-to-go as terminal cost, the first control equals
         # the LQR control for any horizon

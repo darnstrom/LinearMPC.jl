@@ -46,11 +46,11 @@ mpc.add_constraint(Ax=np.array([[1, -2, 0]]), Au=np.array([[0, 1]]), lb=[-1], ub
 ```
 
 ## Constraint horizon 
-The constraints from above will be enforced for all time steps up until the prediction horizon. It is, however, possible to specify a limited subset of time steps when a constraint should be satisfied. In other words, constraints are of the form
+The constraints from above will be enforced for all time steps of the prediction horizon. It is, however, possible to specify a limited subset of time steps when a constraint should be satisfied. In other words, constraints are of the form
 ```math
-\underline{b} \leq A_x x_k + A_u u_k \leq \overline{b},\qquad  \text{for all } k\in \mathcal{K},
+\underline{b} \leq A_x x_{k-1} + A_u u_{k-1} \leq \overline{b},\qquad  \text{for all } k\in \mathcal{K},
 ```
-where the index set ${\mathcal{K}} \subseteq \{1,\dots,N_p\}$ determines for which time steps the constraint should be enforced. By default $\mathcal{K} = \{1,\dots N_p\}$. The indices for which the constraints should be enforced are specified with the optional argument `ks` to `add_constraint!`.  
+where the index set ${\mathcal{K}} \subseteq \{1,\dots,N_p+1\}$ determines for which time steps the constraint should be enforced. The index $k=1$ refers to the current time step, with the state $x_0$ and the control $u_0$, and $k = N_p+1$ refers to the terminal state $x_{N_p}$ (for which only constraints on the state are formed). By default, $\mathcal{K} = \{1,\dots, N_p\}$ for constraints that involve the control, and $\mathcal{K} = \{2,\dots, N_p+1\}$ for constraints on the state only, since $x_0$ cannot be influenced. The indices for which the constraints should be enforced are specified with the optional argument `ks` to `add_constraint!`.  
 
 For example, say that we want to add the constraint
 
