@@ -1018,6 +1018,22 @@ Random.seed!(1234)
         end
     end
 
+    @testset "Terminal cost with cross term and a previous Qf" begin
+        # Without constraints and with the LQR cost-to-go as terminal cost, the first control equals
+        # the LQR control for any horizon
+        F, G, C = [1.0 0.1; 0.0 1.0], [0.005; 0.1;;], [1.0 0.0]
+        S = [0.05; 0.02;;]
+        _, _, K, _ = LinearMPC.ared(F, G, [0.1;;], C'*C, S)
+        for Qf in (zeros(0), [5.0])
+            mpc = LinearMPC.MPC(F, G; C, Np=3)
+            mpc.settings.reference_tracking = false
+            set_objective!(mpc; Q=[1.0], R=[0.1], S, Qf)
+            set_terminal_cost!(mpc)
+            x = [1.0, -0.5]
+            @test compute_control(mpc, x) ≈ -K*x atol=1e-8
+        end
+    end
+
     @testset "Evalute running cost" begin
         # Get inverted pendulum MPC
         mpc,_= LinearMPC.mpc_examples("invpend")
