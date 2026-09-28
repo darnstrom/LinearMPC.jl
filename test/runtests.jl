@@ -485,6 +485,26 @@ Random.seed!(1234)
         @test norm(control_no_preview - control_with_preview) > 1e-1
     end
 
+    @testset "Reference Preview with terminal and reference constraints" begin
+        # With a constant reference, reference preview (condensed or not) must give the same control
+        # as the controller without preview, for a terminal state constraint and constraints with Ar
+        F, G = [1.0 0.1; 0.0 1.0], [0.005; 0.1;;]
+        function control(; preview, condensation=false)
+            mpc = LinearMPC.MPC(F, G; C=[1.0 0.0], Np=10)
+            mpc.settings.reference_preview = preview
+            mpc.settings.reference_condensation = condensation
+            set_objective!(mpc; Q=[1.0], R=[0.1])
+            set_input_bounds!(mpc; umin=[-5.0], umax=[5.0])
+            add_constraint!(mpc; Ax=[1.0 0.0], lb=[0.9], ub=[1.1], ks=[mpc.Np+1])
+            add_constraint!(mpc; Ax=[0.0 1.0], Ar=[-0.5;;], lb=[-1.0], ub=[1.0], ks=2:mpc.Np+1)
+            add_constraint!(mpc; Au=[1.0;;], Ar=[-1.0;;], lb=[-2.0], ub=[2.0], ks=1:mpc.Np)
+            compute_control(mpc, [0.0, 0.0]; r=[1.0])
+        end
+        u = control(preview=false)
+        @test control(preview=true) ≈ u atol=1e-8
+        @test control(preview=true, condensation=true) ≈ u atol=1e-6
+    end
+
     @testset "Reference Preview Simulation" begin
         # Test simulation with reference preview
         A = [1 1; 0 1] 
