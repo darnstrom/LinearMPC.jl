@@ -1461,6 +1461,26 @@ Random.seed!(1234)
         @test control_omit[] ≈ control_zero_param[]
     end
 
+    @testset "Linear control cost for the held control" begin
+        # 0.5u'Ru + eu'u equals 0.5(u-uo)'R(u-uo) up to a constant with uo = -eu/R, and Eu*p with a
+        # constant p equals eu = Eu*p, also for Nc < Np, where the last control is held
+        F, G = [1.0 0.1; 0.0 1.0], [0.005; 0.1;;]
+        R, eu = 0.3, 0.5
+        function control(; cost, Nc)
+            model = cost == :uo ? LinearMPC.Model(F, G; C=[1.0 0.0], uo=[-eu/R]) : LinearMPC.Model(F, G; C=[1.0 0.0])
+            mpc = LinearMPC.MPC(model; Np=10, Nc)
+            mpc.settings.reference_tracking = false
+            cost == :uo && set_objective!(mpc; Q=[1.0], R=[R])
+            cost == :eu && set_objective!(mpc; Q=[1.0], R=[R], eu=[eu])
+            cost == :Eu && set_objective!(mpc; Q=[1.0], R=[R], Eu=[1.0;;])
+            compute_control(mpc, [2.0, 0.0]; p = cost == :Eu ? [eu] : nothing)
+        end
+        for Nc in (10, 3)
+            @test control(; cost=:eu, Nc) ≈ control(; cost=:uo, Nc) atol=1e-8
+            @test control(; cost=:Eu, Nc) ≈ control(; cost=:uo, Nc) atol=1e-8
+        end
+    end
+
     @testset "Generalized Parameter Preview" begin
         A = [1 1; 0 1]
         B = [0; 1]

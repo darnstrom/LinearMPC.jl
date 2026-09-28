@@ -501,7 +501,10 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
     size(Eu, 2) == np_base || throw(ArgumentError("Affine objective matrix Eu must have $np_base columns"))
     length(eu) == nu || throw(ArgumentError("Affine objective vector eu must have length $nu"))
 
-    Umap = kron([Matrix{Float64}(I, Nc, Nc); zeros(N-Nc, Nc)], Matrix{Float64}(I, nu, nu))
+    # Map from the decision variables to the controls of all N steps (u_{Nc-1} is held after Nc)
+    Tu = [Matrix{Float64}(I, Nc, Nc); zeros(N-Nc, Nc)]
+    Tu[Nc+1:end, end] .= 1
+    Umap = kron(Tu, Matrix{Float64}(I, nu, nu))
     f .+= Umap' * repeat(eu, N)
 
     x_selector = [Matrix{Float64}(I, mpc.model.nx, mpc.model.nx) zeros(mpc.model.nx, nx-mpc.model.nx)]
