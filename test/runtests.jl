@@ -1311,6 +1311,31 @@ Random.seed!(1234)
         sim= Simulation(mpc;r=[0.5])
         @test abs(sim.xs[1,end] - 0.4) < 1e-6
     end
+    @testset "Constraint tightening with several constraint blocks" begin
+        # Each block must be tightened as when it is the only block, also for unsorted ks
+        F, G = [1.0 0.1; 0.0 1.0], [0.005; 0.1;;]
+        function bounds(blocks; wmin=zeros(0), wmax=zeros(0))
+            mpc = LinearMPC.MPC(F, G; C=[1.0 0.0], Np=10)
+            mpc.settings.preprocess_mpqp = false
+            for (Ax, ks) in blocks
+                add_constraint!(mpc; Ax, lb=[-1.0], ub=[1.0], ks)
+            end
+            set_x0_uncertainty!(mpc, [0.01, 0.02])
+            isempty(wmin) || set_disturbance!(mpc, wmin, wmax)
+            mpqp = LinearMPC.mpc2mpqp(mpc)
+            mpqp.bu, mpqp.bl
+        end
+        b1, b2 = ([1.0 0.0], 2:10), ([0.0 1.0], [6, 3, 8])
+        for w in ((zeros(0), zeros(0)), (-[1e-3, 1e-2], [1e-3, 1e-2]))
+            bu, bl = bounds([b1, b2]; wmin=w[1], wmax=w[2])
+            bu1, bl1 = bounds([b1]; wmin=w[1], wmax=w[2])
+            bu2, bl2 = bounds([b2]; wmin=w[1], wmax=w[2])
+            @test bu ≈ [bu1; bu2]
+            @test bl ≈ [bl1; bl2]
+            bu3, _ = bounds([([0.0 1.0], [3, 6, 8])]; wmin=w[1], wmax=w[2])
+            @test bu2 ≈ bu3[[2, 1, 3]]
+        end
+    end
     @testset "Constant offset" begin
         F,G = [1 0.1; 0 1], [0.005;0.1;;] # double integrator with Ts=0.1
         mpc= LinearMPC.MPC(F,G;Ts=0.1,Np=25,C=[1 0;], f_offset = [0.1;0.1])
