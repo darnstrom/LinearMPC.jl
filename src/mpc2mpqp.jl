@@ -295,15 +295,16 @@ function create_general_constraints(mpc::MPC,F,Γ,Φ)
         Autot = [Autot; kron(eyeU[ks,:],c.Au)]
         Axtot = [Axtot; kron(eyeX[ks,:],[Ax Ar Ad Aup Ah])]
 
-        ubtot = [ubtot;repeat(c.ub,Ni,1)]
-        lbtot = [lbtot;repeat(c.lb,Ni,1)]
-
+        ubi = repeat(c.ub,Ni,1)
+        lbi = repeat(c.lb,Ni,1)
         if(tighten_constraints)
             FK = mpc.model.F-mpc.model.G*mpc.K
             ut,lt= constraint_tightening(Ax,FK,ks,mpc.model.wmin,mpc.model.wmax,mpc.Δx0)
-            ubtot -= ut
-            lbtot += lt
+            ubi -= ut
+            lbi += lt
         end
+        ubtot = [ubtot;ubi]
+        lbtot = [lbtot;lbi]
 
         issoft = [issoft;repeat([c.soft],mi*Ni)]
         isbinary = [isbinary;repeat([c.binary],mi*Ni)]
