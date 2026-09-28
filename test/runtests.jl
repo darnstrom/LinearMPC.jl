@@ -1314,6 +1314,25 @@ Random.seed!(1234)
         @test norm(sim.xs[:,end]-xo) < 1e-4
     end
 
+    @testset "Operating point with prestabilizing feedback and control increments" begin
+        # (u-uo)'R(u-uo) equals u'Ru - 2uo'Ru up to a constant, so an input operating point must give
+        # the same control as the linear cost eu = -R uo, with and without a prestabilizing feedback
+        F, G = [1.0 0.1; 0.0 1.0], [0.005; 0.1;;]
+        xo, uo, R = [0.5, 0.0], [0.2], 0.3
+        function control(; operating_point, K, Rr)
+            model = LinearMPC.Model(F, G; C=[1.0 0.0], xo, uo = operating_point ? uo : zeros(1))
+            mpc = LinearMPC.MPC(model; Np=10)
+            mpc.settings.reference_tracking = false
+            eu = operating_point ? zeros(1) : -R*uo
+            set_objective!(mpc; Q=[1.0], R=[R], Rr=[Rr], eu)
+            K && set_prestabilizing_feedback!(mpc)
+            compute_control(mpc, [2.0, 0.0]; uprev=[0.1])
+        end
+        for K in (false, true), Rr in (0.0, 0.2)
+            @test control(; operating_point=true, K, Rr) ≈ control(; operating_point=false, K=false, Rr) atol=1e-8
+        end
+    end
+
     @testset "Generalized Parameters in Objective" begin
         A = [1 1; 0 1]
         B = [0; 1]
