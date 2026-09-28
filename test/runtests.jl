@@ -991,6 +991,30 @@ Random.seed!(1234)
         end
     end
 
+    @testset "Codegen Reference Condensation Repeated Calls" begin
+        # The condensed reference must not depend on the previous calls of the generated function
+        F, G = [1.0 0.1; 0.0 1.0], [0.005; 0.1;;]
+        mpc = LinearMPC.MPC(F, G; C=[1.0 0.0], Np=10)
+        set_input_bounds!(mpc; umin=[-5.0], umax=[5.0])
+        mpc.settings.reference_preview = true
+        mpc.settings.reference_condensation = true
+        srcdir = tempname()
+        LinearMPC.codegen(mpc; dir=srcdir)
+        if !isnothing(Sys.which("gcc"))
+            src = [f for f in readdir(srcdir) if last(f,1) == "c"]
+            testlib = "mpccondtest." * Base.Libc.Libdl.dlext
+            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+            global condtestlib = joinpath(srcdir, testlib)
+            x, r = [0.2, 0.0], ones(1, 10)
+            for _ in 1:3
+                u = zeros(1)
+                ccall(("mpc_compute_control", condtestlib), Cint,
+                      (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), u, x, r, zeros(0))
+                @test u ≈ compute_control(mpc, x; r) atol=1e-6
+            end
+        end
+    end
+
     @testset "Codegen Disturbance Preview" begin
         A = [1.0 1.0; 0.0 1.0]
         B = [0.0; 1.0]
