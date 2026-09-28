@@ -640,6 +640,30 @@ Random.seed!(1234)
         @test control_explicit ≈ control_preview atol=1e-10
     end
 
+    @testset "Disturbance Preview with control-state cross term" begin
+        # With Q = L'L, S = L' and R = I the stage cost is (u + L x)'(u + L x), so the unconstrained
+        # optimum is u = -L x for every disturbance trajectory, which requires the disturbance-preview
+        # columns of the S cross term in the condensed objective.
+        A = [1.0 0.1; 0.0 1.0]
+        B = [0.005; 0.1]
+        Gd = [0.005; 0.1]
+        L = [1.2 0.8]
+        # Qf = -I gives a zero terminal cost, since the non-positive diagonal entries are removed
+        # by the positivity filter; the disturbance-preview coupling must use the filtered weights.
+        for Qf in (1e-12*Matrix(I, 2, 2), -Matrix(1.0I, 2, 2))
+            mpc = LinearMPC.MPC(A, B; Gd, C=Matrix{Float64}(I, 2, 2), Np=7, Nc=7)
+            set_objective!(mpc; Q=L'L, R=[1.0], S=Matrix(L'), Qf)
+            mpc.settings.reference_tracking = false
+            mpc.settings.disturbance_preview = true
+            setup!(mpc)
+            x = [0.7, -0.3]
+            for d_traj in (zeros(1, 7), ones(1, 7), [zeros(1, 3) -2.0*ones(1, 4)])
+                u = compute_control(mpc, x; d=d_traj)
+                @test u ≈ -L*x atol=1e-8
+            end
+        end
+    end
+
     @testset "Disturbance Preview Simulation" begin
         A = [1.0 1.0; 0.0 1.0]
         B = [0.0; 1.0]
