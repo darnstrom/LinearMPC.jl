@@ -29,20 +29,24 @@ struct MPCWeights
     ex::Vector{Float64}
     Eu::Matrix{Float64}
     eu::Vector{Float64}
+    Sd::Matrix{Float64} # disturbance-control cross term d' Sd u (nd × nu); empty means zero
 end
+
+MPCWeights(Q,R,Rr,S,Qf,Qfx,Ex,ex,Eu,eu) =
+    MPCWeights(Q,R,Rr,S,Qf,Qfx,Ex,ex,Eu,eu,zeros(0,size(R,1)))
 
 function MPCWeights(nu,nx,nr)
     return MPCWeights(Matrix{Float64}(I,nr,nr),Matrix{Float64}(I,nu,nu),zeros(nu,nu),
-                      zeros(nx,nu),zeros(nr,nr),zeros(nx,nx),zeros(nx,0),zeros(nx),zeros(nu,0),zeros(nu))
+                      zeros(nx,nu),zeros(nr,nr),zeros(nx,nx),zeros(nx,0),zeros(nx),zeros(nu,0),zeros(nu),zeros(0,nu))
 end
 
 function MPCWeights(Q::AbstractArray,R::AbstractArray,Rr::AbstractArray=zeros(size(R));
         S = zeros(0,0), Qf = zeros(0,0), Qfx = zeros(0,0),
         Ex = zeros(size(Q, 1), 0), ex = zeros(size(Q, 1)),
-        Eu = zeros(size(R, 1), 0), eu = zeros(size(R, 1)))
+        Eu = zeros(size(R, 1), 0), eu = zeros(size(R, 1)), Sd = zeros(0,0))
     Qf = isempty(Qf) ? copy(Q) : Qf 
     return MPCWeights(matrixify(Q),matrixify(R),matrixify(Rr),float(S),matrixify(Qf),matrixify(Qfx),
-                      float(Ex),float(ex),float(Eu),float(eu))
+                      float(Ex),float(ex),float(Eu),float(eu),matrixify(Sd))
 end
 
 """
