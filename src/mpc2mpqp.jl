@@ -321,28 +321,25 @@ function create_general_constraints(mpc::MPC,F,Γ,Φ)
     # Add extra row due to reference preview
     Wr = zeros(size(W,1), 0)
     if mpc.settings.reference_tracking && mpc.settings.reference_preview
+        # The rows are those of the time steps kept above. Column block j of the preview is the
+        # reference at x_j, which is the state at time step k = j+1; the first block is also used at k = 1.
+        ny = mpc.model.ny
         Wr = zeros(0,mpc.nr)
-        if mpc.settings.reference_condensation
-            for c in mpc.constraints
-                mi = size(c.Au,1);
-                ks = [k for k in c.ks if k<= Np]
-
-                Ar = isempty(c.Ar) ? zeros(mi,mpc.nr) : c.Ar
-                Wr = [Wr;repeat(-Ar,length(ks))] 
-            end
-        else
-            eye_r = I(mpc.Np)
-            for c in mpc.constraints 
-                mi,Ni = size(c.Au,1),sum(c.ks .<=Np);
-                if isempty(c.Ar)
-                    Wrn = zeros(mi*Ni,mpc.nr)
-                else
-                    ks = [k-1 for k in c.ks if k<= Np && k>=1] # first ref is at k=2, not k=1 
-                    Wrn = [zeros(mi*(Ni-length(ks)),mpc.nr); 
-                           kron(eye_r[ks,:],-c.Ar) zeros(mi*length(ks),mpc.model.ny*(Ni-length(ks)))]
+        for c in mpc.constraints
+            mi = size(c.Au,1)
+            kmax = iszero(c.Au) ? Np+1 : Np
+            ks = [k for k in c.ks if k<= kmax]
+            Ar = isempty(c.Ar) ? zeros(mi,ny) : c.Ar
+            if mpc.settings.reference_condensation
+                Wrn = repeat(-Ar,length(ks))
+            else
+                Wrn = zeros(mi*length(ks),mpc.nr)
+                for (i,k) in enumerate(ks)
+                    j = max(k-1,1)
+                    Wrn[(i-1)*mi+1:i*mi,(j-1)*ny+1:j*ny] .= -Ar
                 end
-                Wr = [Wr; Wrn] 
             end
+            Wr = [Wr; Wrn]
         end
     end
 
