@@ -1107,6 +1107,8 @@ Random.seed!(1234)
         @test mpc.constraints[end].ks == 2:mpc.Np+1
         set_output_bounds!(mpc; ymin=[-10.0], ymax=[10.0])
         @test mpc.constraints[end].ks == 2:mpc.Np+1
+    end
+    
     @testset "Terminal cost with cross term and a previous Qf" begin
         # Without constraints and with the LQR cost-to-go as terminal cost, the first control equals
         # the LQR control for any horizon
