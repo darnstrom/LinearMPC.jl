@@ -435,16 +435,19 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
     f = zeros(size(H,1),1);
     H[end-nu+1:end,end-nu+1:end] .+= (N-Nc)*R # To accound for Nc < N...
 
-    # Compensate for nonzero operating point
+    # Compensate for nonzero operating point: linear term of (u-uo)'Ro(u-uo) with u = v - K x, where Ro is
+    # the weight on u only (R also contains the weight Rr of the control increments)
     if(!mpc.settings.reference_tracking && !iszero(mpc.model.uo))
+        Ro = mpc.weights.R
         Uo = repeat(mpc.model.uo,Nc)
-        f-=H*Uo
-        if(!iszero(mpc.K) && !iszero(R)) # contribution from prestabilizing feedback
-            KR = [-mpc.K'*R;zeros(nx-size(mpc.K,2),nu)]
+        HRo = kron(I(Nc),Ro)
+        HRo[end-nu+1:end,end-nu+1:end] .+= (N-Nc)*Ro
+        f-=HRo*Uo
+        if(!iszero(mpc.K) && !iszero(Ro)) # contribution from prestabilizing feedback
+            KR = [-mpc.K'*Ro;zeros(nx-size(mpc.K,2),nu)]
             KRtot = [kron(I(Nc),KR);zeros((N-Nc+1)*nx,Nc*nu)]
             KRtot[Nc*nx+1:N*nx,end-nu+1:end] = repeat(KR,N-Nc,1) # Due to control horizon
-            GKR= Γ'*KRtot
-            f-=(GKR+GKR')*Uo
+            f-=Γ'*KRtot*Uo
         end
     end
 
@@ -460,7 +463,14 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
     f_theta  = Γ'*CQCtot*Φ; # from x0
     H_theta  = Φ'*CQCtot*Φ
     if(!mpc.settings.reference_tracking && !iszero(mpc.model.xo))
-        f -= Γ'*CQCtot*repeat([mpc.model.xo;zeros(nx-nxp)],N+1)
+        # Center the model outputs on C xo. The other rows of the extended output (the feedback term
+        # K x of u'Ru and the control increments) are not centered.
+        yo = zeros(size(C,1))
+        yo[1:ny] = C[1:ny,1:nxp]*mpc.model.xo
+        xs = Cp'*Q*yo[pos_ids_Q]
+        xsf = Cf'*Qf*yo[pos_ids_Qf]
+        xsf[1:nxp] .+= mpc.weights.Qfx*mpc.model.xo
+        f -= Γ'*[repeat(xs,N);xsf]
     end
 
     # ==== From x' S u ====
