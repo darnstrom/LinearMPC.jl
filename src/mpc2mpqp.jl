@@ -853,7 +853,9 @@ function apply_move_block(mpc::MPC, obj::DenseObjective, c::DenseConstraints)
     for pass in 1:maximum(length,mpc.move_blocks)
         for (iu,mb) in enumerate(mpc.move_blocks)
             length(mb) < pass  && continue # No more blocks for control iu
-            block = length(mb) != pass ? mb[pass] : 1 # clipping since the end will be superfluous...
+            # The last block covers the remaining steps of the control horizon (the control is held
+            # after Nc), which depends on the blocks of the other controls through Nc
+            block = length(mb) != pass ? mb[pass] : mpc.Nc - (counter[iu]-iu)÷nu
             T[counter[iu]:nu:counter[iu]+nu*(block-1),new_id] .= 1
             counter[iu] <= nu_bounds*mpc.Nc && append!(keep,counter[iu])
             counter[iu]+=nu*block
