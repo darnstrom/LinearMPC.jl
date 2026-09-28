@@ -387,6 +387,33 @@ Random.seed!(1234)
         @test mpc.move_blocks == [[1,2,3,4],[10]]
     end
 
+    @testset "Move blocks of different lengths per control" begin
+        # Two decoupled subsystems: each control of the joint problem must equal the control of the
+        # single-input problem with the same move blocks
+        F1, G1 = [1.0 0.1; 0.0 1.0], [0.005; 0.1;;]
+        F2, G2 = [0.9;;], [0.5;;]
+        F = cat(F1, F2, dims=(1,2)); G = cat(G1, G2, dims=(1,2))
+        x0 = [1.0, -0.5, 2.0]
+        function single(F, G, x0, mb)
+            mpc = LinearMPC.MPC(F, G; Np=10)
+            set_objective!(mpc; Q=fill(1.0, size(F,1)), R=[0.1])
+            set_input_bounds!(mpc; umin=[-10.0], umax=[10.0])
+            move_block!(mpc, mb)
+            compute_control(mpc, x0; r=zeros(size(F,1)))
+        end
+        for blocks in ([[1,2,7],[4,6]], [[2,8],[1,1,1,7]], [[10],[3,7]])
+            mpc = LinearMPC.MPC(F, G; Np=10)
+            set_objective!(mpc; Q=ones(3), R=[0.1, 0.1])
+            set_input_bounds!(mpc; umin=[-10.0, -10.0], umax=[10.0, 10.0])
+            move_block!(mpc, blocks)
+            u = compute_control(mpc, x0; r=zeros(3))
+            @test u[1] ≈ single(F1, G1, x0[1:2], blocks[1])[1] atol=1e-8
+            @test u[2] ≈ single(F2, G2, x0[3:3], blocks[2])[1] atol=1e-8
+        end
+        mpc = LinearMPC.MPC(F, G; Np=10)
+        @test_throws ArgumentError move_block!(mpc, [[1,2,7]])
+    end
+
     @testset "Explicit MPC" begin
         mpc,range = LinearMPC.mpc_examples("invpend")
         empc = LinearMPC.ExplicitMPC(mpc;range)

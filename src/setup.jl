@@ -223,9 +223,9 @@ function move_block!(mpc,block::AbstractVector{<:Number})
 end
 
 function move_block!(mpc,blocks::Vector{<:AbstractVector{<:Number}})
-    length(blocks) == mpc.model.nu || ArgumentError("Need to have blocks for every control input")
+    length(blocks) == mpc.model.nu || throw(ArgumentError("Need to have blocks for every control input"))
     blocks_formated = [format_move_block(mb,mpc.Np) for mb in blocks]
-    any(isempty(mb) for mb in blocks_formated) && ArgumentError("One block is empty")
+    any(isempty(mb) for mb in blocks_formated) && throw(ArgumentError("One block is empty"))
 
     mpc.move_blocks = blocks_formated 
     mpc.Nc = maximum(sum(mb[1:end-1]) for mb in mpc.move_blocks)+1
