@@ -295,15 +295,16 @@ function create_general_constraints(mpc::MPC,F,Γ,Φ)
         Autot = [Autot; kron(eyeU[ks,:],c.Au)]
         Axtot = [Axtot; kron(eyeX[ks,:],[Ax Ar Ad Aup Ah])]
 
-        ubtot = [ubtot;repeat(c.ub,Ni,1)]
-        lbtot = [lbtot;repeat(c.lb,Ni,1)]
-
+        ubi = repeat(c.ub,Ni,1)
+        lbi = repeat(c.lb,Ni,1)
         if(tighten_constraints)
             FK = mpc.model.F-mpc.model.G*mpc.K
             ut,lt= constraint_tightening(Ax,FK,ks,mpc.model.wmin,mpc.model.wmax,mpc.Δx0)
-            ubtot -= ut
-            lbtot += lt
+            ubi -= ut
+            lbi += lt
         end
+        ubtot = [ubtot;ubi]
+        lbtot = [lbtot;lbi]
 
         issoft = [issoft;repeat([c.soft],mi*Ni)]
         isbinary = [isbinary;repeat([c.binary],mi*Ni)]
@@ -432,16 +433,19 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
     f = zeros(size(H,1),1);
     H[end-nu+1:end,end-nu+1:end] .+= (N-Nc)*R # To accound for Nc < N...
 
-    # Compensate for nonzero operating point
+    # Compensate for nonzero operating point: linear term of (u-uo)'Ro(u-uo) with u = v - K x, where Ro is
+    # the weight on u only (R also contains the weight Rr of the control increments)
     if(!mpc.settings.reference_tracking && !iszero(mpc.model.uo))
+        Ro = mpc.weights.R
         Uo = repeat(mpc.model.uo,Nc)
-        f-=H*Uo
-        if(!iszero(mpc.K) && !iszero(R)) # contribution from prestabilizing feedback
-            KR = [-mpc.K'*R;zeros(nx-size(mpc.K,2),nu)]
+        HRo = kron(I(Nc),Ro)
+        HRo[end-nu+1:end,end-nu+1:end] .+= (N-Nc)*Ro
+        f-=HRo*Uo
+        if(!iszero(mpc.K) && !iszero(Ro)) # contribution from prestabilizing feedback
+            KR = [-mpc.K'*Ro;zeros(nx-size(mpc.K,2),nu)]
             KRtot = [kron(I(Nc),KR);zeros((N-Nc+1)*nx,Nc*nu)]
             KRtot[Nc*nx+1:N*nx,end-nu+1:end] = repeat(KR,N-Nc,1) # Due to control horizon
-            GKR= Γ'*KRtot
-            f-=(GKR+GKR')*Uo
+            f-=Γ'*KRtot*Uo
         end
     end
 
@@ -457,7 +461,14 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
     f_theta  = Γ'*CQCtot*Φ; # from x0
     H_theta  = Φ'*CQCtot*Φ
     if(!mpc.settings.reference_tracking && !iszero(mpc.model.xo))
-        f -= Γ'*CQCtot*repeat([mpc.model.xo;zeros(nx-nxp)],N+1)
+        # Center the model outputs on C xo. The other rows of the extended output (the feedback term
+        # K x of u'Ru and the control increments) are not centered.
+        yo = zeros(size(C,1))
+        yo[1:ny] = C[1:ny,1:nxp]*mpc.model.xo
+        xs = Cp'*Q*yo[pos_ids_Q]
+        xsf = Cf'*Qf*yo[pos_ids_Qf]
+        xsf[1:nxp] .+= mpc.weights.Qfx*mpc.model.xo
+        f -= Γ'*[repeat(xs,N);xsf]
     end
 
     # ==== From x' S u ====
@@ -490,7 +501,10 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
     size(Eu, 2) == np_base || throw(ArgumentError("Affine objective matrix Eu must have $np_base columns"))
     length(eu) == nu || throw(ArgumentError("Affine objective vector eu must have length $nu"))
 
-    Umap = kron([Matrix{Float64}(I, Nc, Nc); zeros(N-Nc, Nc)], Matrix{Float64}(I, nu, nu))
+    # Map from the decision variables to the controls of all N steps (u_{Nc-1} is held after Nc)
+    Tu = [Matrix{Float64}(I, Nc, Nc); zeros(N-Nc, Nc)]
+    Tu[Nc+1:end, end] .= 1
+    Umap = kron(Tu, Matrix{Float64}(I, nu, nu))
     f .+= Umap' * repeat(eu, N)
 
     x_selector = [Matrix{Float64}(I, mpc.model.nx, mpc.model.nx) zeros(mpc.model.nx, nx-mpc.model.nx)]
@@ -850,7 +864,9 @@ function apply_move_block(mpc::MPC, obj::DenseObjective, c::DenseConstraints)
     for pass in 1:maximum(length,mpc.move_blocks)
         for (iu,mb) in enumerate(mpc.move_blocks)
             length(mb) < pass  && continue # No more blocks for control iu
-            block = length(mb) != pass ? mb[pass] : 1 # clipping since the end will be superfluous...
+            # The last block covers the remaining steps of the control horizon (the control is held
+            # after Nc), which depends on the blocks of the other controls through Nc
+            block = length(mb) != pass ? mb[pass] : mpc.Nc - (counter[iu]-iu)÷nu
             T[counter[iu]:nu:counter[iu]+nu*(block-1),new_id] .= 1
             counter[iu] <= nu_bounds*mpc.Nc && append!(keep,counter[iu])
             counter[iu]+=nu*block

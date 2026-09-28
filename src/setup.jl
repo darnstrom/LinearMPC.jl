@@ -175,15 +175,19 @@ using MatrixEquations
 """
     set_terminal_cost!(mpc)
 
-Sets the terminal cost `Qf` to the inifinite horizon LQR cost 
+Sets the terminal cost to the infinite horizon LQR cost of the stage cost defined by `Q`, `R` and the
+cross term `S`. The terminal state weight `Qfx` is set to the solution of the Riccati equation, and the
+terminal output weight `Qf` is set to zero, so that the terminal cost equals the LQR cost-to-go.
 """
 function set_terminal_cost!(mpc)
     if mpc.settings.reference_tracking
         @warn "LQR cost not valid for reference tracking problems. Instead, use set_objective! to set Qf"
         return false
     end
-    Qfx, _, _ = ared(mpc.model.F, mpc.model.G, mpc.weights.R, mpc.model.C'*mpc.weights.Q*mpc.model.C) # solve Riccati
+    S = isempty(mpc.weights.S) ? zeros(mpc.model.nx, mpc.model.nu) : mpc.weights.S
+    Qfx, _, _ = ared(mpc.model.F, mpc.model.G, mpc.weights.R, mpc.model.C'*mpc.weights.Q*mpc.model.C, S) # solve Riccati
     mpc.weights.Qfx .= Qfx
+    mpc.weights.Qf .= 0
     mpc.mpqp_issetup = false
 end
 
@@ -232,9 +236,9 @@ function move_block!(mpc,block::AbstractVector{<:Number})
 end
 
 function move_block!(mpc,blocks::Vector{<:AbstractVector{<:Number}})
-    length(blocks) == mpc.model.nu || ArgumentError("Need to have blocks for every control input")
+    length(blocks) == mpc.model.nu || throw(ArgumentError("Need to have blocks for every control input"))
     blocks_formated = [format_move_block(mb,mpc.Np) for mb in blocks]
-    any(isempty(mb) for mb in blocks_formated) && ArgumentError("One block is empty")
+    any(isempty(mb) for mb in blocks_formated) && throw(ArgumentError("One block is empty"))
 
     mpc.move_blocks = blocks_formated 
     mpc.Nc = maximum(sum(mb[1:end-1]) for mb in mpc.move_blocks)+1

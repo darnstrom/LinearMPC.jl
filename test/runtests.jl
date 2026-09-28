@@ -387,6 +387,33 @@ Random.seed!(1234)
         @test mpc.move_blocks == [[1,2,3,4],[10]]
     end
 
+    @testset "Move blocks of different lengths per control" begin
+        # Two decoupled subsystems: each control of the joint problem must equal the control of the
+        # single-input problem with the same move blocks
+        F1, G1 = [1.0 0.1; 0.0 1.0], [0.005; 0.1;;]
+        F2, G2 = [0.9;;], [0.5;;]
+        F = cat(F1, F2, dims=(1,2)); G = cat(G1, G2, dims=(1,2))
+        x0 = [1.0, -0.5, 2.0]
+        function single(F, G, x0, mb)
+            mpc = LinearMPC.MPC(F, G; Np=10)
+            set_objective!(mpc; Q=fill(1.0, size(F,1)), R=[0.1])
+            set_input_bounds!(mpc; umin=[-10.0], umax=[10.0])
+            move_block!(mpc, mb)
+            compute_control(mpc, x0; r=zeros(size(F,1)))
+        end
+        for blocks in ([[1,2,7],[4,6]], [[2,8],[1,1,1,7]], [[10],[3,7]])
+            mpc = LinearMPC.MPC(F, G; Np=10)
+            set_objective!(mpc; Q=ones(3), R=[0.1, 0.1])
+            set_input_bounds!(mpc; umin=[-10.0, -10.0], umax=[10.0, 10.0])
+            move_block!(mpc, blocks)
+            u = compute_control(mpc, x0; r=zeros(3))
+            @test u[1] ≈ single(F1, G1, x0[1:2], blocks[1])[1] atol=1e-8
+            @test u[2] ≈ single(F2, G2, x0[3:3], blocks[2])[1] atol=1e-8
+        end
+        mpc = LinearMPC.MPC(F, G; Np=10)
+        @test_throws ArgumentError move_block!(mpc, [[1,2,7]])
+    end
+
     @testset "Explicit MPC" begin
         mpc,range = LinearMPC.mpc_examples("invpend")
         empc = LinearMPC.ExplicitMPC(mpc;range)
@@ -964,6 +991,30 @@ Random.seed!(1234)
         end
     end
 
+    @testset "Codegen Reference Condensation Repeated Calls" begin
+        # The condensed reference must not depend on the previous calls of the generated function
+        F, G = [1.0 0.1; 0.0 1.0], [0.005; 0.1;;]
+        mpc = LinearMPC.MPC(F, G; C=[1.0 0.0], Np=10)
+        set_input_bounds!(mpc; umin=[-5.0], umax=[5.0])
+        mpc.settings.reference_preview = true
+        mpc.settings.reference_condensation = true
+        srcdir = tempname()
+        LinearMPC.codegen(mpc; dir=srcdir)
+        if !isnothing(Sys.which("gcc"))
+            src = [f for f in readdir(srcdir) if last(f,1) == "c"]
+            testlib = "mpccondtest." * Base.Libc.Libdl.dlext
+            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+            global condtestlib = joinpath(srcdir, testlib)
+            x, r = [0.2, 0.0], ones(1, 10)
+            for _ in 1:3
+                u = zeros(1)
+                ccall(("mpc_compute_control", condtestlib), Cint,
+                      (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), u, x, r, zeros(0))
+                @test u ≈ compute_control(mpc, x; r) atol=1e-6
+            end
+        end
+    end
+
     @testset "Codegen Disturbance Preview" begin
         A = [1.0 1.0; 0.0 1.0]
         B = [0.0; 1.0]
@@ -1056,6 +1107,20 @@ Random.seed!(1234)
         @test mpc.constraints[end].ks == 2:mpc.Np+1
         set_output_bounds!(mpc; ymin=[-10.0], ymax=[10.0])
         @test mpc.constraints[end].ks == 2:mpc.Np+1
+    @testset "Terminal cost with cross term and a previous Qf" begin
+        # Without constraints and with the LQR cost-to-go as terminal cost, the first control equals
+        # the LQR control for any horizon
+        F, G, C = [1.0 0.1; 0.0 1.0], [0.005; 0.1;;], [1.0 0.0]
+        S = [0.05; 0.02;;]
+        _, _, K, _ = LinearMPC.ared(F, G, [0.1;;], C'*C, S)
+        for Qf in (zeros(0), [5.0])
+            mpc = LinearMPC.MPC(F, G; C, Np=3)
+            mpc.settings.reference_tracking = false
+            set_objective!(mpc; Q=[1.0], R=[0.1], S, Qf)
+            set_terminal_cost!(mpc)
+            x = [1.0, -0.5]
+            @test compute_control(mpc, x) ≈ -K*x atol=1e-8
+        end
     end
 
     @testset "Evalute running cost" begin
@@ -1324,6 +1389,31 @@ Random.seed!(1234)
         sim= Simulation(mpc;r=[0.5])
         @test abs(sim.xs[1,end] - 0.4) < 1e-6
     end
+    @testset "Constraint tightening with several constraint blocks" begin
+        # Each block must be tightened as when it is the only block, also for unsorted ks
+        F, G = [1.0 0.1; 0.0 1.0], [0.005; 0.1;;]
+        function bounds(blocks; wmin=zeros(0), wmax=zeros(0))
+            mpc = LinearMPC.MPC(F, G; C=[1.0 0.0], Np=10)
+            mpc.settings.preprocess_mpqp = false
+            for (Ax, ks) in blocks
+                add_constraint!(mpc; Ax, lb=[-1.0], ub=[1.0], ks)
+            end
+            set_x0_uncertainty!(mpc, [0.01, 0.02])
+            isempty(wmin) || set_disturbance!(mpc, wmin, wmax)
+            mpqp = LinearMPC.mpc2mpqp(mpc)
+            mpqp.bu, mpqp.bl
+        end
+        b1, b2 = ([1.0 0.0], 2:10), ([0.0 1.0], [6, 3, 8])
+        for w in ((zeros(0), zeros(0)), (-[1e-3, 1e-2], [1e-3, 1e-2]))
+            bu, bl = bounds([b1, b2]; wmin=w[1], wmax=w[2])
+            bu1, bl1 = bounds([b1]; wmin=w[1], wmax=w[2])
+            bu2, bl2 = bounds([b2]; wmin=w[1], wmax=w[2])
+            @test bu ≈ [bu1; bu2]
+            @test bl ≈ [bl1; bl2]
+            bu3, _ = bounds([([0.0 1.0], [3, 6, 8])]; wmin=w[1], wmax=w[2])
+            @test bu2 ≈ bu3[[2, 1, 3]]
+        end
+    end
     @testset "Constant offset" begin
         F,G = [1 0.1; 0 1], [0.005;0.1;;] # double integrator with Ts=0.1
         mpc= LinearMPC.MPC(F,G;Ts=0.1,Np=25,C=[1 0;], f_offset = [0.1;0.1])
@@ -1352,6 +1442,25 @@ Random.seed!(1234)
         set_operating_point!(mpc;xo=xo,uo=uo)
         sim = LinearMPC.Simulation(mpc;x0 = [0.1;0], N = 100)
         @test norm(sim.xs[:,end]-xo) < 1e-4
+    end
+
+    @testset "Operating point with prestabilizing feedback and control increments" begin
+        # (u-uo)'R(u-uo) equals u'Ru - 2uo'Ru up to a constant, so an input operating point must give
+        # the same control as the linear cost eu = -R uo, with and without a prestabilizing feedback
+        F, G = [1.0 0.1; 0.0 1.0], [0.005; 0.1;;]
+        xo, uo, R = [0.5, 0.0], [0.2], 0.3
+        function control(; operating_point, K, Rr)
+            model = LinearMPC.Model(F, G; C=[1.0 0.0], xo, uo = operating_point ? uo : zeros(1))
+            mpc = LinearMPC.MPC(model; Np=10)
+            mpc.settings.reference_tracking = false
+            eu = operating_point ? zeros(1) : -R*uo
+            set_objective!(mpc; Q=[1.0], R=[R], Rr=[Rr], eu)
+            K && set_prestabilizing_feedback!(mpc)
+            compute_control(mpc, [2.0, 0.0]; uprev=[0.1])
+        end
+        for K in (false, true), Rr in (0.0, 0.2)
+            @test control(; operating_point=true, K, Rr) ≈ control(; operating_point=false, K=false, Rr) atol=1e-8
+        end
     end
 
     @testset "Generalized Parameters in Objective" begin
@@ -1384,6 +1493,26 @@ Random.seed!(1234)
 
         control_omit = compute_control(mpc, [-1.0, 0.0]; r=[0.0, 0.0])
         @test control_omit[] ≈ control_zero_param[]
+    end
+
+    @testset "Linear control cost for the held control" begin
+        # 0.5u'Ru + eu'u equals 0.5(u-uo)'R(u-uo) up to a constant with uo = -eu/R, and Eu*p with a
+        # constant p equals eu = Eu*p, also for Nc < Np, where the last control is held
+        F, G = [1.0 0.1; 0.0 1.0], [0.005; 0.1;;]
+        R, eu = 0.3, 0.5
+        function control(; cost, Nc)
+            model = cost == :uo ? LinearMPC.Model(F, G; C=[1.0 0.0], uo=[-eu/R]) : LinearMPC.Model(F, G; C=[1.0 0.0])
+            mpc = LinearMPC.MPC(model; Np=10, Nc)
+            mpc.settings.reference_tracking = false
+            cost == :uo && set_objective!(mpc; Q=[1.0], R=[R])
+            cost == :eu && set_objective!(mpc; Q=[1.0], R=[R], eu=[eu])
+            cost == :Eu && set_objective!(mpc; Q=[1.0], R=[R], Eu=[1.0;;])
+            compute_control(mpc, [2.0, 0.0]; p = cost == :Eu ? [eu] : nothing)
+        end
+        for Nc in (10, 3)
+            @test control(; cost=:eu, Nc) ≈ control(; cost=:uo, Nc) atol=1e-8
+            @test control(; cost=:Eu, Nc) ≈ control(; cost=:uo, Nc) atol=1e-8
+        end
     end
 
     @testset "Generalized Parameter Preview" begin
