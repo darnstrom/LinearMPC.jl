@@ -239,7 +239,7 @@ end
 function qp2ldp(mpQP,n_control;normalize=true)
     n = size(mpQP.H,1)
     nb = length(mpQP.bu)-size(mpQP.A,1)
-    R = cholesky((mpQP.H+mpQP.H')/2)
+    R = hessian_factor(mpQP)
     Mext = [Matrix{Float64}(I(n)[1:nb,:]); mpQP.A]/R.U
     Vth = (R.L)\mpQP.f_theta
     v = R.L\mpQP.f#  usually zero since mpQP.f = 0 for MPC
@@ -266,10 +266,10 @@ function qp2ldp(mpQP,n_control;normalize=true)
             uscaling[1:n_control]  .= norm_factors[1:n_control]
         end
     end
-    Uth_offset = -mpQP.H\mpQP.f_theta;
+    Uth_offset = -(R\mpQP.f_theta);
     Uth_offset = Uth_offset[1:n_control,:];
 
-    u_offset = -mpQP.H\mpQP.f;
+    u_offset = -(R\mpQP.f);
     u_offset = u_offset[1:n_control]
     # col major => row major
     Dth = Dth'[:,:]

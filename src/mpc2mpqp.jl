@@ -3,7 +3,9 @@ struct DenseObjective
     f::Vector{Float64}
     f_theta::Matrix{Float64}
     H_theta::Matrix{Float64}
+    Hsqrt::Union{Nothing,Matrix{Float64}} # H = Hsqrt'*Hsqrt (nothing if not formed)
 end
+DenseObjective(H,f,f_theta,H_theta) = DenseObjective(H,f,f_theta,H_theta,nothing)
 
 struct DenseConstraints
     A::Matrix{Float64}
@@ -554,7 +556,51 @@ function create_objective(mpc::MPC,F,Φ,Γ,C,w::MPCWeights,nu::Int,nx::Int)
         end
     end
 
-    return DenseObjective((H+H')/2,f[:],f_theta,H_theta)
+    # Square root of H, from the same stage weights (checked against H, which it has to reproduce)
+    Hsqrt = hessian_sqrt(Γ,Cp'*Q*Cp,CQCf,S,R,fbin,N,Nc,nu,nx)
+    if !isnothing(Hsqrt) && norm(Hsqrt'*Hsqrt-H) > 1e-8*max(norm(H),1)
+        Hsqrt = nothing
+    end
+    return DenseObjective((H+H')/2,f[:],f_theta,H_theta,Hsqrt)
+end
+
+# Square root W^(1/2) of a positive semi-definite W (with its zero eigenvalues dropped),
+# or nothing if W is indefinite
+function psd_sqrt(W; tol=1e-12)
+    λ,V = eigen(Symmetric((W+W')/2))
+    λmax = max(maximum(λ),0.0)
+    minimum(λ) < -tol*max(λmax,1.0) && return nothing
+    keep = λ .> tol*λmax
+    return Diagonal(sqrt.(λ[keep]))*V[:,keep]'
+end
+
+# Stacked matrix Hs with H = Hs'*Hs: the stage costs [x_k;u_k]'[CQC S;S' R][x_k;u_k] with
+# x_k = Γ_k U (u_k = u_{Nc-1} after the control horizon), the terminal cost x_N'CQCf x_N and the
+# regularization of the binary controls. Instead of forming H, its factor can then be computed by a
+# QR factorization of Hs, which squares neither its condition number nor its rounding errors.
+# TODO: The (small) stage weights CQC = Cp'*Q*Cp, CQCf and [CQC S;S' R] are still formed before their
+# square roots are taken (psd_sqrt). Their square roots are known from the structure of the cost
+# (see create_extended_cost), e.g., Q^(1/2)*Cp and R^(1/2) if S = 0, R^(1/2)*[-K I] for a
+# prestabilizing feedback, and Rr^(1/2)*(u_k - u_{k-1}) for Δu, which would avoid these squares too
+# (relevant for an ill-conditioned C or stage weights).
+function hessian_sqrt(Γ,CQC,CQCf,S,R,fbin,N,Nc,nu,nx)
+    nU = size(Γ,2)
+    Sfull = iszero(S) ? zeros(nx,nu) : S
+    Ws = psd_sqrt([CQC Sfull; Sfull' R]); isnothing(Ws) && return nothing
+    Wf = psd_sqrt(CQCf); isnothing(Wf) && return nothing
+    rows = Matrix{Float64}[]
+    for k in 0:N-1
+        Ek = zeros(nu,nU)
+        j = min(k,Nc-1)
+        Ek[:,j*nu+1:(j+1)*nu] = Matrix{Float64}(I,nu,nu)
+        push!(rows, Ws*[Γ[k*nx+1:(k+1)*nx,:]; Ek])
+    end
+    push!(rows, Wf*Γ[N*nx+1:(N+1)*nx,:])
+    for i in findall(fbin .!= 0)
+        e = zeros(1,nU); e[i] = 1
+        push!(rows, e)
+    end
+    return reduce(vcat,rows)
 end
 
 function ref_preview_cost(mpc,Γ,C_full,Q_full,Qf_full,H,f_theta,H_theta)
@@ -873,7 +919,8 @@ function apply_move_block(mpc::MPC, obj::DenseObjective, c::DenseConstraints)
             new_id +=1
         end
     end
-    new_obj = DenseObjective(T'*obj.H*T, T'*obj.f, T'*obj.f_theta, obj.H_theta)
+    new_obj = DenseObjective(T'*obj.H*T, T'*obj.f, T'*obj.f_theta, obj.H_theta,
+                             isnothing(obj.Hsqrt) ? nothing : obj.Hsqrt*T)
 
     append!(keep,nu_bounds*mpc.Nc+1:length(c.bu))
 
@@ -919,10 +966,12 @@ function MPQP(obj::DenseObjective, c::DenseConstraints)
     isempty(break_points) || push!(break_points,length(c.prio))
 
     m,n = length(c.bu),length(obj.f)
+    is_symmetric = isapprox(obj.H, obj.H', rtol=1e-9)
     mpQP = MPQP(obj.H,obj.f,obj.H_theta,obj.f_theta,
                 c.A,c.bu,c.bl,c.W, senses, c.prio, break_points,
-                any(c.isbinary),isapprox(obj.H, obj.H', rtol=1e-9),
-                zeros(m),ones(m),-ones(m),zeros(n))
+                any(c.isbinary),is_symmetric,
+                zeros(m),ones(m),-ones(m),zeros(n),
+                is_symmetric ? factor_from_sqrt(obj.Hsqrt,n) : nothing)
 end
 function create_variational_objective(mpc::MPC,Φ,Γ,Cp)
     N,Nc = mpc.Np,mpc.Nc
@@ -974,4 +1023,19 @@ function create_variational_objective(mpc::MPC,Φ,Γ,Cp)
         f_theta[Uids[i],:] .+= Stot'*Φ
     end
     return DenseObjective(H, zeros(nU),f_theta,zeros(0,0))
+end
+
+# Cholesky factor of the Hessian of mpQP (from its square root if formed, see factor_from_sqrt)
+hessian_factor(mpQP) = (hasproperty(mpQP,:Hchol) && !isnothing(mpQP.Hchol)) ? mpQP.Hchol :
+    cholesky((mpQP.H+mpQP.H')/2)
+
+# Cholesky factor of H = Hs'*Hs from a QR factorization of Hs (nothing if Hs is not given or
+# the factor is (numerically) singular, for which H is used instead)
+function factor_from_sqrt(Hs,n)
+    (isnothing(Hs) || size(Hs,1) < n) && return nothing
+    Rf = Matrix(qr(Hs).R)
+    Rf = Diagonal(sign.(diag(Rf)))*Rf # Positive diagonal
+    d = diag(Rf)
+    (any(iszero,d) || minimum(d) < 1e-10*max(maximum(d),1.0)) && return nothing
+    return Cholesky(Rf,'U',0)
 end

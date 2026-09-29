@@ -8,7 +8,8 @@ function setup!(mpc::MPC)
     mpc.mpqp_issetup = false  # Reset so get_parameter_dims computes from settings
     mpc.mpQP = mpc2mpqp(mpc)
     bu,bl = mpc.mpQP.bu[:],mpc.mpQP.bl[:]
-    setup_flag,_ = DAQP.setup(mpc.opt_model, mpc.mpQP.H,mpc.mpQP.f[:],mpc.mpQP.A,bu,bl,
+    H = isnothing(mpc.mpQP.Hchol) ? mpc.mpQP.H : mpc.mpQP.Hchol # (A factor is more accurate)
+    setup_flag,_ = DAQP.setup(mpc.opt_model, H,mpc.mpQP.f[:],mpc.mpQP.A,bu,bl,
                               mpc.mpQP.senses;break_points=mpc.mpQP.break_points, 
                               is_avi=!mpc.mpQP.is_symmetric)
     if(setup_flag < 0)

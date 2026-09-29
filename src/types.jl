@@ -95,13 +95,20 @@ struct MPQP
     _bu::Vector{Float64}
     _bl::Vector{Float64}
     _f::Vector{Float64}
+
+    # Cholesky factor of H from a square root of the objective (nothing if not formed)
+    Hchol::Union{Nothing,Cholesky{Float64,Matrix{Float64}}}
 end
+
+# (Without a factor of H)
+MPQP(H,f,H_theta,f_theta,A,bu,bl,W,senses,prio,break_points,has_binaries,is_symmetric,_bth,_bu,_bl,_f) =
+    MPQP(H,f,H_theta,f_theta,A,bu,bl,W,senses,prio,break_points,has_binaries,is_symmetric,_bth,_bu,_bl,_f,nothing)
 
 function MPQP()
     return MPQP(Matrix{Float64}(undef, 0, 0),Float64[],Matrix{Float64}(undef, 0, 0), Matrix{Float64}(undef, 0, 0),
                 Matrix{Float64}(undef, 0, 0),Float64[],Float64[], Matrix{Float64}(undef, 0, 0),
                 Cint[],Cint[],Cint[],false,true,
-                Float64[],Float64[],Float64[],Float64[])
+                Float64[],Float64[],Float64[],Float64[],nothing)
 end
 
 # MPC controller

@@ -343,7 +343,7 @@ function make_singlesided(mpQP;single_soft=false, soft_weight=1e6)
     if(any(soft_mask))
         soft_ids = findall(soft_mask)
 
-        R = cholesky((mpQP.H+mpQP.H')/2)
+        R = hessian_factor(mpQP)
         Ms= A0[soft_mask,:]/R.U
         norm_factors = [norm(view(Ms,i,:),2) for i in 1:size(Ms,1)]
 
