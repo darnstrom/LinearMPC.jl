@@ -37,14 +37,12 @@ int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_
     mpc_update_qp(mpc_parameter,daqp_work.dupper,daqp_work.dlower);
     daqp_work.reuse_ind=0; // clear workspace cache
 
-#if !defined(DAQP_BNB) && !defined(DAQP_WARMSTART)
+#if !defined(DAQP_WARMSTART)
     daqp_deactivate_constraints(&daqp_work);
     reset_daqp_workspace(&daqp_work);
 #endif
+// Ensure equalities are activiated on the first round
 #if N_EQUALITY > 0
-    // The working set is empty here on the first call (the workspace is rendered without one) and,
-    // without a warm start, on every call, while the solvers take the equality constraints only from
-    // the working set: activate them (daqp_bnb keeps them in the working set for the following calls)
     if(daqp_work.n_active == 0) daqp_activate_constraints(&daqp_work);
 #endif
 #ifdef DAQP_BNB
