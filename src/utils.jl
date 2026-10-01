@@ -274,10 +274,6 @@ function solve(mpc::MPC,θ)
     mpc.mpQP._bl .= mpc.mpQP.bl .+ mpc.mpQP._bth
     mul!(mpc.mpQP._f, mpc.mpQP.f_theta, θ)
     mpc.mpQP._f .+= mpc.mpQP.f
-    if mpc.mpQP.has_binaries # Make sure workspace is clean
-        ccall(("daqp_node_cleanup_workspace", DAQP.libdaqp),
-              Cvoid,(Cint,Ptr{DAQP.Workspace}),0, mpc.opt_model.work)
-    end
     DAQP.update(mpc.opt_model,nothing,mpc.mpQP._f,nothing,mpc.mpQP._bu,mpc.mpQP._bl,nothing)
     return DAQP.solve(mpc.opt_model)
 end

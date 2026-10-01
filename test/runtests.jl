@@ -319,7 +319,9 @@ Random.seed!(1234)
             @test all(flags_cold .== 1)
             @test all(flags_warm .== 1)
             # ...and warm starting must not change the solution.
-            @test all(abs.(Us_cold - Us_warm) .< 1e-9)
+            for i in 1:length(Us_cold) 
+                @test abs(Us_cold[i]-Us_warm[i]) < 1e-9
+            end
             # The active set is non-trivial, otherwise there is nothing to reuse.
             @test sum(iters_cold) > 2 * nsteps
             # Reusing the previous active set should cut the iteration count.

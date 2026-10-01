@@ -38,7 +38,6 @@ int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_
     daqp_work.reuse_ind=0; // clear workspace cache
 
 #ifdef DAQP_BNB
-    daqp_node_cleanup_workspace(0, &daqp_work);
     int exitflag = daqp_bnb(&daqp_work);
 #else
 #ifndef DAQP_WARMSTART
