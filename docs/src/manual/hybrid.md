@@ -106,6 +106,15 @@ plt.show()
 
 We can see that the attitude is able to reach the setpoint of 0.5. Moreover, we also we that $u_2$ and $u_3$ only take values in $\{0,1\}$ and $\{-1,0\}$, respectively.
 
+## Warm start of the branch and bound
+In a closed loop, the solution of the previous time step, shifted by one step, is often close to the solution of the current time step. With the setting `bnb_warm_start`, this is used as a candidate for the branch and bound:
+
+```julia
+mpc.settings.bnb_warm_start = true
+```
+
+Each binary control takes the value of the previous solution one step later (rounded to the nearest bound), and the QP with the binary controls fixed at these values gives the continuous controls of the candidate. The branch and bound then only accepts solutions with a lower objective than the candidate, which allows it to discard more nodes. If it finds no such solution, or if it reaches a time limit (`DAQP.settings(mpc.opt_model, Dict(:time_limit => t))`), the candidate is returned. The field `source` of the information returned by `LinearMPC.solve` tells whether the solution comes from the branch and bound (`:search`) or is the candidate (`:candidate`). The stored solution is discarded with `reset_bnb_warm_start!`, by `setup!` and at the start of a `Simulation`.
+
 ## Mixed logical dynamical systems
 
 In **LinearMPC.jl**, MLD models can be built with an augmented

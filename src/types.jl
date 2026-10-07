@@ -57,6 +57,7 @@ MPC controller settings.
 - `disturbance_preview::Bool = false`: Enable time-varying disturbance preview
 - `parameter_preview::Bool = false`: Enable time-varying generalized-parameter preview
 - `soft_weight::Float64 = 1e6`: Penalty weight for soft constraint violations
+- `bnb_warm_start::Bool = false`: Warm start the branch and bound of problems with binary controls from the solution of the previous call (see [`solve`](@ref LinearMPC.solve))
 - `solver_opts::Dict{Symbol,Any}`: Additional solver options
 """
 Base.@kwdef mutable struct MPCSettings
@@ -68,6 +69,7 @@ Base.@kwdef mutable struct MPCSettings
     disturbance_preview::Bool = false
     parameter_preview::Bool = false
     soft_weight::Float64= 1e6
+    bnb_warm_start::Bool = false
     solver_opts::Dict{Symbol,Any} = Dict()
     traj2setpoint::Matrix{Float64} = zeros(0,0)
 end
@@ -110,6 +112,15 @@ function MPQP()
                 Cint[],Cint[],Cint[],false,true,
                 Float64[],Float64[],Float64[],Float64[],nothing)
 end
+
+# Data of the warm start of the branch and bound (see solve_bnb). The binary decision variables are those
+# whose simple bounds have the binary sense.
+mutable struct BnBData
+    binary_ids::Vector{Int} # Binary decision variables
+    shift_ids::Vector{Int}  # The decision variable that holds the control of each binary decision variable one step later
+    xprev::Vector{Float64}  # Solution of the previous call (empty if there is none)
+end
+BnBData() = BnBData(Int[],Int[],Float64[])
 
 # MPC controller
 mutable struct MPC
@@ -164,6 +175,9 @@ mutable struct MPC
     Δx0::Vector{Float64}
 
     objectives::Vector{<:Tuple{MPCWeights,Vector{Int}}}
+
+    # Warm start of the branch and bound
+    bnb::BnBData
 end
 
 function MPC(model::Model;Np=10,Nc=Np)
@@ -173,7 +187,8 @@ function MPC(model::Model;Np=10,Nc=Np)
         Constraint[],MPCSettings(),MPQP(),
         DAQP.Model(),zeros(model.nu,model.nx),Vector{Int}[],false, zeros(model.nu),zeros(0,0),
         nothing,zeros(model.nx),
-        Tuple{MPCWeights,Vector{Int}}[])
+        Tuple{MPCWeights,Vector{Int}}[],
+        BnBData())
 end
 
 function MPC(F,G;Gd=zeros(0,0), C=zeros(0,0), Dd= zeros(0,0), f_offset=zeros(0), Ts= -1.0, Np=10, Nc = Np)

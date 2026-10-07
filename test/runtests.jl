@@ -1178,6 +1178,77 @@ Random.seed!(1234)
 
     end
 
+    @testset "Warm start of the branch and bound" begin
+        function satellite(warm; abs_subopt=0.0)
+            mpc,_ = LinearMPC.mpc_examples("satellite",20)
+            move_block!(mpc,[1,1,2,4,12])
+            mpc.settings.bnb_warm_start = warm
+            setup!(mpc)
+            LinearMPC.DAQP.settings(mpc.opt_model,Dict(:abs_subopt=>abs_subopt))
+            return mpc
+        end
+        θk(mpc,x,r) = LinearMPC.form_parameter(mpc,x,r,nothing,nothing,nothing)
+        isbin(v) = min(abs(v),abs(abs(v)-1)) < 1e-6
+
+        # Two binary controls in five move blocks; the binary decision variable of a block takes the
+        # value of its control at the first step of the next block
+        mpc = satellite(true)
+        @test mpc.bnb.binary_ids == [2,3,5,6,8,9,11,12,14,15]
+        @test mpc.bnb.shift_ids == [5,6,8,9,8,9,11,12,14,15]
+
+        # Closed loop: the objective equals that of the exact solve (abs_subopt = 0), or is within
+        # abs_subopt of it
+        for abs_subopt in (0.0, 5.0)
+            mpc,mpc_exact = satellite(true;abs_subopt),satellite(false)
+            x,sources = zeros(3),Symbol[]
+            for k in 1:30
+                θ = θk(mpc,x,[k <= 5 ? 0.0 : 0.5,0,0])
+                z,fval,flag,info = LinearMPC.solve(mpc,θ)
+                z_exact,fval_exact,flag_exact,info_exact = LinearMPC.solve(mpc_exact,θ)
+                @test flag >= 1 && flag_exact >= 1
+                @test fval <= fval_exact + abs_subopt + 1e-6*(1+abs(fval_exact))
+                abs_subopt == 0 && @test fval ≈ fval_exact atol=1e-6*(1+abs(fval_exact))
+                @test all(isbin, z[mpc.bnb.binary_ids])
+                # Without the setting, the branch and bound of DAQP is called directly
+                @test !haskey(info_exact,:source) && isempty(mpc_exact.bnb.xprev)
+                # The candidate is returned when the search finds no better solution
+                info.source == :candidate && @test fval == info.candidate_fval
+                push!(sources,info.source)
+                x = mpc.model.F*x + mpc.model.G*z[1:3]
+            end
+            @test sources[1] == :search # no previous solution
+            @test :candidate in sources
+            @test LinearMPC.DAQP.settings(mpc.opt_model).fval_bound ≥ 1e20 # cutoff restored
+        end
+
+        # With a time limit that has passed, the candidate is returned
+        mpc = satellite(true)
+        x = zeros(3)
+        z,_,_,_ = LinearMPC.solve(mpc,θk(mpc,x,[0.5,0,0]))
+        LinearMPC.DAQP.settings(mpc.opt_model,Dict(:time_limit=>1e-9))
+        x = mpc.model.F*x + mpc.model.G*z[1:3]
+        z,fval,flag,info = LinearMPC.solve(mpc,θk(mpc,x,[0.5,0,0]))
+        @test flag >= 1 && info.source == :candidate
+        @test all(isbin, z[mpc.bnb.binary_ids])
+        @test LinearMPC.DAQP.settings(mpc.opt_model).time_limit == 1e-9 # time limit restored
+
+        # The stored solution is discarded by reset_bnb_warm_start! and setup!
+        @test !isempty(mpc.bnb.xprev)
+        reset_bnb_warm_start!(mpc)
+        @test isempty(mpc.bnb.xprev)
+        LinearMPC.DAQP.settings(mpc.opt_model,Dict(:time_limit=>0.0))
+        LinearMPC.solve(mpc,θk(mpc,x,[0.5,0,0]))
+        setup!(mpc)
+        @test isempty(mpc.bnb.xprev)
+
+        # Without binary controls, the setting has no effect
+        mpc,_ = LinearMPC.mpc_examples("invpend")
+        mpc.settings.bnb_warm_start = true
+        setup!(mpc)
+        @test isempty(mpc.bnb.binary_ids)
+        @test compute_control(mpc,[5.0;5;0;0]) ≈ [1.7612519326] atol=1e-6
+    end
+
     @testset "Robust MPC" begin
         using LinearMPC
         F = [1.0 1 ;0 1]

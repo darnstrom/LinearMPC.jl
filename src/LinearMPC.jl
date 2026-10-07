@@ -16,6 +16,8 @@ export build_tree!
 include("utils.jl");
 export compute_control
 export compute_control_trajectory
+include("bnb.jl");
+export reset_bnb_warm_start!
 include("setup.jl");
 export setup!
 export set_bounds!,add_constraint!,set_input_bounds!, set_output_bounds!

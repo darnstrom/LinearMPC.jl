@@ -898,7 +898,9 @@ function remove_duplicate(c::DenseConstraints)
     return DenseConstraints(A_new,bu_new,bl_new,W_new,issoft_new,isbinary_new,prio_new)
 end
 
-function apply_move_block(mpc::MPC, obj::DenseObjective, c::DenseConstraints)
+# The matrix T of the move blocks, such that the controls over the control horizon are T times the
+# decision variables, and the rows of the control bounds that are kept (the first step of each block)
+function move_block_matrix(mpc::MPC)
     nu = mpc.model.nu
     nu_bounds = length(mpc.umax)
 
@@ -919,6 +921,12 @@ function apply_move_block(mpc::MPC, obj::DenseObjective, c::DenseConstraints)
             new_id +=1
         end
     end
+    return T, keep
+end
+
+function apply_move_block(mpc::MPC, obj::DenseObjective, c::DenseConstraints)
+    nu_bounds = length(mpc.umax)
+    T,keep = move_block_matrix(mpc)
     new_obj = DenseObjective(T'*obj.H*T, T'*obj.f, T'*obj.f_theta, obj.H_theta,
                              isnothing(obj.Hsqrt) ? nothing : obj.Hsqrt*T)
 

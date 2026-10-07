@@ -90,6 +90,7 @@ function Simulation(mpc::Union{MPC,ExplicitMPC}, scenario::Scenario)
 
     # Start the simulation
     has_observer && set_state!(mpc,scenario.x0)
+    mpc isa MPC && reset_bnb_warm_start!(mpc)
     for k = 1:N
         xs[:,k], yms[:,k] = x, get_measurement(x,ds[:,k])
         ys[:,k] = has_observer ? mpc.state_observer.C*x + mpc.state_observer.Dd*ds[:,k] : yms[:,k]
