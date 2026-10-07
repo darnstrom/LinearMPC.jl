@@ -115,6 +115,8 @@ mpc.settings.bnb_warm_start = true
 
 Each binary control takes the value of the previous solution one step later (rounded to the nearest bound), and the QP with the binary controls fixed at these values gives the continuous controls of the candidate. The branch and bound then only accepts solutions with a lower objective than the candidate, which allows it to discard more nodes. If it finds no such solution, or if it reaches a time limit (`DAQP.settings(mpc.opt_model, Dict(:time_limit => t))`), the candidate is returned. The field `source` of the information returned by `LinearMPC.solve` tells whether the solution comes from the branch and bound (`:search`) or is the candidate (`:candidate`). The stored solution is discarded with `reset_bnb_warm_start!`, by `setup!` and at the start of a `Simulation`.
 
+The generated C code contains the same warm start if the setting is enabled when `codegen` is called (or with the keyword argument `codegen(mpc; bnb_warm_start=true)`). The generated header then defines `DAQP_BNB_WARMSTART`, `mpc_compute_control` stores the solution for the next call, the variable `bnb_candidate_used` tells whether the latest call returned the candidate, and the function `mpc_reset_bnb_warm_start()` discards the stored solution. The time limit of DAQP does not apply to the generated code.
+
 ## Mixed logical dynamical systems
 
 In **LinearMPC.jl**, MLD models can be built with an augmented

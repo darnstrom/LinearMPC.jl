@@ -16,7 +16,27 @@ function control_codegen_definition(mpc, name="mpc_compute_control")
     return "int $name(" * join(args, ", ") * ")"
 end
 
-function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=nothing, src=true, float_type="double",warm_start=false)
+"""
+    codegen(mpc; fname="mpc_workspace", dir="codegen", opt_settings=nothing, src=true,
+            float_type="double", warm_start=false, bnb_warm_start=mpc.settings.bnb_warm_start)
+
+Generates C code for `mpc` in the directory `dir`. The control is computed by the C function
+`mpc_compute_control`.
+
+* `opt_settings`: settings of DAQP in the generated code (a `Dict`, see `DAQP.settings`)
+* `src`: copy the source files of DAQP into `dir`
+* `float_type`: `"double"` or `"float"`
+* `warm_start`: start the solve of a QP from the working set of the previous call (problems without
+  binary controls)
+* `bnb_warm_start`: warm start of the branch and bound of problems with binary controls from the
+  solution of the previous call, as in [`solve`](@ref LinearMPC.solve) with the setting
+  `bnb_warm_start`. The generated header then defines `DAQP_BNB_WARMSTART`, the variable
+  `bnb_candidate_used` tells whether the latest call of `mpc_compute_control` returned the
+  candidate, and `mpc_reset_bnb_warm_start()` discards the stored solution. It has no effect
+  without binary controls or with a prestabilizing feedback.
+"""
+function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=nothing, src=true, float_type="double",warm_start=false,
+                 bnb_warm_start=mpc.settings.bnb_warm_start)
     length(dir)==0 && (dir="codegen")
     dir[end] != '/' && (dir*="/") ## Make sure it is a correct directory path
     ## Generate mpQP
@@ -54,7 +74,7 @@ function codegen(mpc::MPC;fname="mpc_workspace", dir="codegen", opt_settings=not
     rm(joinpath(dir,"mpc_old.h"))
 
     # Append MPC-specific data/functions
-    render_mpc_workspace(mpc;fname,dir,float_type, fmode="a",warm_start)
+    render_mpc_workspace(mpc;fname,dir,float_type, fmode="a",warm_start,bnb_warm_start)
 
     @info "Generated code for MPC controller" dir fname
 end
@@ -136,8 +156,11 @@ $(control_codegen_definition(mpc)){
     @info "Generated code for EMPC controller" dir fname
 end
 
-function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_type="double", warm_start=false)
+function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_type="double", warm_start=false, bnb_warm_start=false)
     mpLDP = qp2ldp(mpc.mpQP,mpc.model.nu) 
+    # Without binary decision variables (also with a prestabilizing feedback, for which the control
+    # bounds are general constraints), the code is the same as without the warm start
+    bnb_warm_start = bnb_warm_start && !isempty(mpc.bnb.binary_ids)
     mpLDP.Uth_offset[1:mpc.model.nx,:] -= mpc.K' #Account for prestabilizing feedback
     # Get dimensions
     nth,m = size(mpLDP.Dth)
@@ -168,6 +191,11 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
         @printf(fh, "#define DAQP_WARMSTART %d\n\n", 1)
     end
 
+    if bnb_warm_start
+        @printf(fh, "#define DAQP_BNB_WARMSTART %d\n", 1)
+        @printf(fh, "#define N_BNB_BINARY %d\n\n", length(mpc.bnb.binary_ids))
+    end
+
     @printf(fh, "extern c_float mpc_parameter[%d];\n", nth);
 
     @printf(fh, "extern c_float Dth[%d];\n", nth*m);
@@ -194,6 +222,8 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
         write_float_array(fsrc,mpc.traj2setpoint[:],"traj2setpoint");
     end
 
+    bnb_warm_start && render_bnb_warm_start_data(mpc,mpLDP,fh,fsrc)
+
     fmpc_h = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_update_qp.h"), "r");
     write(fh, read(fmpc_h))
     close(fmpc_h)
@@ -203,8 +233,24 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
     write(fsrc, read(fmpc_para))
     close(fmpc_para)
     fmpc_src = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_update_qp.c"), "r");
-    write(fsrc, read(fmpc_src))
+    qp_src = read(fmpc_src, String)
     close(fmpc_src)
+    if bnb_warm_start
+        # mpc_compute_control calls the branch and bound with the warm start (mpc_bnb_warm_start.c)
+        # instead of daqp_bnb, so that the code is unchanged without the warm start
+        bnb_call = "daqp_bnb(&daqp_work)"
+        count(bnb_call, qp_src) == 1 || error("mpc_update_qp.c is expected to call $bnb_call once")
+        qp_src = replace(qp_src, bnb_call => "mpc_bnb_warm_start()")
+    end
+    write(fsrc, qp_src)
+    if bnb_warm_start
+        fbnb_h = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_bnb_warm_start.h"), "r");
+        write(fh, read(fbnb_h))
+        close(fbnb_h)
+        fbnb_src = open(joinpath(dirname(pathof(LinearMPC)),"../codegen/mpc_bnb_warm_start.c"), "r");
+        write(fsrc, read(fbnb_src))
+        close(fbnb_src)
+    end
 
     if !isnothing(mpc.state_observer)
         mpc.settings.disturbance_preview && throw(ArgumentError("Codegeneration not supported for disturbance preview with a state observer."))
@@ -215,6 +261,33 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
 
     close(fh)
     close(fsrc)
+end
+
+# Data of the warm start of the branch and bound in the generated code (see mpc_bnb_warm_start.c):
+# for each binary decision variable, its index and bounds, and the index, the upper bound and the
+# normalization of the LDP row of the decision variable that holds its control one step later
+function render_bnb_warm_start_data(mpc,mpLDP,fh,fsrc)
+    mpQP = mpc.mpQP
+    binary_ids,shift_ids = mpc.bnb.binary_ids,mpc.bnb.shift_ids
+    # The stored solution and the bounds of the candidate are in QP variables, which requires
+    # bounds that do not depend on the parameter (as for the control bounds without a
+    # prestabilizing feedback)
+    if !iszero(mpQP.W[union(binary_ids,shift_ids),:])
+        throw(ArgumentError("The warm start of the branch and bound in the generated code requires bounds of the binary controls that do not depend on the parameter"))
+    end
+    nb = length(binary_ids)
+    for (type,name) in (("int","bnb_binary_ids"),("int","bnb_shift_ids"),
+                        ("c_float","bnb_lower"),("c_float","bnb_upper"),
+                        ("c_float","bnb_shift_upper"),("c_float","bnb_shift_scaling"))
+        @printf(fh, "extern %s %s[%d];\n", type, name, nb);
+    end
+    @printf(fh, "\n");
+    write_int_array(fsrc,binary_ids.-1,"bnb_binary_ids");
+    write_int_array(fsrc,shift_ids.-1,"bnb_shift_ids");
+    write_float_array(fsrc,mpQP.bl[binary_ids],"bnb_lower");
+    write_float_array(fsrc,mpQP.bu[binary_ids],"bnb_upper");
+    write_float_array(fsrc,mpQP.bu[shift_ids],"bnb_shift_upper");
+    write_float_array(fsrc,mpLDP.scaling[shift_ids],"bnb_shift_scaling");
 end
 
 function write_float_array(f,a::Vector{<:Real},name::String)
@@ -249,9 +322,9 @@ function qp2ldp(mpQP,n_control;normalize=true)
     dl = mpQP.bl[:]+Δd
 
     uscaling = ones(n_control)
+    norm_factors = ones(size(Mext,1))
     if(normalize)
         # Normalize
-        norm_factors = zeros(size(Mext,1))
         for i in 1:size(Mext,1)
             norm_factor = norm(Mext[i,:],2)
             norm_factors[i] = norm_factor
@@ -276,5 +349,5 @@ function qp2ldp(mpQP,n_control;normalize=true)
     Uth_offset = Uth_offset'[:,:]
 
     return (M=Mext[n+1:end,:], Dth=Dth, du=du, dl=dl, 
-            Uth_offset=Uth_offset, u_offset = u_offset, uscaling=uscaling)
+            Uth_offset=Uth_offset, u_offset = u_offset, uscaling=uscaling, scaling=norm_factors)
 end
