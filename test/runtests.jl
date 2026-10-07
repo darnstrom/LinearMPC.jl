@@ -330,6 +330,53 @@ Random.seed!(1234)
         end
     end
 
+    @testset "Codegen diagonal Hessian" begin
+        # Without dynamics (F = 0), the condensed Hessian is diagonal and DAQP stores the
+        # diagonal factor RinvD instead of Rinv. The generated code is compared with
+        # compute_control with an active input bound, for diagonal and non-diagonal Hessians,
+        # with and without a binary control.
+        function diag_mpc(F, binary)
+            nx = binary ? 2 : 1 # binary: x₁⁺ = Fx₁ + b with b ∈ {0, 1}, x₂⁺ = Fx₂ + s
+            model = LinearMPC.Model(F*Matrix(1.0I,nx,nx), Matrix(1.0I,nx,nx); C = Matrix(1.0I,nx,nx))
+            mpc = LinearMPC.MPC(model; Np = 3, Nc = 3)
+            set_objective!(mpc; Q = fill(100.0,nx), R = fill(0.01,nx))
+            if binary
+                set_input_bounds!(mpc; umin = [0.0, -0.5], umax = [1.0, 0.5])
+                set_binary_controls!(mpc, [1])
+            else
+                set_input_bounds!(mpc; umin = [-0.5], umax = [0.5])
+            end
+            return mpc
+        end
+        for F in (0.0, 0.5), binary in (false, true)
+            x0, r = binary ? (zeros(2), [0.7, 1.0]) : (zeros(1), [1.0])
+            u_julia = compute_control(diag_mpc(F, binary), x0; r)
+            @test u_julia[end] ≈ 0.5 # The upper bound of the last control is active
+            binary && @test u_julia[1] ≈ 1.0
+
+            mpc = diag_mpc(F, binary)
+            srcdir = tempname()
+            LinearMPC.codegen(mpc; dir = srcdir)
+            @test LinearMPC.daqp_diagonal_factor(mpc.opt_model) == iszero(F)
+            if(!isnothing(Sys.which("gcc")))
+                src = [f for f in readdir(srcdir) if last(f,1) == "c"]
+                testlib = "mpctest."* Base.Libc.Libdl.dlext
+                run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+                # The libraries export the same symbols, so they are resolved per handle
+                h = Base.Libc.Libdl.dlopen(joinpath(srcdir, testlib),
+                                           Base.Libc.Libdl.RTLD_LOCAL | Base.Libc.Libdl.RTLD_NOW)
+                compute = Base.Libc.Libdl.dlsym(h, :mpc_compute_control)
+                for call in 1:2 # Repeated calls reuse the workspace
+                    u = zeros(mpc.model.nu)
+                    exitflag = ccall(compute, Cint, (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}),
+                                     u, x0, r, zeros(0))
+                    @test exitflag == 1
+                    @test u ≈ u_julia atol=1e-6
+                end
+            end
+        end
+    end
+
     @testset "Prestabilizing feedback" begin
         A,B = [0 1; 10 0], [0;1]
         mpc = LinearMPC.MPC(A,B,0.1;Np = 30)
