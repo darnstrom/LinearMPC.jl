@@ -285,9 +285,30 @@ guarantee as without the warm start (the settings `abs_subopt` and `rel_subopt` 
 candidate is solved without it and the branch and bound gets the remaining time. A candidate returned
 at the time limit is integer feasible but carries no suboptimality guarantee.
 
+# Deferred binary controls
+With groups of deferred binary controls (see [`defer_binary_controls!`](@ref)):
+1. The branch and bound runs with the deferred binary controls relaxed. If it completes, its objective
+   is a lower bound of the objective of the problem (within the suboptimality tolerances of DAQP).
+2. With the other binary decision variables fixed at their values in this relaxed solution, the
+   deferred binary decision variables are resolved: the candidates of each group (integer neighbours,
+   sum-up rounding or enumeration) are combined, at most `deferred_max_combinations` of them (a setting).
+   Each combination is a QP with all binary decision variables fixed.
+3. If the best of these exceeds the objective of the relaxed search by at most the setting
+   `deferred_tol`, it is returned. Otherwise, the branch and bound runs without relaxation with the best
+   of these as cutoff, and its solution is returned, or the best of these if it finds no better solution.
+
+Combined with the warm start, the deferred binary decision variables of the candidate are resolved as
+in step 2 instead of being taken from the previous solution, and the relaxed search uses the objective
+of the candidate as cutoff: if it finds no better solution, the candidate is returned. The time limit
+applies to the whole call as with the warm start (the QPs of step 2 are solved without it); if the
+relaxed search reaches it, its objective is not a lower bound, and the best solution found is returned
+without the full branch and bound.
+
 In addition to the fields of the information of DAQP, `info` then contains `source` (`:search` if the
-solution comes from the branch and bound and `:candidate` if it is the candidate), `candidate_fval`
-(the objective of the candidate, `NaN` if there is none) and `qp_count` (the number of solves of DAQP).
+solution comes from the branch and bound, `:candidate` if it is the candidate of the warm start and
+`:deferred` if it is a solution with resolved deferred binary controls), `candidate_fval` (the
+objective of the candidate, `NaN` if there is none), `relaxed_fval` (the objective of the solution of
+the relaxed search, `NaN` if there is none) and `qp_count` (the number of solves of DAQP).
 """
 function solve(mpc::MPC,θ)
     mpc.mpqp_issetup || setup!(mpc) # ensure mpQP is setup
