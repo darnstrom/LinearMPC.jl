@@ -102,7 +102,8 @@ function bnb_qp!(mpc::MPC, s::BnBSolve; fix_ids=Int[], fix_vals=Float64[], cutof
     DAQP.update(model,nothing,mpQP._f,nothing,mpQP._bu,mpQP._bl,nothing)
     x,fval,flag,info = DAQP.solve(model)
     isempty(changes) || DAQP.settings(model,s.settings)
-    flag >= 1 && (s.offset = 0.5*unsafe_load(model.work).fval-fval)
+    # The internal objective is info.fval_ldp if DAQPBase provides it, and otherwise read from the workspace
+    flag >= 1 && (s.offset = (haskey(info,:fval_ldp) ? info.fval_ldp : 0.5*unsafe_load(model.work).fval)-fval)
     s.iterations += info.iterations
     s.nodes += info.nodes
     s.qp_count += 1
