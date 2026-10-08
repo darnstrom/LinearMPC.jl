@@ -264,10 +264,58 @@ end
     xdaqp,fval,exitflag,info = solve(mpc,θ)
 
 Solve corresponding QP given the parameter θ
+
+# Warm start of the branch and bound
+With the setting `bnb_warm_start = true` and binary controls, the solution of the previous call provides
+a candidate for the branch and bound:
+1. Each binary decision variable takes the value of its control one step later in the previous solution
+   (the control of the last step is repeated), rounded to the nearest bound. With move blocks, this is
+   the value at the first step of its block.
+2. The QP with all binary decision variables fixed at these values gives the continuous decision
+   variables of the candidate. If it is infeasible, there is no candidate.
+3. The branch and bound runs with a cutoff (the setting `fval_bound` of DAQP) derived from the objective
+   J of the candidate: it only accepts solutions whose objective is lower than J by more than
+   `abs_subopt + rel_subopt*|J|` (settings of DAQP), as if it had found the candidate itself. A margin
+   of `1e-9*(1+|J|)` excludes the candidate itself with `abs_subopt = rel_subopt = 0`.
+4. If the branch and bound finds such a solution, it is returned. Otherwise (no such solution exists
+   or the time limit is reached), the candidate is returned with its exit flag.
+
+The solution is stored for the next call if its exit flag is positive; [`reset_bnb_warm_start!`](@ref)
+discards it. If the branch and bound completes, the returned solution has the same suboptimality
+guarantee as without the warm start (the settings `abs_subopt` and `rel_subopt` of DAQP). A time limit
+(`DAQP.settings(mpc.opt_model, Dict(:time_limit => t))`) applies to the whole call: the QP of the
+candidate is solved without it and the branch and bound gets the remaining time. A candidate returned
+at the time limit is integer feasible but carries no suboptimality guarantee.
+
+# Deferred binary controls
+With groups of deferred binary controls (see [`defer_binary_controls!`](@ref)):
+1. The branch and bound runs with the deferred binary controls relaxed. If it completes, its objective
+   is a lower bound of the objective of the problem (within the suboptimality tolerances of DAQP).
+2. With the other binary decision variables fixed at their values in this relaxed solution, the
+   deferred binary decision variables are resolved: the candidates of each group (integer neighbours,
+   sum-up rounding or enumeration) are combined, at most `deferred_max_combinations` of them (a setting).
+   Each combination is a QP with all binary decision variables fixed.
+3. If the best of these exceeds the objective of the relaxed search by at most the setting
+   `deferred_tol`, it is returned. Otherwise, the branch and bound runs without relaxation with the best
+   of these as cutoff, and its solution is returned, or the best of these if it finds no better solution.
+
+Combined with the warm start, the deferred binary decision variables of the candidate are resolved as
+in step 2 instead of being taken from the previous solution, and the relaxed search uses the objective
+of the candidate as cutoff: if it finds no better solution, the candidate is returned. The time limit
+applies to the whole call as with the warm start (the QPs of step 2 are solved without it); if the
+relaxed search reaches it, its objective is not a lower bound, and the best solution found is returned
+without the full branch and bound.
+
+In addition to the fields of the information of DAQP, `info` then contains `source` (`:search` if the
+solution comes from the branch and bound, `:candidate` if it is the candidate of the warm start and
+`:deferred` if it is a solution with resolved deferred binary controls), `candidate_fval` (the
+objective of the candidate, `NaN` if there is none), `relaxed_fval` (the objective of the solution of
+the relaxed search, `NaN` if there is none) and `qp_count` (the number of solves of DAQP).
 """
 function solve(mpc::MPC,θ)
     mpc.mpqp_issetup || setup!(mpc) # ensure mpQP is setup
     mpc.mpqp_issetup || throw("Could not setup optimization problem")
+    use_bnb_strategy(mpc) && return solve_bnb(mpc,θ)
 
     mul!(mpc.mpQP._bth, mpc.mpQP.W, θ)
     mpc.mpQP._bu .= mpc.mpQP.bu .+ mpc.mpQP._bth

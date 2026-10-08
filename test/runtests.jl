@@ -1178,6 +1178,544 @@ Random.seed!(1234)
 
     end
 
+    @testset "Warm start of the branch and bound" begin
+        function satellite(warm; abs_subopt=0.0)
+            mpc,_ = LinearMPC.mpc_examples("satellite",20)
+            move_block!(mpc,[1,1,2,4,12])
+            mpc.settings.bnb_warm_start = warm
+            setup!(mpc)
+            LinearMPC.DAQP.settings(mpc.opt_model,Dict(:abs_subopt=>abs_subopt))
+            return mpc
+        end
+        θk(mpc,x,r) = LinearMPC.form_parameter(mpc,x,r,nothing,nothing,nothing)
+        isbin(v) = min(abs(v),abs(abs(v)-1)) < 1e-6
+
+        # Two binary controls in five move blocks; the binary decision variable of a block takes the
+        # value of its control at the first step of the next block
+        mpc = satellite(true)
+        @test mpc.bnb.binary_ids == [2,3,5,6,8,9,11,12,14,15]
+        @test mpc.bnb.shift_ids == [5,6,8,9,8,9,11,12,14,15]
+
+        # Closed loop: the objective equals that of the exact solve (abs_subopt = 0), or is within
+        # abs_subopt of it
+        for abs_subopt in (0.0, 5.0)
+            mpc,mpc_exact = satellite(true;abs_subopt),satellite(false)
+            x,sources = zeros(3),Symbol[]
+            for k in 1:30
+                θ = θk(mpc,x,[k <= 5 ? 0.0 : 0.5,0,0])
+                z,fval,flag,info = LinearMPC.solve(mpc,θ)
+                z_exact,fval_exact,flag_exact,info_exact = LinearMPC.solve(mpc_exact,θ)
+                @test flag >= 1 && flag_exact >= 1
+                @test fval <= fval_exact + abs_subopt + 1e-6*(1+abs(fval_exact))
+                abs_subopt == 0 && @test fval ≈ fval_exact atol=1e-6*(1+abs(fval_exact))
+                @test all(isbin, z[mpc.bnb.binary_ids])
+                # Without the setting, the branch and bound of DAQP is called directly
+                @test !haskey(info_exact,:source) && isempty(mpc_exact.bnb.xprev)
+                # The candidate is returned when the search finds no better solution
+                info.source == :candidate && @test fval == info.candidate_fval
+                # A solution of the search improves on the candidate by more than abs_subopt
+                info.source == :search && !isnan(info.candidate_fval) &&
+                    @test fval < info.candidate_fval - abs_subopt + 1e-6*(1+abs(fval_exact))
+                push!(sources,info.source)
+                x = mpc.model.F*x + mpc.model.G*z[1:3]
+            end
+            @test sources[1] == :search # no previous solution
+            @test :candidate in sources
+            @test LinearMPC.DAQP.settings(mpc.opt_model).fval_bound ≥ 1e20 # cutoff restored
+        end
+
+        # With a time limit that has passed, the candidate is returned
+        mpc = satellite(true)
+        x = zeros(3)
+        z,_,_,_ = LinearMPC.solve(mpc,θk(mpc,x,[0.5,0,0]))
+        LinearMPC.DAQP.settings(mpc.opt_model,Dict(:time_limit=>1e-9))
+        x = mpc.model.F*x + mpc.model.G*z[1:3]
+        z,fval,flag,info = LinearMPC.solve(mpc,θk(mpc,x,[0.5,0,0]))
+        @test flag >= 1 && info.source == :candidate
+        @test all(isbin, z[mpc.bnb.binary_ids])
+        @test LinearMPC.DAQP.settings(mpc.opt_model).time_limit == 1e-9 # time limit restored
+
+        # The stored solution is discarded by reset_bnb_warm_start! and setup!
+        @test !isempty(mpc.bnb.xprev)
+        reset_bnb_warm_start!(mpc)
+        @test isempty(mpc.bnb.xprev)
+        LinearMPC.DAQP.settings(mpc.opt_model,Dict(:time_limit=>0.0))
+        LinearMPC.solve(mpc,θk(mpc,x,[0.5,0,0]))
+        setup!(mpc)
+        @test isempty(mpc.bnb.xprev)
+
+        # Without binary controls, the setting has no effect
+        mpc,_ = LinearMPC.mpc_examples("invpend")
+        mpc.settings.bnb_warm_start = true
+        setup!(mpc)
+        @test isempty(mpc.bnb.binary_ids)
+        @test compute_control(mpc,[5.0;5;0;0]) ≈ [1.7612519326] atol=1e-6
+    end
+
+    @testset "Codegen warm start of the branch and bound" begin
+        # (The MPC of the helper has its own name, since an assignment to mpc would assign the
+        # variable mpc of the testset)
+        function satellite(warm; abs_subopt=0.0, Nc_binary=-1)
+            sat,_ = LinearMPC.mpc_examples("satellite",20)
+            set_binary_controls!(sat,[2,3],Nc_binary)
+            move_block!(sat,[1,1,2,4,12])
+            sat.settings.bnb_warm_start = warm
+            setup!(sat)
+            LinearMPC.DAQP.settings(sat.opt_model,Dict(:abs_subopt=>abs_subopt))
+            return sat
+        end
+        θk(mpc,x,r) = LinearMPC.form_parameter(mpc,x,r,nothing,nothing,nothing)
+        isbin(v) = min(abs(v),abs(abs(v)-1)) < 1e-6
+        files(dir) = Dict(f => read(joinpath(dir,f),String) for f in readdir(dir))
+
+        # Shim that exposes the LDP solution of the returned solution and the cutoff of DAQP
+        shim = """
+        #include "mpc_workspace.h"
+        void mpctest_u(double* u){ int i; for(i = 0; i < NX; i++) u[i] = daqp_work.u[i]; }
+        double mpctest_fval_bound(void){ return daqp_settings.fval_bound; }
+        """
+        function build_lib(mpc; kwargs...)
+            srcdir = tempname()
+            LinearMPC.codegen(mpc; dir=srcdir, kwargs...)
+            open(joinpath(srcdir, "shim.c"), "w") do f; write(f, shim); end
+            src = [f for f in readdir(srcdir) if last(f, 1) == "c"]
+            testlib = "mpctest." * Base.Libc.Libdl.dlext
+            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+            # Resolved per handle, since the libraries of the test export the same symbols
+            h = Base.Libc.Libdl.dlopen(joinpath(srcdir, testlib),
+                                       Base.Libc.Libdl.RTLD_LOCAL | Base.Libc.Libdl.RTLD_NOW)
+            return s -> Base.Libc.Libdl.dlsym(h, s)
+        end
+        compute!(sym,u,x,r,d) = ccall(sym(:mpc_compute_control), Cint,
+                                      (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), u, x, r, d)
+        cint(sym,s) = unsafe_load(Ptr{Cint}(sym(s)))
+
+        # The generated code follows the setting bnb_warm_start, unless the keyword overrides it
+        mpc = satellite(true)
+        on, off, plain = tempname(), tempname(), tempname()
+        LinearMPC.codegen(mpc; dir=on)
+        LinearMPC.codegen(mpc; dir=off, bnb_warm_start=false)
+        LinearMPC.codegen(satellite(false); dir=plain)
+        @test occursin("#define DAQP_BNB_WARMSTART", read(joinpath(on,"mpc_workspace.h"),String))
+        @test occursin("int exitflag = mpc_bnb_warm_start();", read(joinpath(on,"mpc_workspace.c"),String))
+        # Without the warm start, the code is unchanged: the template of mpc_compute_control is
+        # included as it is, and the setting has no effect
+        @test !occursin("DAQP_BNB_WARMSTART", read(joinpath(off,"mpc_workspace.h"),String))
+        template = read(joinpath(pkgdir(LinearMPC),"codegen","mpc_update_qp.c"),String)
+        @test occursin(template, read(joinpath(off,"mpc_workspace.c"),String))
+        @test files(off) == files(plain)
+
+        # With a prestabilizing feedback, the control bounds are general constraints, and there is
+        # no warm start
+        mpc_K = LinearMPC.MPC(LinearMPC.Model(fill(0.5, 1, 1), [1.0 1.0]; C = [1.0;;]); Np = 5, Nc = 5)
+        set_objective!(mpc_K; Q = [1.0], R = [0.1, 0.2])
+        set_input_bounds!(mpc_K; umin = [0.0, 0.0], umax = [1.0, 1.0])
+        set_binary_controls!(mpc_K, [1, 2])
+        set_prestabilizing_feedback!(mpc_K)
+        mpc_K.settings.bnb_warm_start = true
+        dir_K = tempname()
+        LinearMPC.codegen(mpc_K; dir=dir_K)
+        @test isempty(mpc_K.bnb.binary_ids)
+        @test !occursin("DAQP_BNB_WARMSTART", read(joinpath(dir_K,"mpc_workspace.h"),String))
+
+        if !isnothing(Sys.which("gcc"))
+            # Closed loop through the generated code, compared with LinearMPC.solve with the warm
+            # start and with the exact solve. With a binary horizon of two steps, the binary
+            # decision variables of the second step take the values of continuous ones.
+            for (abs_subopt,Nc_binary) in ((0.0,-1),(5.0,-1),(0.0,2))
+                mpc = satellite(true; abs_subopt, Nc_binary)
+                mpc_jl,mpc_exact = satellite(true; abs_subopt, Nc_binary),satellite(false; Nc_binary)
+                sym = build_lib(mpc)
+                bnb = mpc.bnb
+                nb = length(bnb.binary_ids)
+                @test unsafe_wrap(Array, Ptr{Cint}(sym(:bnb_binary_ids)), nb) == bnb.binary_ids .- 1
+                @test unsafe_wrap(Array, Ptr{Cint}(sym(:bnb_shift_ids)), nb) == bnb.shift_ids .- 1
+                xprev_shift = unsafe_wrap(Array, Ptr{Cdouble}(sym(:bnb_xprev_shift)), nb)
+                fval_bound = ccall(sym(:mpctest_fval_bound), Cdouble, ())
+                R = LinearMPC.hessian_factor(mpc.mpQP)
+
+                u,x,d,ldp = zeros(3),zeros(3),zeros(0),zeros(length(mpc.mpQP.f))
+                used = Int[]
+                for k in 1:30
+                    r = [k <= 5 ? 0.0 : 0.5,0,0]
+                    θ = θk(mpc,x,r)
+                    flag = compute!(sym,u,x,r,d)
+                    push!(used, cint(sym,:bnb_candidate_used))
+                    # Solution and objective in QP variables (u = R*z+v for the LDP solution u)
+                    ccall(sym(:mpctest_u), Cvoid, (Ptr{Cdouble},), ldp)
+                    v = R.L\(mpc.mpQP.f + mpc.mpQP.f_theta*θ)
+                    z_c = R.U\(ldp-v)
+                    J = 0.5*dot(ldp,ldp)-0.5*dot(v,v)
+
+                    z,fval,_,_ = LinearMPC.solve(mpc_jl,θ)
+                    _,fval_exact,_,_ = LinearMPC.solve(mpc_exact,θ)
+                    tol = 1e-6*(1+abs(fval_exact))
+                    @test flag == 1
+                    @test u ≈ z_c[1:3] atol=1e-6
+                    @test all(isbin, z_c[bnb.binary_ids])
+                    @test fval_exact - tol <= J <= fval_exact + abs_subopt + tol
+                    @test isapprox(u, z[1:3]; atol=1e-6) || abs(J-fval) <= abs_subopt + tol
+                    # The stored solution: the controls one step later in QP variables
+                    @test cint(sym,:bnb_xprev_valid) == 1
+                    @test xprev_shift ≈ z_c[bnb.shift_ids] atol=1e-6
+                    x = mpc.model.F*x + mpc.model.G*u
+                end
+                @test used[1] == 0 # no previous solution
+                @test sum(used) > 0
+                @test ccall(sym(:mpctest_fval_bound), Cdouble, ()) == fval_bound # cutoff restored
+
+                # The stored solution is discarded by mpc_reset_bnb_warm_start
+                ccall(sym(:mpc_reset_bnb_warm_start), Cvoid, ())
+                @test cint(sym,:bnb_xprev_valid) == 0
+                r = [0.5,0,0]
+                θ = θk(mpc,x,r)
+                @test compute!(sym,u,x,r,d) == 1
+                @test cint(sym,:bnb_candidate_used) == 0
+                @test cint(sym,:bnb_xprev_valid) == 1
+                ccall(sym(:mpctest_u), Cvoid, (Ptr{Cdouble},), ldp)
+                v = R.L\(mpc.mpQP.f + mpc.mpQP.f_theta*θ)
+                _,fval_exact,_,_ = LinearMPC.solve(mpc_exact,θ)
+                @test 0.5*dot(ldp,ldp)-0.5*dot(v,v) <= fval_exact + abs_subopt + 1e-6*(1+abs(fval_exact))
+            end
+        end
+    end
+
+    @testset "Deferred binary controls" begin
+        # Controls [b1, b2, b3, δ, p] (and [c1, c2] with second = true), states [x, g] (and y):
+        # x+ = 0.9 x + 0.5 (b1 + 2 b2 + 4 b3) + 1.75 δ, g+ = 0.85 g + 0.6 p, y+ = 0.8 y + 0.4 (c1 + 2 c2):
+        # a setpoint in three bits, an on/off control δ, a pump p that can only be on where δ is on
+        # (p ≤ δ, a logic constraint), and a second setpoint in two bits. (The MPC of the helper has its
+        # own name, since an assignment to mpc would assign the variable mpc of the testset.)
+        function heat(; second=false, groups=[], tol=0.0, warm=false, Np=8, Nc_bits=1, Nc_on=1, Nc_pump=1,
+                        max_combinations=64)
+            F = second ? diagm([0.9,0.85,0.8]) : diagm([0.9,0.85])
+            G = [0.5 1 2 1.75 0; 0 0 0 0 0.6]
+            second && (G = [G zeros(2,2); zeros(1,5) 0.4 0.8])
+            nx,nu = size(G)
+            hm = LinearMPC.MPC(LinearMPC.Model(F,G; C=Matrix(1.0I,nx,nx)); Np)
+            set_objective!(hm; Q=[10.0,5.0,5.0][1:nx], R=fill(1e-3,nu), eu=[0,0,0,0.1,0.05,0,0][1:nu])
+            set_input_bounds!(hm; umin=zeros(nu), umax=ones(nu))
+            set_binary_controls!(hm,1:nu,[Nc_bits,Nc_bits,Nc_bits,Nc_on,Nc_pump,Nc_bits,Nc_bits][1:nu])
+            add_logic_constraint!(hm; delta_ids=[4,5], Adelta=[-1.0 1.0], ub=[0.0])
+            for (ids,kw) in groups
+                defer_binary_controls!(hm,ids; kw...)
+            end
+            hm.settings.deferred_tol = tol
+            hm.settings.deferred_max_combinations = max_combinations
+            hm.settings.bnb_warm_start = warm
+            setup!(hm)
+            return hm
+        end
+        θk(mpc,x,r) = LinearMPC.form_parameter(mpc,x,r,nothing,nothing,nothing)
+        isbin(v) = min(abs(v),abs(v-1)) < 1e-6
+        bits = ([1,2,3],(weights=[1,2,4],))
+        DAQP = LinearMPC.DAQP
+
+        # Setup of the groups: the binary decision variables of an integer encoding step by step, and
+        # the logic constraints p_k ≤ δ_k of the pump, whose on/off control is not deferred
+        mpc = heat(groups=[bits,([4],(;))])
+        @test [g.kind for g in mpc.bnb.groups] == [:encoding,:rounding]
+        @test mpc.bnb.binary_ids == 1:5 && mpc.bnb.is_deferred == [true,true,true,true,false]
+        @test (mpc.bnb.relaxed_senses[1:5] .& DAQP.BINARY) == [0,0,0,0,DAQP.BINARY]
+        mpc = heat(groups=[bits,([5],(;))], Nc_bits=2, Nc_on=4, Nc_pump=4)
+        enc,pump = mpc.bnb.groups
+        @test mpc.bnb.binary_ids[enc.pos] == [1,2,3,6,7,8]
+        @test pump.kind == :rounding && length(pump.pos) == 4 && pump.durations == ones(4)
+        @test length(pump.rows) == 4 && all(r -> length(r.pos) == 2 && length(intersect(r.pos,pump.pos)) == 1, pump.rows)
+        # With move blocks, the duration of a block
+        mpc_mb = heat(groups=[([5],(;))], Nc_on=4, Nc_pump=4)
+        move_block!(mpc_mb,[1,1,2,4]); setup!(mpc_mb)
+        @test only(mpc_mb.bnb.groups).durations == [1,1,2]
+
+        @test_throws ArgumentError defer_binary_controls!(mpc,[1,4])                # Several controls without weights
+        @test_throws ArgumentError defer_binary_controls!(mpc,[5])                  # Already in a group
+        @test_throws ArgumentError defer_binary_controls!(mpc,[9])
+        @test_throws ArgumentError defer_binary_controls!(mpc,Int[])
+        @test_throws ArgumentError defer_binary_controls!(mpc,[4,6]; weights=[1])
+        @test_throws ArgumentError defer_binary_controls!(mpc,[4,6]; weights=[1,2], resolution=:enumerate)
+        @test_throws ArgumentError defer_binary_controls!(mpc,[4]; resolution=:other)
+        # Controls with different binary steps: all combinations instead of the encoded integers
+        mpc_steps = heat(Nc_bits=2)
+        set_binary_controls!(mpc_steps,1:5,[1,2,2,1,1])
+        defer_binary_controls!(mpc_steps,[1,2,3]; weights=[1,2,4])
+        @test_logs (:warn,) setup!(mpc_steps)
+        @test only(mpc_steps.bnb.groups).kind == :enumeration && length(only(mpc_steps.bnb.groups).pos) == 5
+
+        # Candidates of the groups for given relaxed values. Sum-up rounding of a = [0.3,0.4,0.6,0.2]
+        # gives [0,1,0,1]; one step more on is the first step at which δ is on, one step fewer on the
+        # last step that is on.
+        s = LinearMPC.BnBSolve(mpc,θk(mpc,zeros(2),[3.0,2.0]))
+        B = mpc.bnb.binary_ids
+        l,u = s.bl[B],s.bu[B]
+        δpos = [only(setdiff(only(filter(r -> p in r.pos, pump.rows)).pos,[p])) for p in pump.pos]
+        z = zeros(length(B))
+        z[pump.pos] = [0.3,0.4,0.6,0.2]
+        for (δ,more) in (([1,1,1,1],[1,1,0,1]),([0,1,1,1],[0,1,1,1]),([0,1,0,1],Int[]))
+            vals = fill(false,length(B))
+            vals[δpos] .= δ .== 1
+            cands = LinearMPC.bnb_group_candidates(pump,z,vals,s,l,u,64)
+            @test cands == filter(!isempty,[[0,1,0,1],more,[0,1,0,0]])
+        end
+        # The encodable integers just below and above the relaxed values 2.5 (a tie, the lower one
+        # first) and 6.9 at the two binary steps, combined over the steps
+        z[enc.pos] = [0.5,0.5,0.25,0.9,1.0,1.0]
+        cands = LinearMPC.bnb_group_candidates(enc,z,z .> 0.5,s,l,u,64)
+        @test cands == [[0,1,0,1,1,1],[1,1,0,1,1,1],[0,1,0,0,1,1],[1,1,0,0,1,1]]
+        @test length(LinearMPC.bnb_group_candidates(enc,z,z .> 0.5,s,l,u,3)) == 1 # Beyond the limit, the nearest
+        # Enumeration, the rounded values first
+        g_enum = LinearMPC.BnBGroup(:enumeration,enc.pos[1:3],Float64[],Float64[],LinearMPC.BnBLogicRow[])
+        cands = LinearMPC.bnb_group_candidates(g_enum,z,z .> 0.5,s,l,u,64)
+        @test length(cands) == 8 && first(cands) == [0,0,0] && allunique(cands)
+
+        configs = [(groups=[bits,([4],(;))],),                                             # An integer encoding and a binary at one step
+                   (second=true, groups=[bits,([6,7],(weights=[1,2],))], Nc_bits=2),      # Two integer encodings
+                   (groups=[bits,([5],(;))], Nc_bits=2, Nc_on=4, Nc_pump=4),              # Sum-up rounding over four steps
+                   (groups=[([1,2,3],(resolution=:enumerate,)),([5],(;))], Nc_on=4, Nc_pump=4)]
+        states = [[0.0,0.0,0.0],[1.0,2.0,0.5],[2.0,0.5,1.5],[0.5,3.0,0.0]]
+        refs = [[3.0,2.0,1.0],[4.4,0.5,0.3],[1.2,4.0,2.5]]
+
+        if !LinearMPC.daqp_updates_binaries()
+            # Without darnstrom/daqp#208, DAQP keeps the binary constraints of its setup when the senses are
+            # updated, so that the deferred binary controls would not be relaxed
+            mpc = heat(groups=[bits])
+            @test_throws ErrorException LinearMPC.solve(mpc,θk(mpc,zeros(2),[3.0,2.0]))
+        else
+            # With tol = 0 the objective equals that of the exact solve, and with tol = 0.5 it is within tol;
+            # the objective of the relaxed search is a lower bound. With tol = Inf, the resolved solution is
+            # accepted, which is not optimal in some cases.
+            n_suboptimal = 0
+            for config in configs, x in states, r in refs
+                mpc_exact = heat(; config..., groups=[])
+                nx = mpc_exact.model.nx
+                θ = θk(mpc_exact,x[1:nx],r[1:nx])
+                _,fval_exact,_,_ = LinearMPC.solve(mpc_exact,θ)
+                atol = 1e-6*(1+abs(fval_exact))
+                for tol in (0.0,0.5)
+                    mpc = heat(; config..., tol)
+                    z,fval,flag,info = LinearMPC.solve(mpc,θ)
+                    @test flag >= 1 && all(isbin,z[mpc.bnb.binary_ids])
+                    @test fval_exact-atol <= fval <= fval_exact+tol+atol
+                    tol == 0 && @test fval ≈ fval_exact atol=atol
+                    @test info.relaxed_fval <= fval_exact+atol
+                    @test mpc.opt_model.qpj.sense == mpc.mpQP.senses # Restored
+                end
+                z,fval,flag,info = LinearMPC.solve(heat(; config..., tol=Inf),θ)
+                @test flag >= 1 && info.source == :deferred
+                fval > fval_exact+atol && (n_suboptimal += 1)
+                if fval > fval_exact+atol
+                    # The gap to the relaxed search exceeds tol = 0: the full search finds the optimum
+                    _,fval0,_,info0 = LinearMPC.solve(heat(; config..., tol=0.0),θ)
+                    @test info0.source == :search
+                    @test fval0 ≈ fval_exact atol=atol
+                end
+            end
+            @test n_suboptimal > 0
+
+            # The relaxed search relaxes the deferred binary controls: it visits fewer nodes than the exact
+            # search, and the deferred binary decision variables are fractional in its solution
+            for config in configs[[1,3]]
+                mpc = heat(; config...)
+                θ = θk(mpc,zeros(2),[4.4,0.5])
+                _,fval_exact,_,info_exact = LinearMPC.solve(heat(; config..., groups=[]),θ)
+                s = LinearMPC.BnBSolve(mpc,θ)
+                a = LinearMPC.bnb_qp!(mpc,s; relaxed=true, search=true)
+                LinearMPC.bnb_restore!(mpc,s)
+                B,D = mpc.bnb.binary_ids,mpc.bnb.is_deferred
+                @test a.flag >= 1 && s.nodes < info_exact.nodes
+                @test any(v -> 1e-3 < v < 1-1e-3, a.x[B[D]]) && all(isbin,a.x[B[.!D]])
+                @test mpc.opt_model.qpj.sense == mpc.mpQP.senses
+                # The exact search of the same model after the relaxed one
+                _,fval,_,_ = LinearMPC.DAQP.solve(mpc.opt_model)
+                @test fval ≈ fval_exact atol=1e-6*(1+abs(fval_exact))
+            end
+
+            # The limit of the number of combinations (tol = Inf: no full search). Below it, all
+            # combinations are evaluated (one QP each, after the relaxed search); above it, the groups in
+            # turn (the first combination, and each further candidate of each group).
+            config = (groups=[bits,([4],(;)),([5],(;))], Nc_bits=2, Nc_pump=4)
+            for (x,r) in zip(states,refs)
+                mpc = heat(; config..., tol=Inf)
+                θ = θk(mpc,x[1:2],r[1:2])
+                s = LinearMPC.BnBSolve(mpc,θ)
+                a = LinearMPC.bnb_qp!(mpc,s; relaxed=true, search=true)
+                LinearMPC.bnb_restore!(mpc,s)
+                B = mpc.bnb.binary_ids
+                l,u = s.bl[B],s.bu[B]
+                z = clamp.((a.x[B].-l)./(u.-l),0,1)
+                nc = [length(LinearMPC.bnb_group_candidates(g,z,z .> 0.5+LinearMPC.BNB_ROUND_TOL,s,l,u,4)) for g in mpc.bnb.groups]
+                # (If the deferred binary decision variables are integral, the relaxed solution is returned)
+                integral = all(isbin,a.x[B[mpc.bnb.is_deferred]])
+                _,_,_,info = LinearMPC.solve(mpc,θ)
+                @test info.qp_count == (integral ? 1 : 1+prod(nc))
+                if !integral && prod(nc) > 4
+                    _,fval,_,info = LinearMPC.solve(heat(; config..., tol=Inf, max_combinations=4),θ)
+                    @test info.qp_count == 2+sum(nc.-1)
+                    _,fval0,_,_ = LinearMPC.solve(heat(; config..., tol=0.0, max_combinations=4),θ)
+                    _,fval_exact,_,_ = LinearMPC.solve(heat(; config..., groups=[]),θ)
+                    @test fval0 ≈ fval_exact atol=1e-6*(1+abs(fval_exact))
+                end
+            end
+
+            # Closed loop with the warm start: within tol of the objective of the exact solve
+            for (config,tol) in ((configs[1],0.0),(configs[3],0.0),(configs[3],0.5),(configs[2],0.5))
+                mpc,mpc_exact = heat(; config..., tol, warm=true),heat(; config..., groups=[])
+                nx = mpc.model.nx
+                x,sources = zeros(nx),Symbol[]
+                for k in 1:25
+                    r = refs[k <= 10 ? 1 : (k <= 18 ? 3 : 2)][1:nx]
+                    θ = θk(mpc,x,r)
+                    z,fval,flag,info = LinearMPC.solve(mpc,θ)
+                    _,fval_exact,_,_ = LinearMPC.solve(mpc_exact,θ)
+                    atol = 1e-6*(1+abs(fval_exact))
+                    @test flag >= 1 && all(isbin,z[mpc.bnb.binary_ids])
+                    @test fval_exact-atol <= fval <= fval_exact+tol+atol
+                    info.source == :candidate && @test fval == info.candidate_fval
+                    push!(sources,info.source)
+                    x = mpc.model.F*x + mpc.model.G*z[1:mpc.model.nu]
+                end
+                @test :candidate in sources && :deferred in sources
+            end
+
+            # With a time limit that has passed, the candidate is returned and the time limit is restored
+            mpc = heat(; configs[3]..., warm=true)
+            z,_,_,_ = LinearMPC.solve(mpc,θk(mpc,zeros(2),[3.0,2.0]))
+            DAQP.settings(mpc.opt_model,Dict(:time_limit=>1e-9))
+            x = mpc.model.F*zeros(2) + mpc.model.G*z[1:5]
+            z,_,flag,info = LinearMPC.solve(mpc,θk(mpc,x,[3.0,2.0]))
+            @test flag >= 1 && info.source == :candidate && all(isbin,z[mpc.bnb.binary_ids])
+            @test DAQP.settings(mpc.opt_model).time_limit == 1e-9
+            @test mpc.opt_model.qpj.sense == mpc.mpQP.senses
+
+            # A DAQP without darnstrom/daqp#208 is detected, and solve throws an error
+            LinearMPC.DAQP_UPDATES_BINARIES[] = false
+            @test_throws ErrorException LinearMPC.solve(mpc,θk(mpc,x,[3.0,2.0]))
+            LinearMPC.DAQP_UPDATES_BINARIES[] = nothing
+            @test LinearMPC.daqp_updates_binaries()
+        end
+
+        # Removal of the groups
+        mpc = heat(groups=[bits])
+        clear_deferred_binary_controls!(mpc)
+        setup!(mpc)
+        @test isempty(mpc.bnb.groups) && !any(mpc.bnb.is_deferred)
+        _,_,_,info = LinearMPC.solve(mpc,θk(mpc,zeros(2),[3.0,2.0]))
+        @test !haskey(info,:source)
+    end
+
+    @testset "Codegen deferred binary controls" begin
+        # The MPC of the testset "Deferred binary controls" (an MPC without an equality constraint,
+        # since the generated code of the branch and bound does not activate equality constraints)
+        function heat(; second=false, groups=[], tol=0.0, warm=false, Np=8, Nc_bits=1, Nc_on=1, Nc_pump=1,
+                        max_combinations=64)
+            F = second ? diagm([0.9,0.85,0.8]) : diagm([0.9,0.85])
+            G = [0.5 1 2 1.75 0; 0 0 0 0 0.6]
+            second && (G = [G zeros(2,2); zeros(1,5) 0.4 0.8])
+            nx,nu = size(G)
+            hm = LinearMPC.MPC(LinearMPC.Model(F,G; C=Matrix(1.0I,nx,nx)); Np)
+            set_objective!(hm; Q=[10.0,5.0,5.0][1:nx], R=fill(1e-3,nu), eu=[0,0,0,0.1,0.05,0,0][1:nu])
+            set_input_bounds!(hm; umin=zeros(nu), umax=ones(nu))
+            set_binary_controls!(hm,1:nu,[Nc_bits,Nc_bits,Nc_bits,Nc_on,Nc_pump,Nc_bits,Nc_bits][1:nu])
+            add_logic_constraint!(hm; delta_ids=[4,5], Adelta=[-1.0 1.0], ub=[0.0])
+            for (ids,kw) in groups
+                defer_binary_controls!(hm,ids; kw...)
+            end
+            hm.settings.deferred_tol = tol
+            hm.settings.deferred_max_combinations = max_combinations
+            hm.settings.bnb_warm_start = warm
+            setup!(hm)
+            return hm
+        end
+        θk(mpc,x,r) = LinearMPC.form_parameter(mpc,x,r,nothing,nothing,nothing)
+        isbin(v) = min(abs(v),abs(v-1)) < 1e-6
+        files(dir) = Dict(f => read(joinpath(dir,f),String) for f in readdir(dir))
+        bits = ([1,2,3],(weights=[1,2,4],))
+
+        # Without the groups, or with bnb_deferred = false, the generated code is that without groups
+        for warm in (false,true)
+            with,off,without = tempname(),tempname(),tempname()
+            mpc = heat(groups=[bits,([5],(;))], Nc_on=4, Nc_pump=4, warm=warm)
+            LinearMPC.codegen(mpc; dir=with)
+            LinearMPC.codegen(mpc; dir=off, bnb_deferred=false)
+            LinearMPC.codegen(heat(Nc_on=4, Nc_pump=4, warm=warm); dir=without)
+            @test files(off) == files(without)
+            @test !occursin("DAQP_BNB_DEFERRED", read(joinpath(off,"mpc_workspace.h"),String))
+            @test occursin("#define DAQP_BNB_DEFERRED", read(joinpath(with,"mpc_workspace.h"),String))
+            @test occursin("int exitflag = mpc_bnb_deferred();", read(joinpath(with,"mpc_workspace.c"),String))
+            @test occursin("#define DAQP_BNB_WARMSTART", read(joinpath(with,"mpc_workspace.h"),String)) == warm
+        end
+
+        if !isnothing(Sys.which("gcc"))
+            shim = """
+            #include "mpc_workspace.h"
+            void mpctest_u(double* u){ int i; for(i = 0; i < NX; i++) u[i] = daqp_work.u[i]; }
+            """
+            function build_lib(mpc)
+                srcdir = tempname()
+                LinearMPC.codegen(mpc; dir=srcdir)
+                open(joinpath(srcdir, "shim.c"), "w") do f; write(f, shim); end
+                src = [f for f in readdir(srcdir) if last(f, 1) == "c"]
+                testlib = "mpctest." * Base.Libc.Libdl.dlext
+                run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+                # Resolved per handle, since the libraries of the test export the same symbols
+                h = Base.Libc.Libdl.dlopen(joinpath(srcdir, testlib),
+                                           Base.Libc.Libdl.RTLD_LOCAL | Base.Libc.Libdl.RTLD_NOW)
+                return s -> Base.Libc.Libdl.dlsym(h, s)
+            end
+            compute!(sym,u,x,r,d) = ccall(sym(:mpc_compute_control), Cint,
+                                          (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), u, x, r, d)
+            cint(sym,s) = unsafe_load(Ptr{Cint}(sym(s)))
+            sources = Dict(0=>:search,1=>:candidate,2=>:deferred)
+            julia = LinearMPC.daqp_updates_binaries() # The Julia solve with deferred binary controls (darnstrom/daqp#208)
+
+            # Closed loop through the generated code, compared with the exact solve and with LinearMPC.solve
+            for config in [(groups=[bits,([4],(;))],),
+                           (groups=[bits,([5],(;))], Nc_bits=2, Nc_on=4, Nc_pump=4),
+                           (groups=[bits,([5],(;))], Nc_bits=2, Nc_on=4, Nc_pump=4, warm=true),
+                           (groups=[bits,([5],(;))], Nc_bits=2, Nc_on=4, Nc_pump=4, warm=true, tol=0.5),
+                           (groups=[bits,([4],(;)),([5],(;))], Nc_bits=2, Nc_pump=4, max_combinations=4),
+                           (groups=[([1,2,3],(resolution=:enumerate,)),([5],(;))], Nc_on=4, Nc_pump=4),
+                           (second=true, groups=[bits,([6,7],(weights=[1,2],))], Nc_bits=2, warm=true)]
+                mpc,mpc_jl,mpc_exact = heat(; config...),heat(; config...),heat(; config..., groups=[], warm=false)
+                tol = mpc.settings.deferred_tol
+                sym = build_lib(mpc)
+                @test unsafe_load(Ptr{Cdouble}(sym(:bnb_deferred_tol))) == tol
+                R = LinearMPC.hessian_factor(mpc.mpQP)
+                nx,nu = mpc.model.nx,mpc.model.nu
+                u,x,d,ldp = zeros(nu),zeros(nx),zeros(0),zeros(length(mpc.mpQP.f))
+                used = Symbol[]
+                for k in 1:25
+                    r = ([3.0,2.0,1.0],[1.2,4.0,2.5],[4.4,0.5,0.3])[k <= 10 ? 1 : (k <= 18 ? 2 : 3)][1:nx]
+                    θ = θk(mpc,x,r)
+                    flag = compute!(sym,u,x,r,d)
+                    push!(used,sources[cint(sym,:bnb_source)])
+                    # Solution and objective in QP variables (u = R*z+v for the LDP solution u)
+                    ccall(sym(:mpctest_u), Cvoid, (Ptr{Cdouble},), ldp)
+                    v = R.L\(mpc.mpQP.f + mpc.mpQP.f_theta*θ)
+                    z_c = R.U\(ldp-v)
+                    J = 0.5*dot(ldp,ldp)-0.5*dot(v,v)
+                    _,fval_exact,_,_ = LinearMPC.solve(mpc_exact,θ)
+                    atol = 1e-6*(1+abs(fval_exact))
+                    @test flag == 1
+                    @test u ≈ z_c[1:nu] atol=1e-6
+                    @test all(isbin, z_c[mpc.bnb.binary_ids])
+                    @test fval_exact-atol <= J <= fval_exact+tol+atol
+                    if julia
+                        z,fval,_,_ = LinearMPC.solve(mpc_jl,θ)
+                        @test isapprox(u, z[1:nu]; atol=1e-6) || abs(J-fval) <= atol
+                    end
+                    x = mpc.model.F*x + mpc.model.G*u
+                end
+                @test :deferred in used
+                mpc.settings.bnb_warm_start && @test :candidate in used
+
+                # The reset
+                ccall(sym(:mpc_reset_bnb_deferred), Cvoid, ())
+                @test cint(sym,:bnb_source) == -1
+                mpc.settings.bnb_warm_start && @test cint(sym,:bnb_xprev_valid) == 0
+            end
+        end
+    end
+
     @testset "Robust MPC" begin
         using LinearMPC
         F = [1.0 1 ;0 1]

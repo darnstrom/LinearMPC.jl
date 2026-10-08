@@ -57,6 +57,9 @@ MPC controller settings.
 - `disturbance_preview::Bool = false`: Enable time-varying disturbance preview
 - `parameter_preview::Bool = false`: Enable time-varying generalized-parameter preview
 - `soft_weight::Float64 = 1e6`: Penalty weight for soft constraint violations
+- `bnb_warm_start::Bool = false`: Warm start the branch and bound of problems with binary controls from the solution of the previous call (see [`solve`](@ref LinearMPC.solve))
+- `deferred_tol::Float64 = 0.0`: Largest increase of the objective over that of the relaxed search for which the resolved deferred binary controls are accepted without the full branch and bound (see [`defer_binary_controls!`](@ref))
+- `deferred_max_combinations::Int = 64`: Largest number of combinations of the candidates of the groups of deferred binary controls that are evaluated (see [`defer_binary_controls!`](@ref))
 - `solver_opts::Dict{Symbol,Any}`: Additional solver options
 """
 Base.@kwdef mutable struct MPCSettings
@@ -68,6 +71,9 @@ Base.@kwdef mutable struct MPCSettings
     disturbance_preview::Bool = false
     parameter_preview::Bool = false
     soft_weight::Float64= 1e6
+    bnb_warm_start::Bool = false
+    deferred_tol::Float64 = 0.0
+    deferred_max_combinations::Int = 64
     solver_opts::Dict{Symbol,Any} = Dict()
     traj2setpoint::Matrix{Float64} = zeros(0,0)
 end
@@ -110,6 +116,45 @@ function MPQP()
                 Cint[],Cint[],Cint[],false,true,
                 Float64[],Float64[],Float64[],Float64[],nothing)
 end
+
+# A group of binary controls that are resolved after the others (see defer_binary_controls!)
+struct DeferredBinaryGroup
+    ids::Vector{Int}          # Controls
+    weights::Vector{Float64}  # Weights of the encoded integer (empty if there are none)
+    resolution::Symbol        # :auto or :enumerate
+end
+
+# A general constraint lower ≤ ∑ coef[i]*x[binary_ids[pos[i]]] ≤ upper that involves only binary decision
+# variables, with bounds that do not depend on the parameter (see bnb_logic_rows)
+struct BnBLogicRow
+    pos::Vector{Int}
+    coef::Vector{Float64}
+    lower::Float64
+    upper::Float64
+end
+
+# The binary decision variables of a group of deferred binary controls (see setup_bnb!). Positions refer to
+# BnBData.binary_ids.
+struct BnBGroup
+    kind::Symbol               # :encoding, :rounding (a single control) or :enumeration
+    pos::Vector{Int}           # Positions of the binary decision variables (:encoding: step by step, each step in the order of the controls)
+    weights::Vector{Float64}   # :encoding: the weights of the controls
+    durations::Vector{Float64} # :rounding: the number of time steps of each binary decision variable
+    rows::Vector{BnBLogicRow}  # :rounding: the logic constraints of the binary decision variables
+end
+
+# Data of the solution strategies of the branch and bound (see solve_bnb). The binary decision variables are
+# those whose simple bounds have the binary sense.
+mutable struct BnBData
+    binary_ids::Vector{Int} # Binary decision variables
+    shift_ids::Vector{Int}  # The decision variable that holds the control of each binary decision variable one step later
+    xprev::Vector{Float64}  # Solution of the previous call (empty if there is none)
+    deferred::Vector{DeferredBinaryGroup} # Declared groups of deferred binary controls
+    groups::Vector{BnBGroup}      # Their binary decision variables
+    is_deferred::Vector{Bool}     # Whether each binary decision variable is deferred
+    relaxed_senses::Vector{Cint}  # The senses of the constraints with the deferred binary decision variables relaxed
+end
+BnBData() = BnBData(Int[],Int[],Float64[],DeferredBinaryGroup[],BnBGroup[],Bool[],Cint[])
 
 # MPC controller
 mutable struct MPC
@@ -164,6 +209,9 @@ mutable struct MPC
     Δx0::Vector{Float64}
 
     objectives::Vector{<:Tuple{MPCWeights,Vector{Int}}}
+
+    # Solution strategies of the branch and bound
+    bnb::BnBData
 end
 
 function MPC(model::Model;Np=10,Nc=Np)
@@ -173,7 +221,8 @@ function MPC(model::Model;Np=10,Nc=Np)
         Constraint[],MPCSettings(),MPQP(),
         DAQP.Model(),zeros(model.nu,model.nx),Vector{Int}[],false, zeros(model.nu),zeros(0,0),
         nothing,zeros(model.nx),
-        Tuple{MPCWeights,Vector{Int}}[])
+        Tuple{MPCWeights,Vector{Int}}[],
+        BnBData())
 end
 
 function MPC(F,G;Gd=zeros(0,0), C=zeros(0,0), Dd= zeros(0,0), f_offset=zeros(0), Ts= -1.0, Np=10, Nc = Np)

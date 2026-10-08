@@ -25,6 +25,7 @@ function setup!(mpc::MPC)
     else
         # Set up soft weight
         DAQP.settings(mpc.opt_model,Dict(:rho_soft=>1/mpc.settings.soft_weight))
+        setup_bnb!(mpc)
         mpc.mpqp_issetup = true
     end
 end

@@ -106,6 +106,30 @@ plt.show()
 
 We can see that the attitude is able to reach the setpoint of 0.5. Moreover, we also we that $u_2$ and $u_3$ only take values in $\{0,1\}$ and $\{-1,0\}$, respectively.
 
+## Warm start of the branch and bound
+In a closed loop, the solution of the previous time step, shifted by one step, is often close to the solution of the current time step. With the setting `bnb_warm_start`, this is used as a candidate for the branch and bound:
+
+```julia
+mpc.settings.bnb_warm_start = true
+```
+
+Each binary control takes the value of the previous solution one step later (rounded to the nearest bound), and the QP with the binary controls fixed at these values gives the continuous controls of the candidate. The branch and bound then only accepts solutions that improve on the objective of the candidate by more than the suboptimality tolerances of DAQP (`abs_subopt`, `rel_subopt`), as if it had found the candidate itself, which allows it to discard more nodes. If it finds no such solution, or if it reaches a time limit (`DAQP.settings(mpc.opt_model, Dict(:time_limit => t))`), the candidate is returned. The field `source` of the information returned by `LinearMPC.solve` tells whether the solution comes from the branch and bound (`:search`) or is the candidate (`:candidate`). The stored solution is discarded with `reset_bnb_warm_start!`, by `setup!` and at the start of a `Simulation`.
+
+The generated C code contains the same warm start if the setting is enabled when `codegen` is called (or with the keyword argument `codegen(mpc; bnb_warm_start=true)`). The generated header then defines `DAQP_BNB_WARMSTART`, `mpc_compute_control` stores the solution for the next call, the variable `bnb_candidate_used` tells whether the latest call returned the candidate, and the function `mpc_reset_bnb_warm_start()` discards the stored solution. The time limit of DAQP does not apply to the generated code.
+
+## Deferred binary controls
+Binary controls that are numerous but have a small effect on the decisions of the other binary controls, such as bits that encode an integer setpoint, can be deferred: the branch and bound first runs with them relaxed, and they are resolved afterwards with the other binary controls fixed at their values in the relaxed solution. Each call of `defer_binary_controls!` adds a group:
+
+```julia
+defer_binary_controls!(mpc, [2, 3, 4]; weights=[1, 2, 4]) # Bits of a setpoint 0,…,7
+defer_binary_controls!(mpc, [6])                          # A single binary control
+mpc.settings.deferred_tol = 0.1
+```
+
+A group with `weights` is resolved by the encodable integers just below and above the relaxed value at each binary step, a single control by the sum-up rounding of its relaxed values over its binary steps and the sequences with one step more and one step fewer on, and a group with `resolution = :enumerate` by all combinations of its binary decision variables. The combinations of the candidates of all groups (at most the setting `deferred_max_combinations`) are QPs with all binary controls fixed. The best one is returned if its objective exceeds that of the relaxed search, which is a lower bound of the optimal objective, by at most the setting `deferred_tol`. Otherwise, the branch and bound runs without relaxation with the best one as cutoff. The returned solution is therefore within `deferred_tol` of the optimum. The field `source` of the information returned by `LinearMPC.solve` is `:deferred` for a solution with resolved deferred binary controls, and `clear_deferred_binary_controls!` removes all groups.
+
+The relaxation requires a DAQP library in which an update of the senses updates the binary constraints of the branch and bound ([darnstrom/daqp#208](https://github.com/darnstrom/daqp/pull/208)); otherwise, `LinearMPC.solve` throws an error. The generated C code resolves the groups in the same way, also combined with the warm start, and does not depend on this: the header then defines `DAQP_BNB_DEFERRED`, the variable `bnb_source` tells the source of the latest solution, `bnb_deferred_tol` holds the tolerance, and `mpc_reset_bnb_deferred()` resets the source and the stored solution of the warm start.
+
 ## Mixed logical dynamical systems
 
 In **LinearMPC.jl**, MLD models can be built with an augmented
