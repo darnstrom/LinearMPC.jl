@@ -273,9 +273,10 @@ a candidate for the branch and bound:
    the value at the first step of its block.
 2. The QP with all binary decision variables fixed at these values gives the continuous decision
    variables of the candidate. If it is infeasible, there is no candidate.
-3. The branch and bound runs with the objective of the candidate as cutoff (the setting `fval_bound` of
-   DAQP), so that it only accepts solutions with a lower objective.
-4. If the branch and bound finds such a solution, it is returned. Otherwise (no better solution exists
+3. The branch and bound runs with a cutoff (the setting `fval_bound` of DAQP) derived from the objective
+   J of the candidate: it only accepts solutions whose objective is lower than J by more than
+   `abs_subopt + rel_subopt*|J|` (settings of DAQP), as if it had found the candidate itself.
+4. If the branch and bound finds such a solution, it is returned. Otherwise (no such solution exists
    or the time limit is reached), the candidate is returned with its exit flag.
 
 The solution is stored for the next call if its exit flag is positive; [`reset_bnb_warm_start!`](@ref)

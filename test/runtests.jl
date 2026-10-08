@@ -1213,6 +1213,9 @@ Random.seed!(1234)
                 @test !haskey(info_exact,:source) && isempty(mpc_exact.bnb.xprev)
                 # The candidate is returned when the search finds no better solution
                 info.source == :candidate && @test fval == info.candidate_fval
+                # A solution of the search improves on the candidate by more than abs_subopt
+                info.source == :search && !isnan(info.candidate_fval) &&
+                    @test fval < info.candidate_fval - abs_subopt + 1e-6*(1+abs(fval_exact))
                 push!(sources,info.source)
                 x = mpc.model.F*x + mpc.model.G*z[1:3]
             end

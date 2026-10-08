@@ -245,7 +245,6 @@ mutable struct BnBSolve
     settings::DAQP.DAQPSettings     # Settings of the DAQP model at the start of the call
     time_limit::Float64             # Time limit of the whole call [s] (0 if there is none)
     t0::UInt64                      # Start of the call [ns]
-    offset::Float64                 # Internal objective of DAQP minus the objective J, measured at the last solve
     relaxed::Bool                   # Whether the deferred binary decision variables are relaxed in the DAQP model
     iterations::Int
     nodes::Int
@@ -259,7 +258,7 @@ function BnBSolve(mpc::MPC,θ)
     mpQP._f .+= mpQP.f
     settings = DAQP.settings(mpc.opt_model)
     return BnBSolve(mpQP.bu .+ mpQP._bth, mpQP.bl .+ mpQP._bth, settings, settings.time_limit,
-                    time_ns(), NaN, false, 0, 0, 0)
+                    time_ns(), false, 0, 0, 0)
 end
 
 bnb_elapsed(s::BnBSolve) = (time_ns()-s.t0)/1e9
@@ -267,12 +266,12 @@ bnb_at_time_limit(s::BnBSolve) = s.time_limit > 0 && bnb_elapsed(s) >= s.time_li
 
 # One solve of DAQP for the parameter of `s`, with the decision variables `fix_ids` fixed at `fix_vals`, and
 # with the deferred binary decision variables relaxed if `relaxed = true` (`relaxed = nothing` keeps the senses
-# of the previous solve, for solves in which all binary decision variables are fixed). With `cutoff`, only
-# solutions with an objective below `cutoff` are accepted (the objective of a solution that has been found for
-# the same parameter, from which the offset of the internal objective of DAQP is known). A search
-# (`search = true`) is limited to the time that remains of the time limit of the call; the other solves, in
-# which all binary decision variables are fixed or relaxed, are solved without a time limit, since they provide
-# the integer-feasible fallback of the call.
+# of the previous solve, for solves in which all binary decision variables are fixed). `cutoff` is the objective
+# J of an integer-feasible solution for the same parameter: the branch and bound then only accepts solutions
+# that improve on it by more than the suboptimality tolerances abs_subopt and rel_subopt, as if it had found
+# that solution itself. A search (`search = true`) is limited to the time that remains of the time limit of the
+# call; the other solves, in which all binary decision variables are fixed or relaxed, are solved without a time
+# limit, since they provide the integer-feasible fallback of the call.
 function bnb_qp!(mpc::MPC, s::BnBSolve; fix_ids=Int[], fix_vals=Float64[], relaxed=false, cutoff=nothing, search=false)
     mpQP,model = mpc.mpQP,mpc.opt_model
     changes = Dict{Symbol,Any}()
@@ -284,10 +283,10 @@ function bnb_qp!(mpc::MPC, s::BnBSolve; fix_ids=Int[], fix_vals=Float64[], relax
         changes[:time_limit] = 0.0
     end
     if !isnothing(cutoff)
-        # fval_bound is compared with the internal objective of DAQP, which exceeds J by an offset that depends
-        # on the parameter (half of f'H⁻¹f without equality reduction)
-        isnan(s.offset) && throw(ArgumentError("A cutoff requires a previous solve for the same parameter"))
-        changes[:fval_bound] = cutoff+s.offset
+        # fval_bound refers to the objective J (darnstrom/daqp#214). The branch and bound sets it to this
+        # value when it finds an integer-feasible solution with the objective `cutoff` itself
+        bound = cutoff - s.settings.abs_subopt - s.settings.rel_subopt*abs(cutoff)
+        changes[:fval_bound] = min(bound, s.settings.fval_bound)
     end
     mpQP._bu .= s.bu
     mpQP._bl .= s.bl
@@ -304,8 +303,6 @@ function bnb_qp!(mpc::MPC, s::BnBSolve; fix_ids=Int[], fix_vals=Float64[], relax
     DAQP.update(model,nothing,mpQP._f,nothing,mpQP._bu,mpQP._bl,senses)
     x,fval,flag,info = DAQP.solve(model)
     isempty(changes) || DAQP.settings(model,s.settings)
-    # The internal objective is info.fval_ldp if DAQPBase provides it, and otherwise read from the workspace
-    flag >= 1 && (s.offset = (haskey(info,:fval_ldp) ? info.fval_ldp : 0.5*unsafe_load(model.work).fval)-fval)
     s.iterations += info.iterations
     s.nodes += info.nodes
     s.qp_count += 1

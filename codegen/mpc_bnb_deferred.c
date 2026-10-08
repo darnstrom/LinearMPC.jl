@@ -23,8 +23,10 @@
 // The candidates, the limit BNB_MAX_COMBINATIONS and the order of the combinations are those of
 // LinearMPC.bnb_resolve_deferred. Objectives are compared in the internal objective of DAQP
 // (daqp_work.fval), in which the difference between two solutions for the same parameter is
-// twice the difference between their objectives. The time limit of DAQP does not apply (see
-// mpc_bnb_warm_start.c).
+// twice the difference between their objectives. A cutoff with the objective J = 0.5*fval of a
+// solution sets fval_bound to J-abs_subopt-rel_subopt*|J|, the value that daqp_bnb sets when it
+// finds that solution itself (see mpc_bnb_warm_start.c). The time limit of DAQP does not apply
+// (see mpc_bnb_warm_start.c).
 //
 // The positions of binary decision variables refer to bnb_binary_ids. A binary decision variable
 // is normalized by its bounds: 0 at bnb_lower and 1 at bnb_upper. Its value in an LDP solution is
@@ -334,7 +336,7 @@ static int mpc_bnb_resolve(const c_float* u, const c_float fval, const int flag)
 int mpc_bnb_deferred(void){
     int i, exitflag, flag;
     int cand_flag = 0;
-    c_float fval_cand = 0, fval_relaxed;
+    c_float fval_cand = 0, fval_relaxed, bound;
     int* const bin_ids0 = daqp_work.bnb->bin_ids;
     const int nb0 = daqp_work.bnb->nb;
     const c_float fval_bound0 = daqp_work.settings->fval_bound;
@@ -367,9 +369,12 @@ int mpc_bnb_deferred(void){
     }
 #endif
 
-    // Relaxed search, which only accepts solutions with a lower objective than the candidate
-    if(cand_flag > 0 && 0.5*fval_cand < fval_bound0)
-        daqp_work.settings->fval_bound = 0.5*fval_cand;
+    // Relaxed search, which only accepts solutions that improve on the candidate (objective
+    // 0.5*fval_cand >= 0) by more than the suboptimality tolerances
+    if(cand_flag > 0){
+        bound = 0.5*fval_cand*(1-daqp_work.settings->rel_subopt)-daqp_work.settings->abs_subopt;
+        if(bound < fval_bound0) daqp_work.settings->fval_bound = bound;
+    }
     daqp_work.bnb->bin_ids = bnb_relaxed_bin_ids;
     daqp_work.bnb->nb = N_BNB_RELAXED_BIN;
     exitflag = daqp_bnb(&daqp_work);
@@ -380,7 +385,7 @@ int mpc_bnb_deferred(void){
 
     if(exitflag < 1){
         if(cand_flag > 0){
-            // No solution with a lower objective than the candidate exists
+            // No solution improves on the candidate by more than the suboptimality tolerances
             bnb_best_flag = cand_flag;
             bnb_source = MPC_BNB_SOURCE_CANDIDATE;
         }
@@ -399,10 +404,12 @@ int mpc_bnb_deferred(void){
             bnb_source = MPC_BNB_SOURCE_CANDIDATE;
         }
         if(bnb_best_flag < 1 || 0.5*(bnb_best_fval-fval_relaxed) > bnb_deferred_tol){
-            // Branch and bound without relaxation, which only accepts solutions with a lower
-            // objective than the best one
-            if(bnb_best_flag > 0 && 0.5*bnb_best_fval < fval_bound0)
-                daqp_work.settings->fval_bound = 0.5*bnb_best_fval;
+            // Branch and bound without relaxation, which only accepts solutions that improve on
+            // the best one by more than the suboptimality tolerances
+            if(bnb_best_flag > 0){
+                bound = 0.5*bnb_best_fval*(1-daqp_work.settings->rel_subopt)-daqp_work.settings->abs_subopt;
+                if(bound < fval_bound0) daqp_work.settings->fval_bound = bound;
+            }
             exitflag = daqp_bnb(&daqp_work);
             daqp_work.settings->fval_bound = fval_bound0;
             if(exitflag > 0 || bnb_best_flag < 1){
