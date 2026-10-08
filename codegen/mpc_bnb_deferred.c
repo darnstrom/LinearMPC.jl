@@ -25,8 +25,8 @@
 // (daqp_work.fval), in which the difference between two solutions for the same parameter is
 // twice the difference between their objectives. A cutoff with the objective J = 0.5*fval of a
 // solution sets fval_bound to J-abs_subopt-rel_subopt*|J|, the value that daqp_bnb sets when it
-// finds that solution itself (see mpc_bnb_warm_start.c). The time limit of DAQP does not apply
-// (see mpc_bnb_warm_start.c).
+// finds that solution itself, lowered by the margin MPC_BNB_CUTOFF_TOL*(1+|J|) (see
+// mpc_bnb_warm_start.c). The time limit of DAQP does not apply (see mpc_bnb_warm_start.c).
 //
 // The positions of binary decision variables refer to bnb_binary_ids. A binary decision variable
 // is normalized by its bounds: 0 at bnb_lower and 1 at bnb_upper. Its value in an LDP solution is
@@ -34,6 +34,9 @@
 // mpc_bnb_warm_start.c).
 
 #define MPC_BNB_ROUND_TOL ((c_float)1e-6) // Tolerance of the rounding (LinearMPC.BNB_ROUND_TOL)
+#ifndef MPC_BNB_CUTOFF_TOL
+#define MPC_BNB_CUTOFF_TOL ((c_float)1e-9) // Margin of the cutoff relative to 1+|J| (LinearMPC.BNB_CUTOFF_TOL)
+#endif
 
 int bnb_source = MPC_BNB_SOURCE_NONE;
 static c_float bnb_relaxed_u[NX]; // LDP solution of the relaxed search
@@ -370,9 +373,10 @@ int mpc_bnb_deferred(void){
 #endif
 
     // Relaxed search, which only accepts solutions that improve on the candidate (objective
-    // 0.5*fval_cand >= 0) by more than the suboptimality tolerances
+    // 0.5*fval_cand >= 0) by more than the suboptimality tolerances and the margin
     if(cand_flag > 0){
-        bound = 0.5*fval_cand*(1-daqp_work.settings->rel_subopt)-daqp_work.settings->abs_subopt;
+        bound = 0.5*fval_cand*(1-daqp_work.settings->rel_subopt-MPC_BNB_CUTOFF_TOL)
+            -daqp_work.settings->abs_subopt-MPC_BNB_CUTOFF_TOL;
         if(bound < fval_bound0) daqp_work.settings->fval_bound = bound;
     }
     daqp_work.bnb->bin_ids = bnb_relaxed_bin_ids;
@@ -405,9 +409,10 @@ int mpc_bnb_deferred(void){
         }
         if(bnb_best_flag < 1 || 0.5*(bnb_best_fval-fval_relaxed) > bnb_deferred_tol){
             // Branch and bound without relaxation, which only accepts solutions that improve on
-            // the best one by more than the suboptimality tolerances
+            // the best one by more than the suboptimality tolerances and the margin
             if(bnb_best_flag > 0){
-                bound = 0.5*bnb_best_fval*(1-daqp_work.settings->rel_subopt)-daqp_work.settings->abs_subopt;
+                bound = 0.5*bnb_best_fval*(1-daqp_work.settings->rel_subopt-MPC_BNB_CUTOFF_TOL)
+                    -daqp_work.settings->abs_subopt-MPC_BNB_CUTOFF_TOL;
                 if(bound < fval_bound0) daqp_work.settings->fval_bound = bound;
             }
             exitflag = daqp_bnb(&daqp_work);
