@@ -69,12 +69,18 @@ end
 
 bnb_elapsed(s::BnBSolve) = (time_ns()-s.t0)/1e9
 
+# Margin of a cutoff, relative to 1+|J|. DAQP discards only the nodes whose objective exceeds fval_bound, so
+# that with abs_subopt = rel_subopt = 0 a search with the objective J of a solution as cutoff could find that
+# solution again, and whether it returns it or no solution would depend on rounding errors.
+const BNB_CUTOFF_TOL = 1e-9
+
 # One solve of DAQP for the parameter of `s`, with the decision variables `fix_ids` fixed at `fix_vals`.
 # `cutoff` is the objective J of an integer-feasible solution for the same parameter: the branch and bound
 # then only accepts solutions that improve on it by more than the suboptimality tolerances abs_subopt and
-# rel_subopt, as if it had found that solution itself. A search (`search = true`) is limited to the time that
-# remains of the time limit of the call; the other solves, in which all binary decision variables are fixed,
-# are solved without a time limit, since they provide the integer-feasible fallback of the call.
+# rel_subopt (and the margin BNB_CUTOFF_TOL), as if it had found that solution itself. A search
+# (`search = true`) is limited to the time that remains of the time limit of the call; the other solves, in
+# which all binary decision variables are fixed, are solved without a time limit, since they provide the
+# integer-feasible fallback of the call.
 function bnb_qp!(mpc::MPC, s::BnBSolve; fix_ids=Int[], fix_vals=Float64[], cutoff=nothing, search=false)
     mpQP,model = mpc.mpQP,mpc.opt_model
     changes = Dict{Symbol,Any}()
@@ -88,7 +94,7 @@ function bnb_qp!(mpc::MPC, s::BnBSolve; fix_ids=Int[], fix_vals=Float64[], cutof
     if !isnothing(cutoff)
         # fval_bound refers to the objective J (darnstrom/daqp#214). The branch and bound sets it to this
         # value when it finds an integer-feasible solution with the objective `cutoff` itself
-        bound = cutoff - s.settings.abs_subopt - s.settings.rel_subopt*abs(cutoff)
+        bound = cutoff - s.settings.abs_subopt - s.settings.rel_subopt*abs(cutoff) - BNB_CUTOFF_TOL*(1+abs(cutoff))
         changes[:fval_bound] = min(bound, s.settings.fval_bound)
     end
     mpQP._bu .= s.bu

@@ -28,11 +28,18 @@
 // daqp_bnb returns. When daqp_bnb finds an integer-feasible solution with objective J, it sets
 // fval_bound to J-abs_subopt-rel_subopt*|J| and discards the nodes that cannot improve on it.
 // Setting fval_bound to this value for the candidate therefore discards the same nodes as if the
-// branch and bound had found the candidate itself.
+// branch and bound had found the candidate itself. Since daqp_bnb discards only the nodes whose
+// objective exceeds fval_bound, the bound is lowered by the margin MPC_BNB_CUTOFF_TOL*(1+|J|)
+// (LinearMPC.BNB_CUTOFF_TOL), so that with abs_subopt = rel_subopt = 0 the branch and bound does
+// not find the candidate again.
 //
 // DAQP enforces its time limit only if it is compiled with PROFILING and the solve is started
 // by daqp_solve, which sets work->timer. The generated code calls daqp_bnb directly, so the time
 // limit does not apply to it.
+
+#ifndef MPC_BNB_CUTOFF_TOL
+#define MPC_BNB_CUTOFF_TOL ((c_float)1e-9) // Margin of the cutoff relative to 1+|J|
+#endif
 
 int bnb_xprev_valid = 0;
 c_float bnb_xprev_shift[N_BNB_BINARY];
@@ -108,9 +115,10 @@ int mpc_bnb_warm_start(void){
     }
 
     // Branch and bound, which only accepts solutions that improve on the candidate (objective
-    // 0.5*fval_cand >= 0) by more than the suboptimality tolerances
+    // 0.5*fval_cand >= 0) by more than the suboptimality tolerances and the margin
     if(cand_flag > 0){
-        bound = 0.5*fval_cand*(1-daqp_work.settings->rel_subopt)-daqp_work.settings->abs_subopt;
+        bound = 0.5*fval_cand*(1-daqp_work.settings->rel_subopt-MPC_BNB_CUTOFF_TOL)
+            -daqp_work.settings->abs_subopt-MPC_BNB_CUTOFF_TOL;
         if(bound < fval_bound0) daqp_work.settings->fval_bound = bound;
     }
     exitflag = daqp_bnb(&daqp_work);

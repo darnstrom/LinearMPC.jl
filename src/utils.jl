@@ -275,7 +275,8 @@ a candidate for the branch and bound:
    variables of the candidate. If it is infeasible, there is no candidate.
 3. The branch and bound runs with a cutoff (the setting `fval_bound` of DAQP) derived from the objective
    J of the candidate: it only accepts solutions whose objective is lower than J by more than
-   `abs_subopt + rel_subopt*|J|` (settings of DAQP), as if it had found the candidate itself.
+   `abs_subopt + rel_subopt*|J|` (settings of DAQP), as if it had found the candidate itself. A margin
+   of `1e-9*(1+|J|)` excludes the candidate itself with `abs_subopt = rel_subopt = 0`.
 4. If the branch and bound finds such a solution, it is returned. Otherwise (no such solution exists
    or the time limit is reached), the candidate is returned with its exit flag.
 
