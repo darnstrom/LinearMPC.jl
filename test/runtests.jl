@@ -1178,6 +1178,208 @@ Random.seed!(1234)
 
     end
 
+    @testset "Warm start of the branch and bound" begin
+        function satellite(warm; abs_subopt=0.0)
+            mpc,_ = LinearMPC.mpc_examples("satellite",20)
+            move_block!(mpc,[1,1,2,4,12])
+            mpc.settings.bnb_warm_start = warm
+            setup!(mpc)
+            LinearMPC.DAQP.settings(mpc.opt_model,Dict(:abs_subopt=>abs_subopt))
+            return mpc
+        end
+        θk(mpc,x,r) = LinearMPC.form_parameter(mpc,x,r,nothing,nothing,nothing)
+        isbin(v) = min(abs(v),abs(abs(v)-1)) < 1e-6
+
+        # Two binary controls in five move blocks; the binary decision variable of a block takes the
+        # value of its control at the first step of the next block
+        mpc = satellite(true)
+        @test mpc.bnb.binary_ids == [2,3,5,6,8,9,11,12,14,15]
+        @test mpc.bnb.shift_ids == [5,6,8,9,8,9,11,12,14,15]
+
+        # Closed loop: the objective equals that of the exact solve (abs_subopt = 0), or is within
+        # abs_subopt of it
+        for abs_subopt in (0.0, 5.0)
+            mpc,mpc_exact = satellite(true;abs_subopt),satellite(false)
+            x,sources = zeros(3),Symbol[]
+            for k in 1:30
+                θ = θk(mpc,x,[k <= 5 ? 0.0 : 0.5,0,0])
+                z,fval,flag,info = LinearMPC.solve(mpc,θ)
+                z_exact,fval_exact,flag_exact,info_exact = LinearMPC.solve(mpc_exact,θ)
+                @test flag >= 1 && flag_exact >= 1
+                @test fval <= fval_exact + abs_subopt + 1e-6*(1+abs(fval_exact))
+                abs_subopt == 0 && @test fval ≈ fval_exact atol=1e-6*(1+abs(fval_exact))
+                @test all(isbin, z[mpc.bnb.binary_ids])
+                # Without the setting, the branch and bound of DAQP is called directly
+                @test !haskey(info_exact,:source) && isempty(mpc_exact.bnb.xprev)
+                # The candidate is returned when the search finds no better solution
+                info.source == :candidate && @test fval == info.candidate_fval
+                # A solution of the search improves on the candidate by more than abs_subopt
+                info.source == :search && !isnan(info.candidate_fval) &&
+                    @test fval < info.candidate_fval - abs_subopt + 1e-6*(1+abs(fval_exact))
+                push!(sources,info.source)
+                x = mpc.model.F*x + mpc.model.G*z[1:3]
+            end
+            @test sources[1] == :search # no previous solution
+            @test :candidate in sources
+            @test LinearMPC.DAQP.settings(mpc.opt_model).fval_bound ≥ 1e20 # cutoff restored
+        end
+
+        # With a time limit that has passed, the candidate is returned
+        mpc = satellite(true)
+        x = zeros(3)
+        z,_,_,_ = LinearMPC.solve(mpc,θk(mpc,x,[0.5,0,0]))
+        LinearMPC.DAQP.settings(mpc.opt_model,Dict(:time_limit=>1e-9))
+        x = mpc.model.F*x + mpc.model.G*z[1:3]
+        z,fval,flag,info = LinearMPC.solve(mpc,θk(mpc,x,[0.5,0,0]))
+        @test flag >= 1 && info.source == :candidate
+        @test all(isbin, z[mpc.bnb.binary_ids])
+        @test LinearMPC.DAQP.settings(mpc.opt_model).time_limit == 1e-9 # time limit restored
+
+        # The stored solution is discarded by reset_bnb_warm_start! and setup!
+        @test !isempty(mpc.bnb.xprev)
+        reset_bnb_warm_start!(mpc)
+        @test isempty(mpc.bnb.xprev)
+        LinearMPC.DAQP.settings(mpc.opt_model,Dict(:time_limit=>0.0))
+        LinearMPC.solve(mpc,θk(mpc,x,[0.5,0,0]))
+        setup!(mpc)
+        @test isempty(mpc.bnb.xprev)
+
+        # Without binary controls, the setting has no effect
+        mpc,_ = LinearMPC.mpc_examples("invpend")
+        mpc.settings.bnb_warm_start = true
+        setup!(mpc)
+        @test isempty(mpc.bnb.binary_ids)
+        @test compute_control(mpc,[5.0;5;0;0]) ≈ [1.7612519326] atol=1e-6
+    end
+
+    @testset "Codegen warm start of the branch and bound" begin
+        # (The MPC of the helper has its own name, since an assignment to mpc would assign the
+        # variable mpc of the testset)
+        function satellite(warm; abs_subopt=0.0, Nc_binary=-1)
+            sat,_ = LinearMPC.mpc_examples("satellite",20)
+            set_binary_controls!(sat,[2,3],Nc_binary)
+            move_block!(sat,[1,1,2,4,12])
+            sat.settings.bnb_warm_start = warm
+            setup!(sat)
+            LinearMPC.DAQP.settings(sat.opt_model,Dict(:abs_subopt=>abs_subopt))
+            return sat
+        end
+        θk(mpc,x,r) = LinearMPC.form_parameter(mpc,x,r,nothing,nothing,nothing)
+        isbin(v) = min(abs(v),abs(abs(v)-1)) < 1e-6
+        files(dir) = Dict(f => read(joinpath(dir,f),String) for f in readdir(dir))
+
+        # Shim that exposes the LDP solution of the returned solution and the cutoff of DAQP
+        shim = """
+        #include "mpc_workspace.h"
+        void mpctest_u(double* u){ int i; for(i = 0; i < NX; i++) u[i] = daqp_work.u[i]; }
+        double mpctest_fval_bound(void){ return daqp_settings.fval_bound; }
+        """
+        function build_lib(mpc; kwargs...)
+            srcdir = tempname()
+            LinearMPC.codegen(mpc; dir=srcdir, kwargs...)
+            open(joinpath(srcdir, "shim.c"), "w") do f; write(f, shim); end
+            src = [f for f in readdir(srcdir) if last(f, 1) == "c"]
+            testlib = "mpctest." * Base.Libc.Libdl.dlext
+            run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $testlib $src`; dir=srcdir))
+            # Resolved per handle, since the libraries of the test export the same symbols
+            h = Base.Libc.Libdl.dlopen(joinpath(srcdir, testlib),
+                                       Base.Libc.Libdl.RTLD_LOCAL | Base.Libc.Libdl.RTLD_NOW)
+            return s -> Base.Libc.Libdl.dlsym(h, s)
+        end
+        compute!(sym,u,x,r,d) = ccall(sym(:mpc_compute_control), Cint,
+                                      (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}), u, x, r, d)
+        cint(sym,s) = unsafe_load(Ptr{Cint}(sym(s)))
+
+        # The generated code follows the setting bnb_warm_start, unless the keyword overrides it
+        mpc = satellite(true)
+        on, off, plain = tempname(), tempname(), tempname()
+        LinearMPC.codegen(mpc; dir=on)
+        LinearMPC.codegen(mpc; dir=off, bnb_warm_start=false)
+        LinearMPC.codegen(satellite(false); dir=plain)
+        @test occursin("#define DAQP_BNB_WARMSTART", read(joinpath(on,"mpc_workspace.h"),String))
+        @test occursin("int exitflag = mpc_bnb_warm_start();", read(joinpath(on,"mpc_workspace.c"),String))
+        # Without the warm start, the code is unchanged: the template of mpc_compute_control is
+        # included as it is, and the setting has no effect
+        @test !occursin("DAQP_BNB_WARMSTART", read(joinpath(off,"mpc_workspace.h"),String))
+        template = read(joinpath(pkgdir(LinearMPC),"codegen","mpc_update_qp.c"),String)
+        @test occursin(template, read(joinpath(off,"mpc_workspace.c"),String))
+        @test files(off) == files(plain)
+
+        # With a prestabilizing feedback, the control bounds are general constraints, and there is
+        # no warm start
+        mpc_K = LinearMPC.MPC(LinearMPC.Model(fill(0.5, 1, 1), [1.0 1.0]; C = [1.0;;]); Np = 5, Nc = 5)
+        set_objective!(mpc_K; Q = [1.0], R = [0.1, 0.2])
+        set_input_bounds!(mpc_K; umin = [0.0, 0.0], umax = [1.0, 1.0])
+        set_binary_controls!(mpc_K, [1, 2])
+        set_prestabilizing_feedback!(mpc_K)
+        mpc_K.settings.bnb_warm_start = true
+        dir_K = tempname()
+        LinearMPC.codegen(mpc_K; dir=dir_K)
+        @test isempty(mpc_K.bnb.binary_ids)
+        @test !occursin("DAQP_BNB_WARMSTART", read(joinpath(dir_K,"mpc_workspace.h"),String))
+
+        if !isnothing(Sys.which("gcc"))
+            # Closed loop through the generated code, compared with LinearMPC.solve with the warm
+            # start and with the exact solve. With a binary horizon of two steps, the binary
+            # decision variables of the second step take the values of continuous ones.
+            for (abs_subopt,Nc_binary) in ((0.0,-1),(5.0,-1),(0.0,2))
+                mpc = satellite(true; abs_subopt, Nc_binary)
+                mpc_jl,mpc_exact = satellite(true; abs_subopt, Nc_binary),satellite(false; Nc_binary)
+                sym = build_lib(mpc)
+                bnb = mpc.bnb
+                nb = length(bnb.binary_ids)
+                @test unsafe_wrap(Array, Ptr{Cint}(sym(:bnb_binary_ids)), nb) == bnb.binary_ids .- 1
+                @test unsafe_wrap(Array, Ptr{Cint}(sym(:bnb_shift_ids)), nb) == bnb.shift_ids .- 1
+                xprev_shift = unsafe_wrap(Array, Ptr{Cdouble}(sym(:bnb_xprev_shift)), nb)
+                fval_bound = ccall(sym(:mpctest_fval_bound), Cdouble, ())
+                R = LinearMPC.hessian_factor(mpc.mpQP)
+
+                u,x,d,ldp = zeros(3),zeros(3),zeros(0),zeros(length(mpc.mpQP.f))
+                used = Int[]
+                for k in 1:30
+                    r = [k <= 5 ? 0.0 : 0.5,0,0]
+                    θ = θk(mpc,x,r)
+                    flag = compute!(sym,u,x,r,d)
+                    push!(used, cint(sym,:bnb_candidate_used))
+                    # Solution and objective in QP variables (u = R*z+v for the LDP solution u)
+                    ccall(sym(:mpctest_u), Cvoid, (Ptr{Cdouble},), ldp)
+                    v = R.L\(mpc.mpQP.f + mpc.mpQP.f_theta*θ)
+                    z_c = R.U\(ldp-v)
+                    J = 0.5*dot(ldp,ldp)-0.5*dot(v,v)
+
+                    z,fval,_,_ = LinearMPC.solve(mpc_jl,θ)
+                    _,fval_exact,_,_ = LinearMPC.solve(mpc_exact,θ)
+                    tol = 1e-6*(1+abs(fval_exact))
+                    @test flag == 1
+                    @test u ≈ z_c[1:3] atol=1e-6
+                    @test all(isbin, z_c[bnb.binary_ids])
+                    @test fval_exact - tol <= J <= fval_exact + abs_subopt + tol
+                    @test isapprox(u, z[1:3]; atol=1e-6) || abs(J-fval) <= abs_subopt + tol
+                    # The stored solution: the controls one step later in QP variables
+                    @test cint(sym,:bnb_xprev_valid) == 1
+                    @test xprev_shift ≈ z_c[bnb.shift_ids] atol=1e-6
+                    x = mpc.model.F*x + mpc.model.G*u
+                end
+                @test used[1] == 0 # no previous solution
+                @test sum(used) > 0
+                @test ccall(sym(:mpctest_fval_bound), Cdouble, ()) == fval_bound # cutoff restored
+
+                # The stored solution is discarded by mpc_reset_bnb_warm_start
+                ccall(sym(:mpc_reset_bnb_warm_start), Cvoid, ())
+                @test cint(sym,:bnb_xprev_valid) == 0
+                r = [0.5,0,0]
+                θ = θk(mpc,x,r)
+                @test compute!(sym,u,x,r,d) == 1
+                @test cint(sym,:bnb_candidate_used) == 0
+                @test cint(sym,:bnb_xprev_valid) == 1
+                ccall(sym(:mpctest_u), Cvoid, (Ptr{Cdouble},), ldp)
+                v = R.L\(mpc.mpQP.f + mpc.mpQP.f_theta*θ)
+                _,fval_exact,_,_ = LinearMPC.solve(mpc_exact,θ)
+                @test 0.5*dot(ldp,ldp)-0.5*dot(v,v) <= fval_exact + abs_subopt + 1e-6*(1+abs(fval_exact))
+            end
+        end
+    end
+
     @testset "Robust MPC" begin
         using LinearMPC
         F = [1.0 1 ;0 1]
