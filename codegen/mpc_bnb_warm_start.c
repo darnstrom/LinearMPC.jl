@@ -23,11 +23,12 @@
 // daqp_node_cleanup_workspace removes them again, so that the branch and bound starts from the
 // same working set as without the warm start.
 //
-// The cutoff: daqp_bnb discards nodes whose internal objective work->fval (twice the objective
-// of the LDP) exceeds 2*settings->fval_bound (adjusted by abs_subopt and rel_subopt), and returns
-// the internal objective of its solution in work->fval. Setting fval_bound to half the internal
-// objective of the candidate therefore discards the same nodes as if the branch and bound had
-// found the candidate itself.
+// The cutoff: settings->fval_bound refers to the objective J (darnstrom/daqp#214), which for the
+// LDP of the generated code (without linear term) is half the internal objective work->fval that
+// daqp_bnb returns. When daqp_bnb finds an integer-feasible solution with objective J, it sets
+// fval_bound to J-abs_subopt-rel_subopt*|J| and discards the nodes that cannot improve on it.
+// Setting fval_bound to this value for the candidate therefore discards the same nodes as if the
+// branch and bound had found the candidate itself.
 //
 // DAQP enforces its time limit only if it is compiled with PROFILING and the solve is started
 // by daqp_solve, which sets work->timer. The generated code calls daqp_bnb directly, so the time
@@ -60,7 +61,7 @@ int mpc_bnb_warm_start(void){
     const int n_keep = daqp_work.n_active;
     int sense_save[N_BNB_BINARY];
     c_float dupper_save[N_BNB_BINARY], dlower_save[N_BNB_BINARY];
-    c_float dist_lower, dist_upper, fval_cand = 0;
+    c_float dist_lower, dist_upper, fval_cand = 0, bound;
     const c_float fval_bound0 = daqp_work.settings->fval_bound;
 
     bnb_candidate_used = 0;
@@ -106,9 +107,12 @@ int mpc_bnb_warm_start(void){
         daqp_work.reuse_ind = 0;
     }
 
-    // Branch and bound, which only accepts solutions with a lower objective than the candidate
-    if(cand_flag > 0 && 0.5*fval_cand < fval_bound0)
-        daqp_work.settings->fval_bound = 0.5*fval_cand;
+    // Branch and bound, which only accepts solutions that improve on the candidate (objective
+    // 0.5*fval_cand >= 0) by more than the suboptimality tolerances
+    if(cand_flag > 0){
+        bound = 0.5*fval_cand*(1-daqp_work.settings->rel_subopt)-daqp_work.settings->abs_subopt;
+        if(bound < fval_bound0) daqp_work.settings->fval_bound = bound;
+    }
     exitflag = daqp_bnb(&daqp_work);
     daqp_work.settings->fval_bound = fval_bound0;
 
