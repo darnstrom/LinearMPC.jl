@@ -1385,13 +1385,141 @@ Random.seed!(1234)
         u = compute_control(disturbance_mpc, y; r=[0.5], d=[0.2])
         @test length(u) == 1
     end
+    # Worst-case deviation of the rows Ax xₜ + Au uₜ + Aup uₜ₋₁ from their nominal prediction, by
+    # enumeration of the vertices of the initial-state box and of the disturbance boxes, for the
+    # feedback u = v - K x on the true state, except for u₀, which is computed from the estimate
+    function worst_case_deviation(F, G, K, Bw, Ax, Au, Aup, δ, wmin, wmax, t)
+        nx, nu = size(G); nw = size(Bw, 2)
+        up, lo = fill(-Inf, size(Ax, 1)), fill(Inf, size(Ax, 1))
+        for s0 in Iterators.product(fill((-1, 1), nx)...), sw in Iterators.product(fill((false, true), nw*t)...)
+            es = [δ .* collect(s0)]
+            du(j) = j == 0 ? zeros(nu) : -K*es[j+1]
+            for j in 0:t-1
+                wj = [sw[j*nw+i] ? wmax[i] : wmin[i] for i in 1:nw]
+                push!(es, F*es[end] + G*du(j) + Bw*wj)
+            end
+            val = Ax*es[t+1] + Au*du(t) + Aup*du(t-1)
+            up, lo = max.(up, val), min.(lo, val)
+        end
+        return up, -lo
+    end
+    @testset "Constraint tightening is the worst-case deviation" begin
+        rng = MersenneTwister(7)
+        for trial in 1:20
+            nx, nu = 2, 1
+            F = 1.2*randn(rng, nx, nx); G = randn(rng, nx, nu)
+            K = trial % 2 == 0 ? zeros(nu, nx) : 0.3*randn(rng, nu, nx)
+            Bw = trial % 3 == 0 ? Matrix(1.0I, nx, nx) : G
+            nw = size(Bw, 2)
+            Ax, Au = randn(rng, 2, nx), randn(rng, 2, nu)
+            Aup = trial % 4 == 0 ? zeros(2, nu) : randn(rng, 2, nu)
+            δ = rand(rng, nx); wmin, wmax = -rand(rng, nw), rand(rng, nw)
+            for t in 1:3
+                ut, lt = LinearMPC.constraint_tightening(Ax - Au*K, F - G*K, [t+1], wmin, wmax, δ;
+                                                         Aup = -Aup*K, Bw, F0 = F)
+                up, lo = worst_case_deviation(F, G, K, Bw, Ax, Au, Aup, δ, wmin, wmax, t)
+                @test ut ≈ up
+                @test lt ≈ lo
+            end
+            ut, lt = LinearMPC.constraint_tightening(Ax - Au*K, F - G*K, [1], wmin, wmax, δ; Bw, F0 = F)
+            @test iszero(ut) && iszero(lt)
+        end
+    end
+    @testset "Tightened bounds of the mpQP" begin
+        # Output, mixed state-control and control-rate rows with prestabilizing feedback, against the
+        # worst-case deviation; the tightening is the difference of the robust and the nominal bounds
+        F, G = [1.0 0.1; 0.0 1.0], [0.005; 0.1;;]
+        Np = 5
+        Ax, Au, Aup = [1.0 0.0; 0.5 0.2; 0.0 0.0], [0.0; 1.0; 1.0;;], [0.0; 0.0; -1.0;;]
+        δ, Bw, wmin, wmax = [0.01, 0.02], G, [-0.3], [0.2]
+        function bounds(robust)
+            mpc = LinearMPC.MPC(F, G; C = [1.0 0.0], Np)
+            mpc.settings.preprocess_mpqp = false
+            set_prestabilizing_feedback!(mpc)
+            add_constraint!(mpc; Ax, Au, Aup, lb = -ones(3), ub = ones(3), ks = 2:Np)
+            if robust
+                set_x0_uncertainty!(mpc, δ)
+                set_disturbance!(mpc, wmin, wmax; Bw)
+            end
+            mpqp = LinearMPC.mpc2mpqp(mpc)
+            mpqp.bu, mpqp.bl, mpc.K
+        end
+        bu0, bl0, K = bounds(false)
+        bu, bl, _ = bounds(true)
+        for (i, k) in enumerate(2:Np)
+            up, lo = worst_case_deviation(F, G, K, Bw, Ax, Au, Aup, δ, wmin, wmax, k-1)
+            rows = 3(i-1)+1:3i
+            @test bu0[rows] - bu[rows] ≈ up
+            @test bl[rows] - bl0[rows] ≈ lo
+        end
+    end
     @testset "x0 uncertainty" begin
-        F,G = [1 0.1; 0 1], [0.005;0.1;;] # double integrator with Ts=0.1 
-        mpc= LinearMPC.MPC(F,G;Ts=0.1,Np=25,C=[1 0;])
-        set_bounds!(mpc;umin=[-0.2],umax=[0.2],ymin=[-0.5],ymax=[0.5]) 
-        set_x0_uncertainty!(mpc,0.1*ones(2))
-        sim= Simulation(mpc;r=[0.5])
-        @test abs(sim.xs[1,end] - 0.4) < 1e-6
+        # The estimate is biased by the worst case of the box: the nominal MPC violates the output
+        # bound, the robust one does not
+        F,G = [1 0.1; 0 1], [0.005;0.1;;] # double integrator with Ts=0.1
+        δ = [0.02, 0.02]
+        function run(robust)
+            mpc= LinearMPC.MPC(F,G;Ts=0.1,Np=25,C=[1 0;])
+            set_prestabilizing_feedback!(mpc)
+            set_bounds!(mpc;umin=[-0.2],umax=[0.2],ymin=[-0.5],ymax=[0.5])
+            robust && set_x0_uncertainty!(mpc,δ)
+            x = zeros(2); ymax = -Inf
+            for _ in 1:150
+                u = compute_control(mpc, x - δ; r=[0.5])
+                x = F*x + G*u
+                ymax = max(ymax, x[1])
+            end
+            ymax
+        end
+        @test run(false) > 0.5 + 1e-3
+        @test run(true) <= 0.5 + 1e-6
+        mpc = LinearMPC.MPC(F,G;Ts=0.1,Np=25,C=[1 0;])
+        @test_throws ArgumentError set_x0_uncertainty!(mpc, [0.1])
+        @test_throws ArgumentError set_x0_uncertainty!(mpc, [0.1, -0.1])
+        set_x0_uncertainty!(mpc, 0.1)
+        @test mpc.Δx0 == [0.1, 0.1]
+    end
+    @testset "Disturbance through Bw" begin
+        # A disturbance on the control input: the worst-case constant disturbance does not violate
+        # the output bound, and Bw = G tightens less than the box that contains G*w
+        F,G = [1 0.1; 0 1], [0.005;0.1;;]
+        wmax = 0.05
+        function build(Bw)
+            mpc = LinearMPC.MPC(F,G;Ts=0.1,Np=25,C=[1 0;])
+            set_prestabilizing_feedback!(mpc)
+            set_bounds!(mpc;umin=[-0.2],umax=[0.2],ymin=[-0.5],ymax=[0.5])
+            Bw === nothing ? set_disturbance!(mpc, -abs.(G[:,1])*wmax, abs.(G[:,1])*wmax) :
+                             set_disturbance!(mpc, -wmax, wmax; Bw)
+            mpc
+        end
+        mpc_Bw, mpc_box = build(G), build(nothing)
+        @test mpc_Bw.model.Bw == G
+        @test mpc_Bw.model.wmin == [-wmax]
+        @test size(mpc_box.model.Bw) == (2, 2)
+        q_Bw, q_box = LinearMPC.mpc2mpqp(mpc_Bw), LinearMPC.mpc2mpqp(mpc_box)
+        @test sum(q_Bw.bu) > sum(q_box.bu)
+        for w in (wmax, -wmax)
+            x = zeros(2); ymax = -Inf
+            for _ in 1:150
+                u = compute_control(mpc_Bw, x; r=[0.5])
+                x = F*x + G*(u .+ w)
+                ymax = max(ymax, x[1])
+            end
+            @test ymax <= 0.5 + 1e-6
+        end
+        # Without tightening the same disturbance violates the bound
+        mpc = LinearMPC.MPC(F,G;Ts=0.1,Np=25,C=[1 0;])
+        set_prestabilizing_feedback!(mpc)
+        set_bounds!(mpc;umin=[-0.2],umax=[0.2],ymin=[-0.5],ymax=[0.5])
+        x = zeros(2); ymax = -Inf
+        for _ in 1:150
+            x = F*x + G*(compute_control(mpc, x; r=[0.5]) .+ wmax)
+            ymax = max(ymax, x[1])
+        end
+        @test ymax > 0.5 + 1e-3
+        @test_throws ArgumentError set_disturbance!(mpc, [-1.0, -1.0], [1.0, 1.0]; Bw = G)
+        @test_throws ArgumentError set_disturbance!(mpc, [1.0], [-1.0]; Bw = G)
+        @test_throws ArgumentError set_disturbance!(mpc, [-1.0], [1.0]; Bw = ones(3, 1))
     end
     @testset "Constraint tightening with several constraint blocks" begin
         # Each block must be tightened as when it is the only block, also for unsorted ks
