@@ -139,6 +139,10 @@ end
 function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_type="double", warm_start=false)
     mpLDP = qp2ldp(mpc.mpQP,mpc.model.nu) 
     mpLDP.Uth_offset[1:mpc.model.nx,:] -= mpc.K' #Account for prestabilizing feedback
+    # uscaling undoes the normalization of the rows of Rinv that belong to simple bounds, since
+    # the generated workspace does not contain DAQP's scaling. For a diagonal Hessian, DAQP stores
+    # the diagonal RinvD instead, which is not normalized, so there is nothing to undo.
+    daqp_diagonal_factor(mpc.opt_model) && (mpLDP.uscaling .= 1)
     # Get dimensions
     nth,m = size(mpLDP.Dth)
 
@@ -215,6 +219,17 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
 
     close(fh)
     close(fsrc)
+end
+
+"""
+    daqp_diagonal_factor(d)
+
+Return `true` if the workspace of the DAQP model `d` stores the inverse of a diagonal factor of
+the Hessian (`RinvD`, used by DAQP for a diagonal Hessian) and not the triangular `Rinv`.
+"""
+function daqp_diagonal_factor(d::DAQP.Model)
+    work = unsafe_load(d.work)
+    return work.Rinv == C_NULL && work.RinvD != C_NULL
 end
 
 function write_float_array(f,a::Vector{<:Real},name::String)
