@@ -515,6 +515,16 @@ and tightens the constraints so that they are satisfied for every such disturban
 `wmin` and `wmax` bound each state variable. A disturbance acting on the control inputs is given by
 `Bw = G` (or columns of it). `wmin` and `wmax` are vectors of length `nw`, or scalars applied to every
 component of `w`.
+
+# Example
+```julia
+F, G = [1 0.1; 0 1], [0.005; 0.1;;]
+mpc = LinearMPC.MPC(F, G; Np=25, C=[1 0;])
+set_prestabilizing_feedback!(mpc)
+set_bounds!(mpc; umin=[-0.2], umax=[0.2], ymin=[-0.5], ymax=[0.5])
+set_disturbance!(mpc, -0.005, 0.005)               # |wᵢ| ≤ 0.005 for each state variable
+set_disturbance!(mpc, [-0.05], [0.05]; Bw = G)     # or |w| ≤ 0.05 added to the control input
+```
 """
 function set_disturbance!(mpc,wmin,wmax;Bw=nothing)
     nx = mpc.model.nx
@@ -537,6 +547,14 @@ Bounds the error of the current state estimate ``\\hat{x}`` by the box
 ``-\\delta \\leq x - \\hat{x} \\leq \\delta``, with `δ = x0_uncertainty` a vector of length `nx`
 (or a scalar applied to every state variable), and tightens the constraints so that they are satisfied
 for every state in that box (see [Robust MPC](@ref man_robust)).
+
+# Example
+```julia
+mpc = LinearMPC.MPC([1 0.1; 0 1], [0.005; 0.1;;]; Np=25, C=[1 0;])
+set_prestabilizing_feedback!(mpc)
+set_bounds!(mpc; umin=[-0.2], umax=[0.2], ymin=[-0.5], ymax=[0.5])
+set_x0_uncertainty!(mpc, [0.02, 0.02])
+```
 """
 function set_x0_uncertainty!(mpc,x0_uncertainty)
     nx = mpc.model.nx
