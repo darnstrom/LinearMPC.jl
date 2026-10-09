@@ -162,6 +162,7 @@ function render_mpc_workspace(mpc;fname="mpc_workspace",dir="",fmode="w", float_
     @printf(fh, "#define N_DISTURBANCE %d\n",mpc.nd);
     mpc.settings.disturbance_preview && @printf(fh, "#define N_DISTURBANCE_PREVIEW_HORIZON %d\n",mpc.Np);
     @printf(fh, "#define N_CONTROL_PREV %d\n",mpc.nuprev);
+    @printf(fh, "#define N_EQUALITY %d\n", count_equality_constraints(mpc.mpQP));
     @printf(fh, "#define N_AFFINE_PARAMETER %d\n",mpc.np);
     @printf(fh, "#define N_AFFINE_PARAMETER_BASE %d\n", get_affine_parameter_base_dim(mpc));
     mpc.settings.parameter_preview && @printf(fh, "#define N_AFFINE_PARAMETER_HORIZON %d\n", mpc.Np);

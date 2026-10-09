@@ -37,13 +37,17 @@ int mpc_compute_control(c_float* control, c_float* state, c_float* reference, c_
     mpc_update_qp(mpc_parameter,daqp_work.dupper,daqp_work.dlower);
     daqp_work.reuse_ind=0; // clear workspace cache
 
-#ifdef DAQP_BNB
-    int exitflag = daqp_bnb(&daqp_work);
-#else
-#ifndef DAQP_WARMSTART
+#if !defined(DAQP_WARMSTART)
     daqp_deactivate_constraints(&daqp_work);
     reset_daqp_workspace(&daqp_work);
 #endif
+// Ensure equalities are activiated on the first round
+#if N_EQUALITY > 0
+    if(daqp_work.n_active == 0) daqp_activate_constraints(&daqp_work);
+#endif
+#ifdef DAQP_BNB
+    int exitflag = daqp_bnb(&daqp_work);
+#else
     int exitflag = daqp_ldp(&daqp_work);
 #endif
 

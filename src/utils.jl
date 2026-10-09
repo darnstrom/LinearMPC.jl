@@ -278,6 +278,9 @@ function solve(mpc::MPC,θ)
     return DAQP.solve(mpc.opt_model)
 end
 
+"Number of equality constraints of the QP `mpQP`"
+count_equality_constraints(mpQP) = count(s -> s & DAQP.EQUALITY == DAQP.EQUALITY, mpQP.senses)
+
 function range2region(range)
     lb = [range.xmin;range.rmin;range.dmin;range.umin;range.pmin]
     ub = [range.xmax;range.rmax;range.dmax;range.umax;range.pmax]

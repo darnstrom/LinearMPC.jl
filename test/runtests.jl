@@ -131,6 +131,44 @@ Random.seed!(1234)
         U = LinearMPC.compute_control_trajectory(mpc, [0.0]; r = [0.0])
         @test maximum(abs, U) < 1e-6
     end
+    @testset "Equality constraints with and without binary controls" begin
+        # u₂ continuous and the equality u₂ = 2u₁ at every step; with `binary`, u₁ ∈ {0, 1}
+        function eqmpc(binary)
+            mpc = LinearMPC.MPC(LinearMPC.Model(fill(0.9, 1, 1), [0.0 1.0]; C = [1.0;;]); Np = 6, Nc = 6)
+            set_objective!(mpc; Q = [1.0], R = [0.01, 0.01])
+            set_input_bounds!(mpc; umin = [0.0, 0.0], umax = [1.0, 5.0])
+            add_constraint!(mpc; Au = [-2.0 1.0], lb = [0.0], ub = [0.0], ks = 1:6)
+            binary && set_binary_controls!(mpc, [1], 3)
+            mpc
+        end
+        mpc = eqmpc(true)
+        for x0 in ([0.0], [0.5], [-1.0]) # repeated solves reuse the workspace
+            U = reshape(LinearMPC.compute_control_trajectory(mpc, x0; r = [1.5]), 2, :)
+            @test maximum(abs.(U[2, :] .- 2 .* U[1, :])) < 1e-8
+            @test all(v -> min(abs(v), abs(v - 1)) < 1e-8, U[1, 1:3])
+        end
+        if !isnothing(Sys.which("gcc"))
+            Libdl = Base.Libc.Libdl
+            for binary in (true, false)
+                mpc = eqmpc(binary)
+                srcdir = tempname()
+                LinearMPC.codegen(mpc; dir = srcdir)
+                src = [f for f in readdir(srcdir) if last(f, 1) == "c"]
+                lib = "mpceqtest." * Libdl.dlext
+                run(Cmd(`gcc -lm -fPIC -O3 -msse3 -xc -shared -o $lib $src`; dir = srcdir))
+                handle = Libdl.dlopen(joinpath(srcdir, lib))
+                compute_control = Libdl.dlsym(handle, :mpc_compute_control)
+                for x0 in ([0.0], [0.5], [-1.0], [0.0]) # repeated calls reuse the workspace
+                    u = zeros(2)
+                    ccall(compute_control, Cint, (Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}, Ptr{Cdouble}),
+                        u, x0, [1.5], zeros(0))
+                    @test abs(u[2] - 2u[1]) < 1e-8
+                    @test u ≈ LinearMPC.compute_control(mpc, x0; r = [1.5]) atol = 1e-6
+                end
+                Libdl.dlclose(handle)
+            end
+        end
+    end
     @testset "Indicator + Product constraints" begin
         mpc = LinearMPC.MPC([-0.8;;], [1.0 0.0 1.6]; C=[1.0;;], Np=1, Nc=1)
         set_input_bounds!(mpc; umin=[-1.0, 0.0, -10.0], umax=[1.0, 1.0, 10.0])
