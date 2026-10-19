@@ -96,6 +96,17 @@ plt.legend(); plt.show()
 !!! note "Measurable disturbance"
     Note that if the disturbance $w$ is measurable/known, it can be accounted for without having to tighten the constraints by providing it as a measurable disturbance $d$ (see `Model` for details.)
 
+### Disturbances through an input matrix
+A disturbance that does not act on every state variable independently is described by an input matrix $B_w$,
+```math
+x_{k+1} = F x_k + G u_k + B_w w_k, \qquad w_{\min} \leq w_k \leq w_{\max},
+```
+given with the keyword argument `Bw` (`nx × nw`, the identity by default). A disturbance on the control input, for example, enters through $B_w = G$:
+```julia
+set_disturbance!(mpc_robust, [-0.05], [0.05]; Bw = G)
+```
+A box on $G w$ also contains this disturbance, but it treats the state variables as independent and therefore tightens the constraints more than the input matrix does.
+
 ## Uncertainty in the current state
 Uncertainty in the current state can also be handled robustly. If the current state $\hat{x}$ is assumed to be in the box 
 ```math
@@ -109,3 +120,16 @@ set_x0_uncertainty!(mpc,delta)
 # python
 mpc.set_x0_uncertainty(delta)
 ```
+`delta` is a vector with one entry per state variable, or a scalar applied to every state variable.
+
+## The tightening
+The control applied at time step $k$ of the prediction is $u_k = v_k - K x_k$, where $v_k$ are the decision variables and $K$ is the prestabilizing feedback (`set_prestabilizing_feedback!`, zero otherwise). The control $u_0$ is computed from the estimate $\hat{x}_0$ and is therefore exact. The deviation $e_k$ of the state from its nominal prediction then evolves as
+```math
+e_1 = F e_0 + B_w w_0, \qquad e_{k+1} = \Phi e_k + B_w w_k, \qquad \Phi = F - G K,
+```
+and a constraint row $a_x x_k + a_u u_k + a_{up} u_{k-1} \leq b$ deviates from its nominal prediction by a linear function of $e_0, w_0, \ldots, w_{k-1}$. Its upper bound is decreased by the worst case of this deviation over the boxes,
+```math
+|M_{k-1} F|\,\delta + \sum_{s=0}^{k-1} \max_{w_{\min} \leq w \leq w_{\max}} M_s B_w w,
+\qquad M_s = (a_x - a_u K)\Phi^s - a_{up} K \Phi^{s-1},
+```
+where the last term is present for $s \geq 1$, and the lower bound is increased correspondingly. Constraints on $x_0$ are not tightened, since $x_0$ cannot be influenced. Without prestabilizing feedback, $\Phi = F$, and for an unstable or integrating system the tightening grows with the prediction horizon. Prestabilizing feedback keeps it bounded when $\Phi$ is stable.

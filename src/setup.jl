@@ -504,18 +504,64 @@ function _validate_input_id(id::Integer, nu::Int, name::AbstractString)
     1 <= id <= nu || throw(ArgumentError("$name must be between 1 and $nu"))
 end
 """
-    set_disturbance!(mpc,wmin,wmax)
+    set_disturbance!(mpc,wmin,wmax;Bw=nothing)
+
+Bounds the unknown disturbance `w` in the dynamics
+```math
+x_{k+1} = F x_k + G u_k + B_w w_k, \\qquad w_{\\min} \\leq w_k \\leq w_{\\max},
+```
+and tightens the constraints so that they are satisfied for every such disturbance sequence
+(see [Robust MPC](@ref man_robust)). `Bw` (`nx × nw`) defaults to the identity, in which case
+`wmin` and `wmax` bound each state variable. A disturbance acting on the control inputs is given by
+`Bw = G` (or columns of it). `wmin` and `wmax` are vectors of length `nw`, or scalars applied to every
+component of `w`.
+
+# Example
+```julia
+F, G = [1 0.1; 0 1], [0.005; 0.1;;]
+mpc = LinearMPC.MPC(F, G; Np=25, C=[1 0;])
+set_prestabilizing_feedback!(mpc)
+set_bounds!(mpc; umin=[-0.2], umax=[0.2], ymin=[-0.5], ymax=[0.5])
+set_disturbance!(mpc, -0.005, 0.005)               # |wᵢ| ≤ 0.005 for each state variable
+set_disturbance!(mpc, [-0.05], [0.05]; Bw = G)     # or |w| ≤ 0.05 added to the control input
+```
 """
-function set_disturbance!(mpc,wmin,wmax)
-    mpc.model.wmin .= wmin
-    mpc.model.wmax .= wmax
+function set_disturbance!(mpc,wmin,wmax;Bw=nothing)
+    nx = mpc.model.nx
+    Bw = isnothing(Bw) ? Matrix{Float64}(I,nx,nx) : Matrix{Float64}(reshape(Bw,size(Bw,1),:))
+    size(Bw,1) == nx || throw(ArgumentError("Bw must have nx = $nx rows, got $(size(Bw,1))"))
+    nw = size(Bw,2)
+    wmin = wmin isa Number ? fill(Float64(wmin),nw) : Vector{Float64}(vec(wmin))
+    wmax = wmax isa Number ? fill(Float64(wmax),nw) : Vector{Float64}(vec(wmax))
+    (length(wmin) == length(wmax) == nw) || throw(ArgumentError("wmin and wmax must have one entry per column of Bw ($nw)"))
+    all(wmin .<= wmax) || throw(ArgumentError("wmin must not exceed wmax"))
+    m = mpc.model
+    mpc.model = Model(m.F, m.G, m.Gd, m.f_offset, m.xo, m.uo, wmin, wmax, Bw, m.C, m.Dd, m.h_offset,
+                      m.true_dynamics, m.true_h, m.nx, m.nu, m.ny, m.nd, m.Ts, m.labels)
     mpc.mpqp_issetup = false
 end
 """
-    set_x0_uncertainty!(mpc,wmin,wmax)
+    set_x0_uncertainty!(mpc,x0_uncertainty)
+
+Bounds the error of the current state estimate ``\\hat{x}`` by the box
+``-\\delta \\leq x - \\hat{x} \\leq \\delta``, with `δ = x0_uncertainty` a vector of length `nx`
+(or a scalar applied to every state variable), and tightens the constraints so that they are satisfied
+for every state in that box (see [Robust MPC](@ref man_robust)).
+
+# Example
+```julia
+mpc = LinearMPC.MPC([1 0.1; 0 1], [0.005; 0.1;;]; Np=25, C=[1 0;])
+set_prestabilizing_feedback!(mpc)
+set_bounds!(mpc; umin=[-0.2], umax=[0.2], ymin=[-0.5], ymax=[0.5])
+set_x0_uncertainty!(mpc, [0.02, 0.02])
+```
 """
 function set_x0_uncertainty!(mpc,x0_uncertainty)
-    mpc.Δx0 .= x0_uncertainty 
+    nx = mpc.model.nx
+    δ = x0_uncertainty isa Number ? fill(Float64(x0_uncertainty),nx) : vec(x0_uncertainty)
+    length(δ) == nx || throw(ArgumentError("x0_uncertainty must have nx = $nx entries, got $(length(δ))"))
+    all(δ .>= 0) || throw(ArgumentError("x0_uncertainty must be nonnegative"))
+    mpc.Δx0 .= δ
     mpc.mpqp_issetup = false
 end
 """
@@ -580,7 +626,7 @@ function rebuild_model(model::Model, Gd, Dd, disturbance_labels)
     labels = Labels(model.labels.x, model.labels.u, model.labels.y, Symbol.(disturbance_labels))
     nd = size(Gd, 2)
     return Model(model.F, model.G, float(Gd), model.f_offset, model.xo, model.uo,
-                 model.wmin, model.wmax, model.C, float(Dd), model.h_offset,
+                 model.wmin, model.wmax, model.Bw, model.C, float(Dd), model.h_offset,
                  model.true_dynamics, model.true_h,
                  model.nx, model.nu, model.ny, nd, model.Ts, labels)
 end
@@ -719,9 +765,10 @@ function set_operating_point!(mpc;xo=nothing,uo=nothing,relinearize=true)
     !isnothing(uo) && (mpc.model.uo[:] = uo)
 
     if !isnothing(xo) || !isnothing(uo)
+        (; wmin, wmax, Bw) = mpc.model
         mpc.model = LinearMPC.Model(mpc.model.true_dynamics,mpc.model.true_h,
                                     mpc.model.xo,mpc.model.uo)
-        mpc.mpqp_issetup = false
+        set_disturbance!(mpc, wmin, wmax; Bw)
     end
 end
 
