@@ -24,6 +24,7 @@ struct Model
 
     wmin::Vector{Float64}
     wmax::Vector{Float64}
+    Bw::Matrix{Float64}
 
     C::Matrix{Float64}
     Dd::Matrix{Float64}
@@ -48,7 +49,7 @@ function Model(F,G,Gd,C,Dd;Ts=-1.0, f_offset=zeros(0), h_offset=zeros(0),
 end
 
 function Model(F,G;Ts=-1.0, C = zeros(0,0), Gd = zeros(0,0), f_offset=zeros(0), h_offset=zeros(0), 
-        xo=zeros(0),uo=zeros(0), Dd = zeros(0,0), wmin=zeros(0), wmax=zeros(0), 
+        xo=zeros(0),uo=zeros(0), Dd = zeros(0,0), wmin=zeros(0), wmax=zeros(0), Bw=zeros(0,0),
         true_dynamics=nothing, true_h=nothing)
     G = reshape(G,size(G,1),:) 
     nx,nu = size(G)
@@ -62,15 +63,18 @@ function Model(F,G;Ts=-1.0, C = zeros(0,0), Gd = zeros(0,0), f_offset=zeros(0), 
     h_offset = isempty(h_offset) ? zeros(ny) : h_offset
     xo = isempty(xo) ? zeros(nx) : xo
     uo = isempty(uo) ? zeros(nu) : uo
-    wmin = isempty(wmin) ? zeros(nx) : wmin
-    wmax = isempty(wmax) ? zeros(nx) : wmax
+    Bw = isempty(Bw) ? Matrix{Float64}(I,nx,nx) : reshape(Bw,nx,:)
+    nw = size(Bw,2)
+    wmin = isempty(wmin) ? zeros(nw) : wmin
+    wmax = isempty(wmax) ? zeros(nw) : wmax
+    (length(wmin) == length(wmax) == nw) || throw(ArgumentError("wmin and wmax must have one entry per column of Bw ($nw)"))
     nd = max(size(Gd,2),size(Dd,2))
     Gd = [Gd zeros(nx,nd-size(Gd,2))]
     Dd = [Dd zeros(ny,nd-size(Dd,2))]
     true_dynamics = isnothing(true_dynamics) ? (x,u,d)->F*x+G*u+Gd*d+f_offset : true_dynamics
     true_h = isnothing(true_h) ? (x,u,d)->C*x+Dd*d+h_offset : true_h
     Model(float(F),float(G),float(Gd), float(f_offset), float(xo), float(uo),
-          float(wmin), float(wmax), float(C),float(Dd), float(h_offset),
+          float(wmin), float(wmax), float(Bw), float(C),float(Dd), float(h_offset),
           true_dynamics,true_h,
           nx,nu,ny,nd,Ts,Labels(nx,nu,ny,nd))
 end
